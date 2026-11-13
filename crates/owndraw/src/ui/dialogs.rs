@@ -14,6 +14,8 @@ pub enum RenameWhat {
 }
 
 pub enum ConfirmAction {
+    /// Speichern nicht möglich → „Kopie speichern unter …“ anbieten.
+    SaveCopy,
     DeleteLayer(usize),
     DeletePage(usize),
 }

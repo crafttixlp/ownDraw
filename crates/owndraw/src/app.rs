@@ -2,6 +2,7 @@
 //! Hinweise (Toast) und das Anwenden der Einstellungen. Alle Plattform-Zugriffe laufen über `Platform`.
 
 use crate::layout::Env;
+use crate::autosave::{AutosaveStatus, SaveFormat};
 use crate::platform::{FileKind, FileRef, Platform, PlatformEvent, Tag};
 use crate::recent::{Recent, RecentEntry};
 use crate::session::{self, NewParams};
@@ -12,7 +13,9 @@ use crate::ui::editor::{drop as drops, Editor};
 use crate::ui::settings::SettingsAction;
 use crate::ui::start::StartState;
 use egui::{Align2, Color32, CornerRadius, Vec2};
+use owndraw_core::doc::Document;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Wofür ein System-Dialog geöffnet wurde.
 #[derive(Clone, Debug, PartialEq)]
@@ -102,6 +105,12 @@ pub struct App {
     start: StartState,
     recent: Recent,
     pending: HashMap<Tag, (PickPurpose, Option<NewParams>)>,
+    /// Importiertes Dokument, das auf die Wahl seines Speicherorts wartet (Tag des Speichern-Dialogs).
+    pending_docs: HashMap<Tag, Document>,
+    /// Zeitpunkt des letzten Autosave-Erfolgs, der in „Zuletzt“ eingetragen wurde.
+    last_saved: f64,
+    /// Zeitpunkt der letzten Prüfung auf fehlende Dateien der Zuletzt-Liste.
+    last_missing_check: f64,
     next_tag: Tag,
     applied: Option<Settings>,
     open_at_start: Option<FileRef>,
@@ -121,11 +130,38 @@ impl App {
             start: StartState::default(),
             recent,
             pending: HashMap::new(),
+            pending_docs: HashMap::new(),
+            last_saved: -1.0,
+            last_missing_check: -100.0,
             next_tag: 1,
             applied: None,
             open_at_start: open_file,
             shot: crate::demo::Shot::from_env(),
             demo: std::env::var("OWNDRAW_DEMO").ok().filter(|s| !s.is_empty()),
+        }
+    }
+
+    /// Migration der alten Ablage (siehe `lib.rs`): übernommene Dateien in die Zuletzt-Liste, Hinweis anzeigen.
+    pub fn add_migrated(&mut self, files: Vec<PathBuf>) {
+        let n = files.len();
+        for p in files {
+            let f = FileRef::Path(p);
+            let (name, pages) = session::read_summary(&*self.sh.platform, &f).unwrap_or_else(|| (f.display_name(), false));
+            self.recent.add(RecentEntry { file: f, name, modified_ms: owndraw_core::store::now_ms(), pages });
+        }
+        if n > 0 {
+            self.sh.toast_for(&format!("{n} alte Boards übernommen"), 5.0);
+        }
+    }
+
+    fn recent_entry(f: FileRef, e: &Editor) -> RecentEntry {
+        RecentEntry { file: f, name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board) }
+    }
+
+    /// Speichert das offene Dokument sofort (Beenden, Pause).
+    fn flush_editor(&mut self) {
+        if let Some(e) = self.editor.as_mut() {
+            e.flush(&mut self.sh);
         }
     }
 
@@ -155,7 +191,7 @@ impl App {
         if let Some(mut e) = self.editor.take() {
             e.flush(&mut self.sh);
             if let Some(f) = e.file().cloned() {
-                self.recent.add(RecentEntry { file: f.clone(), name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board) });
+                self.recent.add(Self::recent_entry(f.clone(), &e));
                 self.start.forget(&f);
             }
         }
@@ -168,7 +204,7 @@ impl App {
             self.close_editor(ctx);
         }
         if let Some(f) = ed.file().cloned() {
-            self.recent.add(RecentEntry { file: f, name: ed.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&ed.board) });
+            self.recent.add(Self::recent_entry(f, &ed));
         }
         self.editor = Some(ed);
         self.screen = Screen::Editor;
@@ -192,28 +228,55 @@ impl App {
             }
         };
         let mut doc = doc;
-        let imported = FileKind::of_name(&f.display_name()) == FileKind::Xopp;
-        let target = if imported {
-            // Xournal++-Import: als .owndraw im Standard-Ort weiterarbeiten (Original bleibt unverändert).
+        if FileKind::of_name(&f.display_name()) == FileKind::Xopp {
+            // Xournal++-Import: Original bleibt unverändert; Autosave schreibt `<name>.owndraw` daneben
+            // (oder direkt ins .xopp, wenn eingestellt).
             if doc.meta.name.is_empty() {
-                doc.meta.name = f.display_name().trim_end_matches(".xopp").to_string();
+                doc.meta.name = f.display_name().trim_end_matches(".xopp").trim_end_matches(".XOPP").to_string();
+            }
+            if self.sh.settings.xopp_autosave_direct {
+                let mut ed = Editor::open(&mut self.sh, doc, Some(f));
+                ed.autosave.set_format(SaveFormat::Xopp);
+                self.sh.toast("Xournal++-Datei geöffnet (Änderungen gehen direkt ins .xopp)");
+                self.enter_editor(ctx, ed);
+                return;
             }
             let name = format!("{}.owndraw", safe_file_name(&doc.meta.name));
-            match self.sh.platform.create_in(&self.default_dir(), &name, FileKind::Owndraw) {
-                Ok(t) => Some(t),
-                Err(e) => {
-                    self.sh.toast_for(&format!("Kein Speicherort für den Import: {e}"), 4.0);
-                    None
+            match &f {
+                FileRef::Path(p) => {
+                    let beside = p.parent().filter(|d| !d.as_os_str().is_empty()).map(|d| FileRef::Path(d.to_path_buf()));
+                    let target = beside
+                        .and_then(|d| self.sh.platform.create_in(&d, &name, FileKind::Owndraw).ok().filter(writable_dir))
+                        .or_else(|| self.sh.platform.create_in(&self.default_dir(), &name, FileKind::Owndraw).ok());
+                    match target {
+                        Some(t) => self.finish_import(ctx, doc, t),
+                        None => self.sh.toast_for("Kein Speicherort für den Import verfügbar", 4.0),
+                    }
+                }
+                FileRef::Uri(_) => {
+                    // Ohne Ordnerzugriff: Speicherort erfragen.
+                    let tag = self.tag(PickPurpose::NewDoc, None);
+                    self.pending_docs.insert(tag, doc);
+                    self.sh.platform.pick_save(&name, FileKind::Owndraw, tag);
                 }
             }
-        } else {
-            Some(f)
-        };
-        let mut ed = Editor::open(&mut self.sh, doc, target);
-        if imported {
-            ed.autosave.mark_changed(self.sh.now);
-            self.sh.toast("Xournal++-Datei importiert");
+            return;
         }
+        let read_only = doc.meta.read_only;
+        let mut ed = Editor::open(&mut self.sh, doc, Some(f));
+        if read_only {
+            ed.autosave.set_read_only(true);
+            self.sh.toast_for(session::READ_ONLY_HINT, 7.0);
+        }
+        self.enter_editor(ctx, ed);
+    }
+
+    /// Importiertes Dokument unter `target` (.owndraw) weiterführen und sofort einmal speichern.
+    fn finish_import(&mut self, ctx: &egui::Context, doc: Document, target: FileRef) {
+        let mut ed = Editor::open(&mut self.sh, doc, Some(target));
+        ed.autosave.mark_changed(self.sh.now);
+        ed.flush(&mut self.sh);
+        self.sh.toast("Xournal++-Datei importiert");
         self.enter_editor(ctx, ed);
     }
 
@@ -235,8 +298,8 @@ impl App {
         if let Err(e) = session::write_document(&*self.sh.platform, &f, &doc) {
             self.sh.toast_for(&e, 4.0);
         }
-        let mut ed = Editor::open(&mut self.sh, doc, Some(f));
-        ed.autosave.mark_changed(self.sh.now);
+        // Datei ist angelegt und einmal geschrieben; der Autosave übernimmt ab der ersten Änderung.
+        let ed = Editor::open(&mut self.sh, doc, Some(f));
         self.enter_editor(ctx, ed);
     }
 
@@ -244,7 +307,18 @@ impl App {
 
     fn handle_pick(&mut self, ctx: &egui::Context, tag: Tag, file: Option<FileRef>) {
         let Some((purpose, params)) = self.pending.remove(&tag) else { return };
-        let Some(f) = file else { return };
+        let Some(f) = file else {
+            self.pending_docs.remove(&tag);
+            return;
+        };
+        if let Some(doc) = self.pending_docs.remove(&tag) {
+            let f = match f {
+                FileRef::Path(p) if p.extension().is_none_or(|e| !e.eq_ignore_ascii_case("owndraw")) => FileRef::Path(PathBuf::from(format!("{}.owndraw", p.display()))),
+                other => other,
+            };
+            self.finish_import(ctx, doc, f);
+            return;
+        }
         match purpose {
             PickPurpose::OpenDoc => self.open_ref(ctx, f),
             PickPurpose::NewDoc => {
@@ -336,6 +410,11 @@ impl App {
 }
 
 impl eframe::App for App {
+    /// Beim Beenden der App noch einmal synchron speichern.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.flush_editor();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.sh.now = ctx.input(|i| i.time);
@@ -359,11 +438,7 @@ impl eframe::App for App {
             match ev {
                 PlatformEvent::Picked { tag, file } => self.handle_pick(&ctx, tag, file),
                 PlatformEvent::OpenFile(f) => self.open_ref(&ctx, f),
-                PlatformEvent::Pause => {
-                    if let Some(e) = self.editor.as_mut() {
-                        e.flush(&mut self.sh);
-                    }
-                }
+                PlatformEvent::Pause => self.flush_editor(),
             }
         }
         for o in drops::handle_drops(&ctx, &*self.sh.platform, self.editor.as_mut()) {
@@ -373,10 +448,9 @@ impl eframe::App for App {
             }
         }
         if ctx.input(|i| i.viewport().close_requested()) {
-            if let Some(e) = self.editor.as_mut() {
-                e.flush(&mut self.sh);
-            }
+            self.flush_editor();
         }
+        self.recent_housekeeping();
 
         let bg = c(style::pal().bg);
         egui::CentralPanel::default().frame(egui::Frame::new().fill(bg)).show(ui, |ui| match (self.screen, self.editor.as_mut()) {
@@ -404,7 +478,32 @@ impl eframe::App for App {
     }
 }
 
+/// Ordner der Datei beschreibbar? (Rechte-Probe für den Xournal++-Import daneben; nur Pfade.)
+fn writable_dir(f: &FileRef) -> bool {
+    match f {
+        FileRef::Path(p) => p.parent().and_then(|d| std::fs::metadata(d).ok()).is_some_and(|m| !m.permissions().readonly()),
+        FileRef::Uri(_) => true,
+    }
+}
+
 impl App {
+    /// Zuletzt-Liste pflegen: Eintrag nach jedem erfolgreichen Autosave aktualisieren, fehlende Dateien erkennen.
+    fn recent_housekeeping(&mut self) {
+        if let Some(e) = &self.editor {
+            if let (AutosaveStatus::Saved(t), Some(f)) = (e.autosave.status(), e.file()) {
+                if *t != self.last_saved {
+                    self.last_saved = *t;
+                    self.recent.add(Self::recent_entry(f.clone(), e));
+                }
+            }
+        }
+        if self.screen == Screen::Start && self.sh.now - self.last_missing_check >= 3.0 {
+            self.last_missing_check = self.sh.now;
+            let pf = &*self.sh.platform;
+            self.recent.check_missing(|f| pf.exists(f));
+        }
+    }
+
     /// Für Demo/Tests: Zugriff auf Teile des Zustands.
     pub fn parts(&mut self) -> (&mut Shared, &mut StartState, &mut Recent) {
         (&mut self.sh, &mut self.start, &mut self.recent)

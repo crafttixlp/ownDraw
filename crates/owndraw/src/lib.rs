@@ -86,7 +86,15 @@ pub fn run_desktop() -> eframe::Result<()> {
             let platform = Box::new(platform::desktop::DesktopPlatform::new(None));
             let settings = app::load_settings(&*platform);
             style::apply(&cc.egui_ctx, &settings);
-            Ok(Box::new(app::App::new(platform, settings, open_file)))
+            // Einmalige Migration der alten Ablage (index.json + Board-Ordner) in den Standard-Ort.
+            let target = settings.default_dir.as_deref().and_then(platform::FileRef::from_key).unwrap_or_else(|| platform::Platform::default_dir(&*platform));
+            let migrated = match target {
+                platform::FileRef::Path(dir) => owndraw_core::migrate::migrate_store(&data_dir(), &dir),
+                platform::FileRef::Uri(_) => Vec::new(),
+            };
+            let mut app = app::App::new(platform, settings, open_file);
+            app.add_migrated(migrated);
+            Ok(Box::new(app))
         }),
     )
 }

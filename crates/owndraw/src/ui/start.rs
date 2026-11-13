@@ -41,6 +41,12 @@ impl StartState {
     }
 }
 
+/// Halbdurchsichtige Fläche über ausgegrauten Kacheln (Farbe des Hintergrunds).
+fn p_overlay(_ui: &egui::Ui) -> egui::Color32 {
+    let bg = c(style::pal().bg);
+    egui::Color32::from_rgba_unmultiplied(bg.r(), bg.g(), bg.b(), 170)
+}
+
 pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Recent) {
     let ctx = ui.ctx().clone();
     let p = style::pal();
@@ -106,6 +112,7 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                         loaded += 1;
                     }
                     let tex = st.thumbs.get(&e.file.to_key()).cloned().flatten();
+                    let missing = recent.is_missing(&e.file);
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw, th), Sense::click());
                     let pt = ui.painter();
                     pt.rect_filled(r, CornerRadius::same(16), c(p.card));
@@ -137,7 +144,12 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     let name = elide(&e.name, 15.0, tw - 32.0, ui);
                     let pt = ui.painter();
                     pt.text(Pos2::new(r.left() + 14.0, r.top() + ph + 18.0), Align2::LEFT_CENTER, name, egui::FontId::proportional(15.0), c(p.text));
-                    pt.text(Pos2::new(r.left() + 14.0, r.top() + ph + 39.0), Align2::LEFT_CENTER, fmt_time(e.modified_ms), egui::FontId::proportional(12.0), c(p.dim));
+                    let sub = if missing { "Datei nicht gefunden".to_string() } else { fmt_time(e.modified_ms) };
+                    pt.text(Pos2::new(r.left() + 14.0, r.top() + ph + 39.0), Align2::LEFT_CENTER, sub, egui::FontId::proportional(12.0), c(if missing { p.danger } else { p.dim }));
+                    if missing {
+                        // ausgegraut
+                        pt.rect_filled(r, CornerRadius::same(16), p_overlay(ui));
+                    }
                     if resp.hovered() {
                         pt.rect_stroke(r, CornerRadius::same(16), Stroke::new(1.5, c(p.accent)), egui::StrokeKind::Inside);
                     }
@@ -145,7 +157,7 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                         sh.reqs.push(Req::OpenFile(e.file.clone()));
                     }
                     let remove = |ui: &mut egui::Ui, sh: &mut Shared| {
-                        if style::menu_row(ui, "Öffnen", false, 34.0) {
+                        if !missing && style::menu_row(ui, "Öffnen", false, 34.0) {
                             sh.reqs.push(Req::OpenFile(e.file.clone()));
                             ui.close();
                         }

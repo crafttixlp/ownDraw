@@ -3,7 +3,7 @@
 //! - `OWNDRAW_SCREENSHOT=pfad.png`: nach ein paar Frames Bild des Fensters speichern und beenden.
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
-//!   `layers`, `pagelist`, `new`, `settings`, `light` (helles Theme).
+//!   `layers`, `pagelist`, `new`, `settings`, `light` (helles Theme), `autosave` (Board im Standard-Ort mit Strich).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -160,6 +160,19 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             ed.st.pages_open = Some(true);
         }
         app.open_editor(ctx, ed);
+    }
+    if has("autosave") {
+        // Abnahme Autosave: neues Board im Standard-Ort, danach ein Strich → Datei muss nach > 2 s aktualisiert sein.
+        let params = NewParams { name: "Autosave-Test".into(), pages: false, ..NewParams::default() };
+        let doc = session::new_document(&params);
+        let sh = app.parts().0;
+        if let Ok(f) = sh.platform.create_in(&sh.platform.default_dir(), "Autosave-Test.owndraw", crate::platform::FileKind::Owndraw) {
+            let _ = session::write_document(&*sh.platform, &f, &doc);
+            let mut ed = Editor::open(sh, doc, Some(f));
+            stroke(&mut ed.board, 0xFF111111, 3.0, false, &[(60.0, 80.0), (200.0, 160.0), (320.0, 90.0)]);
+            ed.board.modified = true;
+            app.open_editor(ctx, ed);
+        }
     }
     if has("new") {
         app.sh.dialog = Some(Dialog::new_doc(true));

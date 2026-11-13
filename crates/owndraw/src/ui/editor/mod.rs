@@ -11,7 +11,7 @@ mod text;
 mod toolbar;
 
 use crate::app::{PickPurpose, Req, Shared};
-use crate::autosave::{Autosave, AutosaveStatus};
+use crate::autosave::{Autosave, AutosaveStatus, SaveFormat};
 use crate::layout::{self, Env, FormFactor};
 use crate::platform::{FileKind, FileRef};
 use crate::session;
@@ -222,21 +222,32 @@ impl Editor {
         d
     }
 
-    fn snapshot_bytes(board: &Board, doc: &mut Document) -> Vec<u8> {
+    fn snapshot_bytes(board: &Board, doc: &mut Document, fmt: SaveFormat) -> Vec<u8> {
         doc.board = board.to_json();
         doc.mode = board.board_mode.clone();
         doc.meta.modified = session::rfc3339_now();
         doc.thumb = board.thumb().encode_png().ok();
-        session::serialize(doc).unwrap_or_default()
+        session::serialize_as(doc, fmt).unwrap_or_default()
     }
 
     /// Speichert sofort, falls Änderungen anstehen (Zurück, Schließen, App pausiert).
     pub fn flush(&mut self, sh: &mut Shared) {
         self.sync_modified(sh.now);
         let Self { autosave, board, doc, .. } = self;
-        autosave.flush(sh.now, || Self::snapshot_bytes(board, doc), &*sh.platform);
+        let fmt = autosave.format();
+        autosave.flush(sh.now, || Self::snapshot_bytes(board, doc, fmt), &*sh.platform);
         if let Some(e) = self.autosave.error() {
             sh.toast_for(e, 4.0);
+        }
+    }
+
+    /// Fehlermeldung: bei fehlenden Rechten ein Dialog mit der Aktion „Kopie speichern unter …“, sonst ein Hinweis.
+    fn show_save_error(&mut self, sh: &mut Shared) {
+        let e = self.autosave.error().unwrap_or("").to_string();
+        if self.autosave.permission_error() && sh.dialog.is_none() {
+            sh.dialog = Some(crate::ui::dialogs::Dialog::Confirm { title: "Speichern nicht möglich", text: e, ok: "Kopie speichern unter …", action: ConfirmAction::SaveCopy });
+        } else {
+            sh.toast_for(&e, 5.0);
         }
     }
 
@@ -264,6 +275,11 @@ impl Editor {
 
     pub fn apply_confirm(&mut self, a: ConfirmAction, sh: &mut Shared) {
         match a {
+            ConfirmAction::SaveCopy => sh.reqs.push(crate::app::Req::PickSave {
+                purpose: PickPurpose::SaveCopy,
+                name: format!("{}.owndraw", crate::app::safe_file_name(&self.doc.meta.name)),
+                kind: FileKind::Owndraw,
+            }),
             ConfirmAction::DeleteLayer(i) => self.board.remove_layer(i),
             ConfirmAction::DeletePage(i) => {
                 if !pages::delete_page(&mut self.board, i) {
@@ -566,13 +582,13 @@ impl Editor {
         self.sync_modified(sh.now);
         if !self.board.busy() {
             let Self { autosave, board, doc, .. } = self;
-            autosave.tick(sh.now, || Self::snapshot_bytes(board, doc), &*sh.platform);
+            let fmt = autosave.format();
+            autosave.tick(sh.now, || Self::snapshot_bytes(board, doc, fmt), &*sh.platform);
         }
         if self.autosave.error().is_some() {
             if !self.st.error_toast_shown {
                 self.st.error_toast_shown = true;
-                let e = self.autosave.error().unwrap_or("").to_string();
-                sh.toast_for(&e, 5.0);
+                self.show_save_error(sh);
             }
         } else {
             self.st.error_toast_shown = false;

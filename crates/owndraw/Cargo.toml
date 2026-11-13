@@ -18,6 +18,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 egui = { version = "0.37", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # Desktop (Linux/Windows/macOS)
 [target.'cfg(not(target_os = "android"))'.dependencies]

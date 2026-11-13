@@ -8,7 +8,9 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.DragAndDropPermissions;
 import android.view.DragEvent;
@@ -16,6 +18,12 @@ import android.view.View;
 import android.webkit.MimeTypeMap;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 
 /**
@@ -262,5 +270,96 @@ public class OwnDrawActivity extends NativeActivity {
         } catch (ActivityNotFoundException | SecurityException e) {
             Log.w(TAG, "openUrl: " + e);
         }
+    }
+
+    // ---- Update-Dienst (WP11) ----
+
+    private static volatile boolean updCancel;
+
+    /** Bricht einen laufenden httpDownload ab. */
+    public void updateCancel() {
+        updCancel = true;
+    }
+
+    private static HttpURLConnection openHttps(String url) throws IOException {
+        if (!url.startsWith("https://")) {
+            throw new IOException("Nur HTTPS erlaubt");
+        }
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(20000);
+        c.setReadTimeout(30000);
+        c.setRequestProperty("User-Agent", "OwnDraw-Updater");
+        c.setRequestProperty("Accept", "application/vnd.github+json");
+        int code = c.getResponseCode();
+        if (code < 200 || code >= 300) {
+            throw new IOException("http status: " + code);
+        }
+        return c;
+    }
+
+    /** Textantwort (GitHub-API, Signaturdatei); höchstens 8 MB. */
+    public String httpGet(String url) throws IOException {
+        HttpURLConnection c = openHttps(url);
+        try (InputStream in = c.getInputStream()) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+                if (out.size() > 8 * 1024 * 1024) {
+                    throw new IOException("Antwort zu groß");
+                }
+            }
+            return out.toString("UTF-8");
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /** Lädt nach dest; Rückgabe: Bytes. Bricht bei updateCancel() mit IOException ab. */
+    public long httpDownload(String url, String dest) throws IOException {
+        updCancel = false;
+        HttpURLConnection c = openHttps(url);
+        long total = 0;
+        try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                if (updCancel) {
+                    throw new IOException("abgebrochen");
+                }
+                out.write(buf, 0, n);
+                total += n;
+            }
+        } finally {
+            c.disconnect();
+        }
+        long expected = c.getContentLengthLong();
+        if (expected >= 0 && expected != total) {
+            throw new IOException("Download unvollständig");
+        }
+        return total;
+    }
+
+    /**
+     * Übergibt die geprüfte APK an den System-Installer. Fehlt das Recht „Unbekannte Apps installieren“,
+     * öffnet sich stattdessen die passende Systemeinstellung.
+     */
+    public String installApk(String path) throws IOException {
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            Intent s = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(s);
+            return "Erlauben Sie OwnDraw zuerst „Unbekannte Apps installieren“ und tippen Sie danach erneut auf „Jetzt aktualisieren“.";
+        }
+        Uri u = FileShareProvider.uriFor(this, new File(path));
+        if (u == null) {
+            throw new IOException("APK liegt nicht im App-Speicher");
+        }
+        Intent i = new Intent(Intent.ACTION_VIEW);
+        i.setDataAndType(u, "application/vnd.android.package-archive");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(i);
+        return "System-Installer geöffnet.";
     }
 }

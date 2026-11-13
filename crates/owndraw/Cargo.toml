@@ -18,6 +18,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 egui = { version = "0.37", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Update-Dienst (WP11)
+semver = "1"
+minisign-verify = "0.2"
 
 # Desktop (Linux/Windows/macOS)
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -27,6 +30,10 @@ rfd = "0.18"
 arboard = { version = "3", features = ["image-data", "wayland-data-control"] }
 pollster = "0.4"
 dirs = "6"
+# Netzwerk auf dem Desktop (Android lädt über die Java-Seite, siehe platform/android.rs)
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
 
 # Android (WP5): eframe mit NativeActivity, JNI für SAF/Zwischenablage
 [target.'cfg(target_os = "android")'.dependencies]
@@ -35,3 +42,8 @@ android-activity = { version = "0.6", features = ["native-activity"] }
 jni = "0.21"
 ndk-context = "0.1"
 log = "0.4"
+
+[dev-dependencies]
+minisign = "0.7"
+tiny_http = "0.12"
+tempfile = "3"

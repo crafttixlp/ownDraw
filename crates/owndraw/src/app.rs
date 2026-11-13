@@ -443,6 +443,10 @@ impl eframe::App for App {
             self.applied = Some(self.sh.settings.clone());
         }
         self.sh.env = Env::new(ctx.content_rect().width(), self.sh.platform.is_touch());
+        // Update-Dienst: optionaler Start-Hinweis (nur Hinweis, installiert nie von selbst)
+        if let Some(n) = crate::update::frame_hook(&self.sh.settings, &*self.sh.platform, &ctx) {
+            self.sh.toast_for(&n, 6.0);
+        }
 
         if let Some(f) = self.open_at_start.take() {
             self.open_ref(&ctx, f);

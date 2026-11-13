@@ -835,6 +835,60 @@ impl Platform for AndroidPlatform {
     }
 }
 
+// ---- Update-Dienst (WP11): HTTP über die Java-Seite, Installation über den System-Installer ----
+
+/// Textantwort per `HttpURLConnection` (nur HTTPS, Java prüft das erneut).
+pub fn http_get(url: &str) -> io::Result<String> {
+    with_env(|env, act| {
+        let u = jstr(env, url)?;
+        let r = env.call_method(act, "httpGet", "(Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&u)])?.l()?;
+        Ok(rstr(env, r)?.unwrap_or_default())
+    })
+}
+
+/// Lädt nach `dest`. Der blockierende Java-Aufruf läuft in einem eigenen Thread; dieser hier meldet den
+/// Fortschritt (Dateigröße) und gibt den Abbruch weiter.
+pub fn http_download(url: &str, dest: &Path, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(u64, Option<u64>)) -> io::Result<()> {
+    let done = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        let h = s.spawn(|| {
+            let r = with_env(|env, act| {
+                let u = jstr(env, url)?;
+                let d = jstr(env, &dest.to_string_lossy())?;
+                env.call_method(act, "httpDownload", "(Ljava/lang/String;Ljava/lang/String;)J", &[JValue::Object(&u), JValue::Object(&d)])?;
+                Ok(())
+            });
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
+            r
+        });
+        let mut sent_cancel = false;
+        while !done.load(std::sync::atomic::Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(150));
+            progress(std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0), None);
+            if !sent_cancel && cancelled() {
+                sent_cancel = true;
+                log_err(
+                    "Download abbrechen",
+                    with_env(|env, act| {
+                        env.call_method(act, "updateCancel", "()V", &[])?;
+                        Ok(())
+                    }),
+                );
+            }
+        }
+        h.join().unwrap_or_else(|_| Err(io::Error::other("Download-Thread abgestürzt")))
+    })
+}
+
+/// Übergibt die (bereits signaturgeprüfte) APK an den System-Installer; liefert einen Hinweistext.
+pub fn install_apk(apk: &Path) -> io::Result<String> {
+    with_env(|env, act| {
+        let p = jstr(env, &apk.to_string_lossy())?;
+        let r = env.call_method(act, "installApk", "(Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&p)])?.l()?;
+        Ok(rstr(env, r)?.unwrap_or_default())
+    })
+}
+
 /// Dialog konnte nicht gestartet werden → als Abbruch melden, damit die App nicht wartet.
 fn on_dialog_failed(tag: Tag) {
     lock().events.push(PlatformEvent::Picked { tag, file: None });

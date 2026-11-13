@@ -13,6 +13,7 @@ mod session;
 mod settings;
 mod style;
 mod ui;
+mod update;
 
 /// JNI-Einsprungpunkte für das Crate `owndraw-android` (Java → Rust).
 #[cfg(target_os = "android")]

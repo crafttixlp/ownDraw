@@ -9,7 +9,7 @@ minisign -G -p minisign.pub -s minisign.key
 ```
 
 - Passwort wählen und sicher aufbewahren.
-- `minisign.pub` (öffentlich) in die App einkompilieren: Datei `crates/owndraw/src/update/minisign.pub` ins Repository committen (wird von WP11 eingebunden).
+- `minisign.pub` (öffentlich) in die App einkompilieren: Datei `crates/owndraw/src/update/minisign.pub` ins Repository committen (wird per `include_str!` einkompiliert).
 - `minisign.key` (geheim) niemals committen.
 
 ## 2. Secrets anlegen
@@ -57,6 +57,14 @@ base64 -w0 owndraw-release.jks > owndraw-release.jks.b64   # Inhalt als Secret A
 | `<datei>.minisig` | minisign-Signatur zu jedem der drei Assets |
 
 Die App prüft die Signatur gegen den einkompilierten öffentlichen Schlüssel, bevor sie etwas installiert.
+
+## 6. Öffentlicher Schlüssel in der App (Pflicht vor dem ersten Release)
+
+`crates/owndraw/src/update/minisign.pub` enthält derzeit einen **Platzhalter** („PLATZHALTER …“). Solange er drin ist, zeigt die App unter Einstellungen → Updates „Updates nicht eingerichtet“ und installiert nichts; die Release-CI bricht beim Prüfen der Signaturen ab.
+
+**Vor dem ersten Release ersetzen:** den Inhalt der in Abschnitt 1 erzeugten `minisign.pub` (zwei Zeilen: `untrusted comment: …` und der Base64-Schlüssel) unverändert in diese Datei kopieren und committen. Der Platzhalter wird am Wort „PLATZHALTER“ erkannt; ein echter Schlüssel darf es nicht enthalten.
+
+Die Update-Tests erzeugen ihre Schlüssel zur Laufzeit (Crate `minisign` als dev-dependency) und brauchen den echten Schlüssel nicht.
 
 ## Hinweise
 

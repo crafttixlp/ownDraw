@@ -370,13 +370,15 @@ pub struct Item {
     pub kind: Kind,
     /// Wird gerade verschoben/gedreht (nicht im Board-Cache, sondern obenauf gezeichnet).
     pub lift: bool,
+    /// Unbekannte JSON-Felder (z. B. Xournal++-Attribute "xa", "xraw", Seitenzuordnung "page"), werden unverändert zurückgeschrieben.
+    pub extra: Option<Box<Map<String, Value>>>,
     b: Cell<Option<RectF>>,
     path: RefCell<Option<Path>>,
 }
 
 impl Item {
     pub fn new(kind: Kind) -> Item {
-        Item { id: next_id(), color: INK, width: 4.0, layer: 1, kind, lift: false, b: Cell::new(None), path: RefCell::new(None) }
+        Item { id: next_id(), color: INK, width: 4.0, layer: 1, kind, lift: false, extra: None, b: Cell::new(None), path: RefCell::new(None) }
     }
 
     pub fn stroke(color: u32, width: f32, hl: bool, var: bool) -> Item {
@@ -990,6 +992,11 @@ impl Item {
             }
         }
         o.insert("ly".into(), json!(self.layer));
+        if let Some(ex) = &self.extra {
+            for (k, v) in ex.iter() {
+                o.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        }
         Value::Object(o)
     }
 
@@ -1046,6 +1053,12 @@ impl Item {
         it.color = jint(o.get("c")?)? as u32;
         it.width = jf(o, "w")?;
         it.layer = o.get("ly").and_then(jint).unwrap_or(1);
+        if let Some(m) = o.as_object() {
+            let ex: Map<String, Value> = m.iter().filter(|(k, _)| !KNOWN_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
+            if !ex.is_empty() {
+                it.extra = Some(Box::new(ex));
+            }
+        }
         Some(it)
     }
 
@@ -1084,6 +1097,9 @@ fn poly_hit(q: &[f32], x: f32, y: f32, lim: f32) -> bool {
 }
 
 // ---------------------------------------------------------------- JSON-Helfer
+
+/// Vom Kern selbst geschriebene Item-Felder; alle anderen landen in `Item::extra`.
+const KNOWN_KEYS: [&str; 21] = ["an", "bg", "c", "f", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "q", "s", "sh", "t", "tx", "v", "w", "x", "y"];
 
 /// f32 als JSON-Zahl (kuerzeste Darstellung; NaN/Unendlich werden 0).
 pub fn num(v: f32) -> Value {
@@ -1259,5 +1275,18 @@ mod tests {
         assert!(shaft.p[3] < 100.0 - 15.0);
         let b = it.bounds();
         assert!(b.right >= 100.0 + 2.0 && b.left <= 0.0 && b.top < -1.0 && b.bottom > 1.0);
+    }
+}
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+    #[test]
+    fn unknown_fields_survive() {
+        let v = json!({"t":"s","c":-1,"w":2,"p":[0,0,0.5,1,1,0.5],"xa":{"style":"dash"},"page":1});
+        let it = Item::from_json(&v).unwrap();
+        let o = it.json();
+        assert_eq!(o["xa"]["style"], "dash");
+        assert_eq!(o["page"], 1);
     }
 }

@@ -4,6 +4,9 @@
 //! [`PlatformEvent::Picked`] über [`Platform::poll`] (pro Frame aufrufen). So braucht die egui-App keine
 //! geteilten mutablen Zustände in Closures; auf Android kommen Activity-Ergebnisse genauso an.
 
+#[cfg(target_os = "android")]
+pub mod android;
+
 use std::io;
 use std::path::PathBuf;
 

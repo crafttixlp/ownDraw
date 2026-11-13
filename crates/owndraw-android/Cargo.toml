@@ -1,0 +1,20 @@
+[package]
+name = "owndraw-android"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OwnDraw für Android (NativeActivity, eframe/egui)"
+publish = false
+
+[lib]
+# Ergibt libowndraw.so (Manifest: android.app.lib_name = "owndraw").
+name = "owndraw"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[target.'cfg(target_os = "android")'.dependencies]
+owndraw_app = { package = "owndraw", path = "../owndraw" }
+android-activity = { version = "0.6", features = ["native-activity"] }
+jni = "0.21"
+log = "0.4"
+android_logger = "0.15"

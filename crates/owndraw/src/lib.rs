@@ -12,6 +12,10 @@ mod settings;
 mod prefs;
 mod style;
 
+/// JNI-Einsprungpunkte für das Crate `owndraw-android` (Java → Rust).
+#[cfg(target_os = "android")]
+pub use platform::android::bridge as android_bridge;
+
 use std::path::PathBuf;
 
 /// Datenordner: $XDG_DATA_HOME/OwnDraw bzw. ~/.local/share/OwnDraw (wie die Java-Version).
@@ -64,6 +68,28 @@ pub fn run_desktop() -> eframe::Result<()> {
         Box::new(move |cc| {
             style::setup_visuals(&cc.egui_ctx);
             Ok(Box::new(app::App::new(data_dir(), open_file)))
+        }),
+    )
+}
+
+/// Android-Start (aus `android_main` im Crate `owndraw-android`): gleiche App wie `run_desktop`,
+/// Datenordner = App-interner Speicher, Plattform = [`platform::android::AndroidPlatform`].
+#[cfg(target_os = "android")]
+pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
+    let data = app.internal_data_path().unwrap_or_else(|| PathBuf::from("/data/local/tmp/owndraw"));
+    let _ = std::fs::create_dir_all(&data);
+    let platform = platform::android::AndroidPlatform::new(data.clone());
+    let opts = eframe::NativeOptions { android_app: Some(app), ..Default::default() };
+    eframe::run_native(
+        "OwnDraw",
+        opts,
+        Box::new(move |cc| {
+            platform::android::bridge::set_context(&cc.egui_ctx);
+            style::setup_visuals(&cc.egui_ctx);
+            // TODO(WP6/WP13): Plattform an die App übergeben (z. B. `App::new(…, Box<dyn Platform>)`)
+            // und in jedem Frame `poll()`/`take_drops()` abfragen.
+            let _platform: Box<dyn platform::Platform> = Box::new(platform);
+            Ok(Box::new(app::App::new(data, None)))
         }),
     )
 }

@@ -1,0 +1,233 @@
+# Release-CI: wird durch einen Tag `v*` ausgelöst.
+# Baut AppImage, APK und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an.
+# Ohne Signaturschlüssel (MINISIGN_KEY) oder Android-Keystore (ANDROID_KEYSTORE_B64) gibt es kein Release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Tag und Secrets prüfen
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag gegen Workspace-Version prüfen
+        id: ver
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          WS_VER=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["version"])')
+          if [ "$TAG_VER" != "$WS_VER" ]; then
+            echo "::error title=Versionskonflikt::Tag v$TAG_VER passt nicht zur Workspace-Version $WS_VER in Cargo.toml."
+            exit 1
+          fi
+          echo "version=$TAG_VER" >> "$GITHUB_OUTPUT"
+          echo "Version $TAG_VER"
+
+      - name: Signierschlüssel prüfen
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+        run: |
+          if [ -z "$MINISIGN_KEY" ]; then
+            echo "::error title=MINISIGN_KEY fehlt::Das Secret MINISIGN_KEY ist nicht gesetzt. Es wird kein unsigniertes Release erstellt (siehe docs/release.md)."
+            exit 1
+          fi
+
+      - name: Android-Keystore prüfen
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::error title=ANDROID_KEYSTORE_B64 fehlt::Ohne Release-Keystore würde die APK mit dem Debug-Schlüssel gebaut; Updates wären dann nicht installierbar. Kein Release (siehe docs/release.md)."
+            exit 1
+          fi
+
+  appimage:
+    name: AppImage bauen
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Systempakete für AppImage und Desktop-Build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc zlib1g-dev squashfs-tools pkg-config libxkbcommon-dev \
+            libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-appimage
+
+      - name: AppImage bauen
+        run: ./build-appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owndraw-appimage
+          path: OwnDraw-*-x86_64.AppImage
+          if-no-files-found: error
+
+  apk:
+    name: APK bauen (Release-Schlüssel)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r26d
+
+      - name: NDK-Pfad setzen
+        run: echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-apk
+
+      - name: Release-Keystore vorbereiten
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/owndraw-release.jks"
+          {
+            echo "OWNDRAW_KEYSTORE=$RUNNER_TEMP/owndraw-release.jks"
+            echo "OWNDRAW_KEYSTORE_PASS=$KS_PASS"
+            echo "OWNDRAW_KEY_ALIAS=$KS_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: APK bauen
+        run: crates/owndraw-android/build-apk.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owndraw-apk
+          path: target/apk/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Signieren und Release anlegen
+    needs: [check, appimage, apk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assets sammeln
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="OwnDraw-$VERSION/" \
+            -o "dist/OwnDraw-$VERSION-src.tar.gz" "$GITHUB_SHA"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: owndraw-appimage
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: owndraw-apk
+          path: dist
+
+      - name: minisign installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+      - name: Assets signieren
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          KEY="$RUNNER_TEMP/minisign.key"
+          printf '%s\n' "$MINISIGN_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          cd dist
+          ls -la
+          for f in *; do
+            case "$f" in *.minisig) continue ;; esac
+            printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$KEY" -m "$f" -t "OwnDraw $VERSION $f"
+          done
+          rm -f "$KEY"
+          ls -la
+
+      - name: Signaturen prüfen
+        run: |
+          PUB=crates/owndraw/src/update/minisign.pub
+          if [ ! -f "$PUB" ]; then
+            echo "::error title=Öffentlicher Schlüssel fehlt::$PUB fehlt im Repository; ohne ihn ist die Signatur nicht prüfbar. Release abgebrochen."
+            exit 1
+          fi
+          cd dist
+          for f in *; do
+            case "$f" in *.minisig) continue ;; esac
+            minisign -V -p "../$PUB" -m "$f"
+          done
+
+      - name: Release-Text aus CHANGELOG.md
+        id: notes
+        run: |
+          : > "$RUNNER_TEMP/notes.md"
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VERSION" '
+              /^## / {
+                if (found) exit
+                h = $0
+                sub(/^## +\[?v?/, "", h)
+                sub(/[] (].*$/, "", h)
+                if (h == v) found = 1
+                next
+              }
+              found { print }' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          fi
+          if [ -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: GitHub-Release anlegen (Text aus CHANGELOG)
+        if: steps.notes.outputs.has == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+          body_path: ${{ runner.temp }}/notes.md
+          fail_on_unmatched_files: true
+
+      - name: GitHub-Release anlegen (automatischer Text)
+        if: steps.notes.outputs.has != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

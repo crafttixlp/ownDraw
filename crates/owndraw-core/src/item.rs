@@ -231,6 +231,8 @@ pub const ELLIPSE: i32 = 2;
 pub const POLY: i32 = 3;
 pub const ARROW2: i32 = 4;
 pub const HEART: i32 = 5;
+/// Maschinenbau-Pfeil (gefülltes Dreieck, 15° gesamt), WP3.
+pub const ARROW_ENG: i32 = 6;
 
 /// Geometrische Form: Linie, Pfeil, Doppelpfeil, Ellipse, Herz oder geschlossenes Polygon.
 /// q: LINE/ARROW/ARROW2 = {x0,y0,x1,y1}; ELLIPSE/HEART = ungedrehte Box {x0,y0,x1,y1} + ang; POLY = Eckpunkte.

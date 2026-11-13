@@ -294,6 +294,18 @@ impl App {
         }
     }
 
+    /// Startbildschirm: Bild abgelegt → neues unendliches Board mit dem Bild.
+    fn new_with_image(&mut self, ctx: &egui::Context, bytes: &[u8]) {
+        let params = NewParams { name: "Bild".into(), pages: false, ..NewParams::default() };
+        let before = self.editor.as_ref().map(|e| e.doc.meta.id.clone());
+        self.create(ctx, params, false);
+        if let Some(e) = self.editor.as_mut().filter(|e| Some(&e.doc.meta.id) != before.as_ref()) {
+            if let Err(m) = e.import_image_bytes(bytes) {
+                self.sh.toast(&m);
+            }
+        }
+    }
+
     fn finish_create(&mut self, ctx: &egui::Context, params: NewParams, f: FileRef) {
         let doc = session::new_document(&params);
         if let Err(e) = session::write_document(&*self.sh.platform, &f, &doc) {
@@ -464,6 +476,7 @@ impl eframe::App for App {
         for o in drops::handle_drops(&ctx, &*self.sh.platform, self.editor.as_mut()) {
             match o {
                 drops::DropOutcome::Open(f) => self.open_ref(&ctx, f),
+                drops::DropOutcome::NewWithImage(b) => self.new_with_image(&ctx, &b),
                 drops::DropOutcome::Toast(m) => self.sh.toast(&m),
             }
         }

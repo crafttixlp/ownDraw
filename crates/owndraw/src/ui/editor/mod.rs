@@ -161,6 +161,10 @@ pub struct Editor {
     pub st: UiState,
     pub(super) page_thumbs: pages::PageThumbs,
     canvas: Rect,
+    /// Mausposition über der Zeichenfläche (Bildschirmpunkte), Ziel für Einfügen.
+    hover: Option<Pos2>,
+    /// Ort des letzten Rechtsklicks/Lang-Tippens (Einfügen-Menü).
+    menu_pos: Option<Pos2>,
     first_frame: bool,
     /// Beim ersten Frame „Alles zeigen“ (Demo/Abnahme).
     pub fit_on_open: bool,
@@ -203,6 +207,8 @@ impl Editor {
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
             canvas: Rect::NOTHING,
+            hover: None,
+            menu_pos: None,
             first_frame: true,
             fit_on_open: false,
         }
@@ -355,12 +361,7 @@ impl Editor {
 
     /// Bild aus Rohdaten einfügen (Datei, Drop, Zwischenablage).
     pub fn import_image_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
-        let (name, w, h) = session::import_image(&mut self.doc.images, &self.img_dir, bytes)?;
-        if self.board.add_image(&name, w, h) {
-            Ok(())
-        } else {
-            Err("Die Ebene ist gesperrt".into())
-        }
+        clip::insert_image_bytes(self, bytes, None)
     }
 
     fn empty_hint(&self, sh: &mut Shared) -> bool {
@@ -533,6 +534,9 @@ impl Editor {
             self.shortcuts(&ctx, sh);
         }
         self.drain_events(sh);
+        if !modal && self.text.is_none() && (self.board.tool == board::SELECT || !self.board.finger_draw || !sh.platform.is_touch()) {
+            clip::context_menu(self, &resp, sh);
+        }
 
         // Fläche zeichnen
         if self.board.needs_redraw || self.tex.is_none() {
@@ -658,6 +662,7 @@ impl Editor {
         let on_board = |p: Pos2| rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
         let has_touch = !self.touches.is_empty() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
         let rel = |p: Pos2| p - rect.min;
+        self.hover = hover.filter(|p| on_board(*p));
         for ev in events {
             match ev {
                 Event::Touch { id, phase, pos, force, .. } => {

@@ -29,6 +29,8 @@ pub enum PickPurpose {
     ImportImage,
     OpenDoc,
     NewDoc,
+    /// Standard-Ort der Einstellungen.
+    DefaultDir,
 }
 
 /// Aufträge der Oberfläche an die Shell (werden am Frameende abgearbeitet).
@@ -36,6 +38,8 @@ pub enum Req {
     /// Zurück zum Start (Dokument wird gespeichert).
     Back,
     OpenSettings,
+    /// Bearbeiten-Modus der Werkzeugleiste beendet (zurück zu den Einstellungen).
+    ToolsEdited,
     NewDialog,
     OpenFile(FileRef),
     RemoveRecent(FileRef),
@@ -83,17 +87,8 @@ pub fn safe_file_name(n: &str) -> String {
 }
 
 /// Lädt `settings.json` aus dem Konfigurationsordner (fehlt sie oder ist sie kaputt: Vorgaben).
-/// TODO(WP9): durch `Settings::load` ersetzen.
 pub fn load_settings(platform: &dyn Platform) -> Settings {
-    let p = FileRef::Path(platform.config_dir().join("settings.json"));
-    platform.read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
-}
-
-fn save_settings(platform: &dyn Platform, s: &Settings) {
-    let p = FileRef::Path(platform.config_dir().join("settings.json"));
-    if let Ok(b) = serde_json::to_vec_pretty(s) {
-        let _ = platform.write_atomic(&p, &b);
-    }
+    Settings::load(platform)
 }
 
 pub struct App {
@@ -113,6 +108,10 @@ pub struct App {
     last_missing_check: f64,
     next_tag: Tag,
     applied: Option<Settings>,
+    /// Editor wurde nur für den Werkzeug-Bearbeiten-Modus angelegt (leeres Board ohne Datei).
+    scratch_editor: bool,
+    /// Bearbeiten-Modus wurde aus den Einstellungen gestartet.
+    edit_from_settings: bool,
     open_at_start: Option<FileRef>,
     /// Screenshot-Hilfe für die Abnahme (Umgebungsvariablen `OWNDRAW_SCREENSHOT`, `OWNDRAW_DEMO`).
     shot: Option<crate::demo::Shot>,
@@ -135,6 +134,8 @@ impl App {
             last_missing_check: -100.0,
             next_tag: 1,
             applied: None,
+            scratch_editor: false,
+            edit_from_settings: false,
             open_at_start: open_file,
             shot: crate::demo::Shot::from_env(),
             demo: std::env::var("OWNDRAW_DEMO").ok().filter(|s| !s.is_empty()),
@@ -321,6 +322,7 @@ impl App {
         }
         match purpose {
             PickPurpose::OpenDoc => self.open_ref(ctx, f),
+            PickPurpose::DefaultDir => self.sh.settings.default_dir = Some(f.to_key()),
             PickPurpose::NewDoc => {
                 if let Some(p) = params {
                     self.finish_create(ctx, p, f);
@@ -342,6 +344,20 @@ impl App {
                     if self.screen != Screen::Settings {
                         self.back_screen = self.screen;
                         self.screen = Screen::Settings;
+                    }
+                }
+                Req::ToolsEdited => {
+                    if let Some(e) = self.editor.as_mut() {
+                        e.st.edit_tools = None;
+                    }
+                    if self.edit_from_settings {
+                        self.edit_from_settings = false;
+                        if self.scratch_editor {
+                            self.editor = None;
+                        }
+                        self.scratch_editor = false;
+                        self.screen = Screen::Settings;
+                        self.title(ctx);
                     }
                 }
                 Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask)),
@@ -422,7 +438,7 @@ impl eframe::App for App {
         if self.applied.as_ref() != Some(&self.sh.settings) {
             style::apply(&ctx, &self.sh.settings);
             if self.applied.is_some() {
-                save_settings(&*self.sh.platform, &self.sh.settings);
+                let _ = self.sh.settings.save(&*self.sh.platform);
             }
             self.applied = Some(self.sh.settings.clone());
         }
@@ -453,6 +469,7 @@ impl eframe::App for App {
         self.recent_housekeeping();
 
         let bg = c(style::pal().bg);
+        let mut edit_tools = false;
         egui::CentralPanel::default().frame(egui::Frame::new().fill(bg)).show(ui, |ui| match (self.screen, self.editor.as_mut()) {
             (Screen::Editor, Some(e)) => e.ui(ui, &mut self.sh),
             (Screen::Settings, _) => {
@@ -461,6 +478,11 @@ impl eframe::App for App {
                     SettingsAction::Back => {
                         self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
                     }
+                    SettingsAction::PickFolder => {
+                        let tag = self.tag(PickPurpose::DefaultDir, None);
+                        self.sh.platform.pick_folder(tag);
+                    }
+                    SettingsAction::EditTools => edit_tools = true,
                     SettingsAction::Changed | SettingsAction::None => {}
                 }
             }
@@ -469,6 +491,9 @@ impl eframe::App for App {
                 crate::ui::start::show(ui, &mut self.sh, &mut self.start, &self.recent);
             }
         });
+        if edit_tools {
+            self.start_edit_tools(&ctx);
+        }
         self.handle_reqs(&ctx);
         self.handle_dialog(&ctx);
         self.toast_ui(&ctx);
@@ -502,6 +527,23 @@ impl App {
             let pf = &*self.sh.platform;
             self.recent.check_missing(|f| pf.exists(f));
         }
+    }
+
+    /// Öffnet den Editor im Bearbeiten-Modus der Werkzeugleiste (ohne offenes Board: leeres Board ohne Datei).
+    fn start_edit_tools(&mut self, ctx: &egui::Context) {
+        self.edit_from_settings = true;
+        if self.editor.is_none() {
+            let mut doc = session::new_document(&NewParams::default());
+            doc.meta.name = "Werkzeuge anpassen".into();
+            let ed = Editor::open(&mut self.sh, doc, None);
+            self.editor = Some(ed);
+            self.scratch_editor = true;
+        }
+        if let Some(e) = self.editor.as_mut() {
+            e.begin_edit_tools(&self.sh);
+        }
+        self.screen = Screen::Editor;
+        self.title(ctx);
     }
 
     /// Für Demo/Tests: Zugriff auf Teile des Zustands.

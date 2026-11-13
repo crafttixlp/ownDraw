@@ -3,7 +3,7 @@
 use super::{clip, Editor, Lay, Tool, M, PAD};
 use crate::app::{Req, Shared};
 use crate::layout::FormFactor;
-use crate::settings::BarPos;
+use crate::settings::{self, BarPos};
 use crate::style::{self, c, icon_btn};
 use egui::{Align2, Color32, Order, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use owndraw_core::board;
@@ -167,6 +167,10 @@ impl Editor {
 }
 
 fn tool_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, tools: &[Tool]) {
+    if ed.st.edit_tools.is_some() {
+        edit_bar(ed, ctx, sh, lay);
+        return;
+    }
     let canvas = lay.canvas;
     let btn = lay.env.btn;
     let (pos, pivot, horiz) = match lay.tb {
@@ -255,4 +259,173 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
         });
     });
     ed.st.popup_rects.push(r);
+}
+
+// ---------------------------------------------------------------- Bearbeiten-Modus (WP9)
+
+/// Zustand des Bearbeiten-Modus: alle Werkzeuge mit Sichtbarkeit, laufender Zieh-Vorgang.
+pub struct EditTools {
+    pub list: Vec<settings::ToolEntry>,
+    drag: Option<String>,
+    /// Letzte Zeigerposition beim Ziehen (Touch liefert beim Loslassen keine mehr).
+    last: Option<Pos2>,
+}
+
+impl Editor {
+    /// Startet den Bearbeiten-Modus der Werkzeugleiste (aus den Einstellungen heraus).
+    pub fn begin_edit_tools(&mut self, sh: &Shared) {
+        self.st.opts_open = false;
+        self.st.menu_open = false;
+        self.st.edit_tools = Some(EditTools { list: settings::edit_list(&sh.settings.tools), drag: None, last: None });
+    }
+}
+
+fn apply_edit(sh: &mut Shared, list: &[settings::ToolEntry]) {
+    sh.settings.tools = settings::tools_from_edit(list);
+}
+
+/// Werkzeugleiste im Bearbeiten-Modus: alle Werkzeuge, Ziehen ordnet um, Tippen blendet ein/aus.
+fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
+    let Some(mut st) = ed.st.edit_tools.take() else { return };
+    let canvas = lay.canvas;
+    let btn = lay.env.btn;
+    let p = style::pal();
+    let (pos, pivot, horiz) = match lay.tb {
+        BarPos::Top => {
+            let y = canvas.top() + M + if lay.row2 { lay.thick + M } else { 0.0 };
+            (Pos2::new(canvas.center().x, y), Align2::CENTER_TOP, true)
+        }
+        BarPos::Bottom => (Pos2::new(canvas.center().x, canvas.bottom() - M), Align2::CENTER_BOTTOM, true),
+        BarPos::Left => (Pos2::new(canvas.left() + M, lay.y_below), Align2::LEFT_TOP, false),
+        BarPos::Right => (Pos2::new(canvas.right() - M, lay.y_below), Align2::RIGHT_TOP, false),
+    };
+    let mut rects: Vec<(usize, Rect)> = Vec::new();
+    let mut dragged: Option<(usize, bool)> = None; // (Index, losgelassen?)
+    let mut clicked: Option<usize> = None;
+    let area = egui::Area::new(egui::Id::unique("bar-tools-edit")).order(Order::Middle).fixed_pos(pos).pivot(pivot).constrain_to(canvas).show(ctx, |ui| {
+        style::pill(26).show(ui, |ui| {
+            let body = |ui: &mut Ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                for (i, (id, on)) in st.list.iter().enumerate() {
+                    let Some(t) = Tool::from_id(id) else { continue };
+                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(btn), Sense::click_and_drag());
+                    let resp = resp.on_hover_text(format!("{} – ziehen: verschieben, tippen: {}", t.label(), if *on { "ausblenden" } else { "einblenden" }));
+                    rects.push((i, rect));
+                    if resp.dragged() || resp.drag_started() {
+                        dragged = Some((i, false));
+                    }
+                    if resp.drag_stopped() {
+                        dragged = Some((i, true));
+                    }
+                    if resp.clicked() {
+                        clicked = Some(i);
+                    }
+                    let is_drag = st.drag.as_deref() == Some(id.as_str());
+                    style::btn_bg(ui, rect, &resp, is_drag);
+                    let tint = if *on { p.text } else { p.disabled };
+                    let isz = (btn * 0.5).round();
+                    match tool_icon(ed, t) {
+                        Some(ico) => sh.icons.paint(ui, rect, ico, tint, false, isz),
+                        None => style::paint_arrow_eng(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(isz + 4.0)), c(tint)),
+                    }
+                    // Auge oben rechts
+                    let eye_r = Rect::from_center_size(rect.right_top() + Vec2::new(-btn * 0.24, btn * 0.3), Vec2::splat(13.0));
+                    ui.painter().circle_filled(eye_r.center(), 8.0, c(p.card));
+                    sh.icons.paint(ui, eye_r, if *on { ic::EYE } else { ic::EYE_OFF }, if *on { p.accent } else { p.dim }, false, 12.0);
+                }
+            };
+            if horiz {
+                ui.horizontal(body);
+            } else {
+                ui.vertical(body);
+            }
+        });
+    });
+    let bar_rect = area.response.rect;
+    ed.st.popup_rects.push(bar_rect);
+
+    // Tippen: ein-/ausblenden
+    if let Some(i) = clicked {
+        if settings::toggle_visible(&mut st.list, i) {
+            apply_edit(sh, &st.list);
+        } else {
+            sh.toast("Mindestens ein Werkzeug bleibt sichtbar");
+        }
+    }
+    // Ziehen: Ziel nach Mittelpunkten, Einfügemarke, Loslassen ordnet um
+    if let Some((i, released)) = dragged {
+        st.drag = Some(st.list[i].0.clone());
+        let ptr = ctx.input(|inp| inp.pointer.interact_pos().or(inp.pointer.latest_pos())).or(st.last);
+        st.last = ptr;
+        if let Some(ptr) = ptr {
+            let key = |r: &Rect| if horiz { (r.center().x - ptr.x).abs() } else { (r.center().y - ptr.y).abs() };
+            let target = rects.iter().min_by(|a, b| key(&a.1).total_cmp(&key(&b.1))).map(|(k, _)| *k).unwrap_or(i);
+            if released {
+                if target != i {
+                    settings::reorder(&mut st.list, i, target);
+                    apply_edit(sh, &st.list);
+                }
+                st.drag = None;
+            } else {
+                // Einfügemarke an der Zielkante
+                if let Some((_, tr)) = rects.iter().find(|(k, _)| *k == target) {
+                    let after = target > i;
+                    let painter = ctx.layer_painter(egui::LayerId::new(Order::Tooltip, egui::Id::unique("tools-edit-mark")));
+                    let stroke = Stroke::new(3.0, c(p.accent));
+                    if horiz {
+                        let x = if after { tr.right() } else { tr.left() };
+                        painter.line_segment([Pos2::new(x, tr.top() + 4.0), Pos2::new(x, tr.bottom() - 4.0)], stroke);
+                    } else {
+                        let y = if after { tr.bottom() } else { tr.top() };
+                        painter.line_segment([Pos2::new(tr.left() + 4.0, y), Pos2::new(tr.right() - 4.0, y)], stroke);
+                    }
+                    // Geist unter dem Zeiger
+                    if let Some(t) = Tool::from_id(&st.list[i].0) {
+                        let ghost = Rect::from_center_size(ptr, Vec2::splat(btn));
+                        painter.circle_filled(ghost.center(), btn * 0.5, c(p.active));
+                        if let Some(ico) = tool_icon(ed, t) {
+                            if let Some(tex) = sh.icons.get(ctx, ico, p.accent, false, (btn * 0.5).round()) {
+                                painter.image(tex.id(), Rect::from_center_size(ghost.center(), Vec2::splat((btn * 0.5).round())), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        st.drag = None;
+    }
+
+    // Bedienfeld: Hinweis, Standard, Fertig (Mitte der Zeichenfläche)
+    let mut done = false;
+    let mut reset = false;
+    let maxw = (canvas.width() - 2.0 * M - 2.0 * PAD).min(400.0);
+    let panel = Editor::float(ctx, "tools-edit-panel", canvas.center(), Align2::CENTER_CENTER, canvas, Order::Middle, |ui| {
+        style::card().show(ui, |ui| {
+            ui.set_max_width(maxw - 40.0);
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new("Werkzeuge anpassen").strong().size(16.0));
+                ui.label(egui::RichText::new("Ziehen ordnet um, Tippen blendet ein oder aus (Auge).").size(13.0).color(c(p.dim)));
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    if style::plain_btn(ui, "Standard", lay.env.btn).clicked() {
+                        reset = true;
+                    }
+                    if style::primary_btn(ui, "Fertig", lay.env.btn).clicked() {
+                        done = true;
+                    }
+                });
+            });
+        });
+    });
+    ed.st.popup_rects.push(panel);
+    if reset {
+        st.list = settings::edit_list(&settings::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        apply_edit(sh, &st.list);
+    }
+    if done || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        sh.reqs.push(Req::ToolsEdited);
+    } else {
+        ed.st.edit_tools = Some(st);
+    }
 }

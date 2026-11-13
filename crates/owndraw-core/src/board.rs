@@ -496,6 +496,11 @@ impl Board {
 
     /// Fuegt ein bereits im Bildordner gespeichertes Bild (Dateiname, Pixelgroesse) mittig ein.
     pub fn add_image(&mut self, file: &str, pw: u32, ph: u32) -> bool {
+        self.add_image_at(file, pw, ph, None)
+    }
+
+    /// Wie `add_image`, aber mit Mittelpunkt `at` (Weltkoordinaten); im Seitenmodus auf der Seite unter `at`.
+    pub fn add_image_at(&mut self, file: &str, pw: u32, ph: u32, at: Option<(f32, f32)>) -> bool {
         if self.layer_blocked() || pw == 0 || ph == 0 {
             return false;
         }
@@ -504,7 +509,7 @@ impl Board {
         let (vw, vh) = (w / self.sc, h / self.sc);
         let s = (1.0 / self.sc).min((0.6 * vw / pw as f32).min(0.6 * vh / ph as f32));
         let (iw, ih) = (pw as f32 * s, ph as f32 * s);
-        let (cx, cy) = ((w / 2.0 - self.tx) / self.sc, (h / 2.0 - self.ty) / self.sc);
+        let (cx, cy) = self.paste_center(at);
         let it = Item::new(Kind::Img(item::Img { x: cx - iw / 2.0, y: cy - ih / 2.0, w: iw, h: ih, ang: 0.0, file: file.to_string() }));
         let id = it.id;
         self.add_top(it);
@@ -801,6 +806,74 @@ impl Board {
     }
     fn view_cy(&self) -> f32 {
         ((if self.height > 0.0 { self.height } else { 1000.0 }) / 2.0 - self.ty) / self.sc
+    }
+
+    /// Weltpunkt zu einem Punkt in Board-Bildschirmkoordinaten (Pixel relativ zur Zeichenflaeche).
+    pub fn screen_to_world(&self, x: f32, y: f32) -> (f32, f32) {
+        ((x - self.tx) / self.sc, (y - self.ty) / self.sc)
+    }
+
+    /// Mittelpunkt der Ansicht in Weltkoordinaten.
+    pub fn view_center(&self) -> (f32, f32) {
+        (self.view_cx(), self.view_cy())
+    }
+
+    /// Zielpunkt fuers Einfuegen: `at` oder Ansichtsmitte; im Seitenmodus auf die Seite unter dem Punkt
+    /// (liegt er daneben, auf die naechste Seite begrenzt).
+    pub fn paste_center(&self, at: Option<(f32, f32)>) -> (f32, f32) {
+        let (mut x, mut y) = at.unwrap_or_else(|| self.view_center());
+        if let BoardMode::Pages(ps) = &self.board_mode {
+            if let Some(r) = ps.nearest_page(x, y).and_then(|i| ps.rect(i)) {
+                x = x.clamp(r.left, r.right);
+                y = y.clamp(r.top, r.bottom);
+            }
+        }
+        (x, y)
+    }
+
+    /// Nur die ausgewaehlten Objekte, transparent gerendert (Zwischenablage-Bild). Aufloesung `scale`-fach
+    /// (hoechstens `max_px` Pixel Kantenlaenge). None ohne Auswahl.
+    pub fn render_selection(&self, scale: f32, max_px: u32) -> Option<Pixmap> {
+        let b = self.sel_bounds()?;
+        let k = scale.min(max_px as f32 / b.width().max(b.height()).max(1.0));
+        let mut tmp = Board::new(1.0);
+        tmp.items = self.sel_items().iter().map(|it| Rc::new((*it).clone())).collect();
+        tmp.layers = self.layers.clone();
+        tmp.dark = self.dark;
+        tmp.render_composite(&b, k, false)
+    }
+
+    /// Fuegt Objekte als Kopien (neue ids, aktive Ebene) mit Mittelpunkt `at` (Welt) bzw. Ansichtsmitte ein
+    /// und waehlt sie aus. Liefert die Anzahl der eingefuegten Objekte.
+    pub fn paste_items(&mut self, items: &[Item], at: Option<(f32, f32)>) -> usize {
+        if items.is_empty() || self.layer_blocked() {
+            return 0;
+        }
+        let mut b = items[0].bounds();
+        for it in &items[1..] {
+            b.union(&it.bounds());
+        }
+        let (cx, cy) = self.paste_center(at);
+        let (dx, dy) = (cx - b.center_x(), cy - b.center_y());
+        self.checkpoint();
+        let lid = self.active_layer().id;
+        self.sel_clear();
+        for it in items {
+            let mut n = it.dup();
+            n.layer = lid;
+            if let Some(ex) = n.extra.as_mut() {
+                // Seitenzuordnung (Xournal++) ergibt sich im Seitenmodus aus der Lage
+                ex.remove("page");
+            }
+            n.xf(1.0, 0.0, 0.0, dx, dy);
+            self.sel.push(n.id);
+            self.items.push(Rc::new(n));
+        }
+        self.frame_ok = false;
+        self.tool = SELECT;
+        self.refresh();
+        self.changed();
+        items.len()
     }
 
     pub fn copy_sel(&mut self) {
@@ -1771,7 +1844,8 @@ impl Board {
         }
     }
 
-    fn sel_bounds(&self) -> Option<RectF> {
+    /// Huelle der ausgewaehlten Objekte.
+    pub fn sel_bounds(&self) -> Option<RectF> {
         let s = self.sel_items();
         let mut b = s.first()?.bounds();
         for it in &s[1..] {

@@ -13,11 +13,20 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub struct StubPlatform {
     events: RefCell<Vec<PlatformEvent>>,
+    /// Zwischenablage im Speicher (Tests/Demo).
+    clip: RefCell<Option<ClipData>>,
+    /// Vorgemerkte Drops (Tests/Demo), werden von `take_drops` geliefert.
+    drops: RefCell<Vec<Drop>>,
 }
 
 impl StubPlatform {
     pub fn new() -> StubPlatform {
         StubPlatform::default()
+    }
+
+    /// Merkt einen Drop vor (Tests/Demo).
+    pub fn push_drop(&self, d: Drop) {
+        self.drops.borrow_mut().push(d);
     }
 
     fn answer(&self, tag: Tag) {
@@ -94,12 +103,15 @@ impl Platform for StubPlatform {
     }
 
     fn clipboard_get(&self) -> Option<ClipData> {
-        None
+        self.clip.borrow().clone()
     }
-    fn clipboard_set(&self, _d: ClipData) {}
+    fn clipboard_set(&self, d: ClipData) {
+        *self.clip.borrow_mut() = Some(d);
+    }
     fn take_drops(&self, ctx: &egui::Context) -> Vec<Drop> {
         let pos = ctx.input(|i| i.pointer.hover_pos()).map(|p| (p.x, p.y));
-        ctx.input(|i| {
+        let mut queued = std::mem::take(&mut *self.drops.borrow_mut());
+        queued.extend(ctx.input(|i| {
             i.raw
                 .dropped_files
                 .iter()
@@ -112,8 +124,9 @@ impl Platform for StubPlatform {
                         pos,
                     }
                 })
-                .collect()
-        })
+                .collect::<Vec<_>>()
+        }));
+        queued
     }
     fn drag_hover(&self, ctx: &egui::Context) -> bool {
         ctx.input(|i| !i.raw.hovered_files.is_empty())

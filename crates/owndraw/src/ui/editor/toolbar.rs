@@ -226,8 +226,8 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                         clip::cut(ed, &*sh.platform);
                     }
                 }
-                if ed.board.has_clip() && icon_btn(ui, &mut sh.icons, ic::PASTE, p.text, false, false, btn, &env.tip("Einfügen", "Strg+V")).clicked() {
-                    clip::paste(ed, &*sh.platform);
+                if icon_btn(ui, &mut sh.icons, ic::PASTE, p.text, false, false, btn, &env.tip("Einfügen", "Strg+V")).clicked() {
+                    clip::paste_center(ed, &*sh.platform);
                 }
                 if has_sel {
                     if icon_btn(ui, &mut sh.icons, ic::DUPLICATE, p.text, false, false, btn, &env.tip("Duplizieren", "Strg+D")).clicked() {

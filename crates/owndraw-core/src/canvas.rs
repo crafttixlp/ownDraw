@@ -2,9 +2,10 @@
 //! (Transformations-Stapel, Paint, Ebenen mit Deckkraft).
 
 use crate::text;
+use std::rc::Rc;
 use tiny_skia::{
-    Color, FillRule, FilterQuality, LineCap, LineJoin, Paint as SkPaint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Rect,
-    Stroke, StrokeDash, Transform,
+    Color, FillRule, FilterQuality, LineCap, LineJoin, Mask, Paint as SkPaint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef,
+    Rect, Stroke, StrokeDash, Transform,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -54,8 +55,8 @@ pub fn sk_color(c: u32) -> Color {
 }
 
 enum Saved {
-    Matrix(Transform),
-    Layer(Transform, u8),
+    Matrix(Transform, Option<Rc<Mask>>),
+    Layer(Transform, u8, Option<Rc<Mask>>),
 }
 
 pub struct Canvas<'a> {
@@ -64,11 +65,13 @@ pub struct Canvas<'a> {
     layers: Vec<Pixmap>,
     stack: Vec<Saved>,
     m: Transform,
+    /// Aktuelle Clip-Maske (Geraete-Pixel), wird mit save()/restore() gesichert.
+    clip: Option<Rc<Mask>>,
 }
 
 impl<'a> Canvas<'a> {
     pub fn new(base: &'a mut Pixmap) -> Self {
-        Canvas { base, layers: Vec::new(), stack: Vec::new(), m: Transform::identity() }
+        Canvas { base, layers: Vec::new(), stack: Vec::new(), m: Transform::identity(), clip: None }
     }
 
     pub fn width(&self) -> u32 {
@@ -88,10 +91,46 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    /// Zielflaeche und aktuelle Clip-Maske.
+    fn parts(&mut self) -> (&mut Pixmap, Option<&Mask>) {
+        let clip = self.clip.as_deref();
+        let t = match self.layers.last_mut() {
+            Some(p) => p,
+            None => &mut *self.base,
+        };
+        (t, clip)
+    }
+
+    /// Schneidet alles Folgende (bis zum passenden restore()) auf den Pfad zu (aktuelle Transformation, mit Kantenglaettung).
+    pub fn clip_path(&mut self, path: &Path) {
+        let m = self.m;
+        let mask = match self.clip.as_deref() {
+            Some(old) => {
+                let mut k = old.clone();
+                k.intersect_path(path, FillRule::Winding, true, m);
+                Some(k)
+            }
+            None => Mask::new(self.base.width(), self.base.height()).map(|mut k| {
+                k.fill_path(path, FillRule::Winding, true, m);
+                k
+            }),
+        };
+        if let Some(k) = mask {
+            self.clip = Some(Rc::new(k));
+        }
+    }
+
+    /// Wie clip_path mit einem Rechteck.
+    pub fn clip_rect(&mut self, l: f32, t: f32, r: f32, b: f32) {
+        if let Some(rc) = Rect::from_ltrb(l.min(r), t.min(b), l.max(r), t.max(b)) {
+            self.clip_path(&PathBuilder::from_rect(rc));
+        }
+    }
+
     // ---------- Zustand ----------
 
     pub fn save(&mut self) {
-        self.stack.push(Saved::Matrix(self.m));
+        self.stack.push(Saved::Matrix(self.m, self.clip.clone()));
     }
 
     /// Alles bis zum passenden restore() wird in eine eigene Ebene gezeichnet und mit alpha (0..255) eingeblendet.
@@ -99,17 +138,21 @@ impl<'a> Canvas<'a> {
         match Pixmap::new(self.base.width(), self.base.height()) {
             Some(pm) => {
                 self.layers.push(pm);
-                self.stack.push(Saved::Layer(self.m, alpha));
+                self.stack.push(Saved::Layer(self.m, alpha, self.clip.clone()));
             }
-            None => self.stack.push(Saved::Matrix(self.m)),
+            None => self.stack.push(Saved::Matrix(self.m, self.clip.clone())),
         }
     }
 
     pub fn restore(&mut self) {
         match self.stack.pop() {
-            Some(Saved::Matrix(m)) => self.m = m,
-            Some(Saved::Layer(m, alpha)) => {
+            Some(Saved::Matrix(m, clip)) => {
                 self.m = m;
+                self.clip = clip;
+            }
+            Some(Saved::Layer(m, alpha, clip)) => {
+                self.m = m;
+                self.clip = clip;
                 if let Some(top) = self.layers.pop() {
                     let pp = PixmapPaint { opacity: alpha as f32 / 255.0, ..PixmapPaint::default() };
                     self.target().draw_pixmap(0, 0, top.as_ref(), &pp, Transform::identity(), None);
@@ -143,7 +186,8 @@ impl<'a> Canvas<'a> {
         if let Some(r) = Rect::from_xywh(0.0, 0.0, w, h) {
             let mut sp = SkPaint::default();
             sp.set_color(sk_color(c));
-            self.target().fill_rect(r, &sp, Transform::identity(), None);
+            let (t, clip) = self.parts();
+            t.fill_rect(r, &sp, Transform::identity(), clip);
         }
     }
 
@@ -153,7 +197,10 @@ impl<'a> Canvas<'a> {
         sp.anti_alias = true;
         let m = self.m;
         match p.style {
-            Style::Fill => self.target().fill_path(path, &sp, FillRule::Winding, m, None),
+            Style::Fill => {
+                let (t, clip) = self.parts();
+                t.fill_path(path, &sp, FillRule::Winding, m, clip)
+            }
             Style::Stroke => {
                 let cap = if p.cap == Cap::Round { LineCap::Round } else { LineCap::Butt };
                 let mut st = Stroke { width: p.stroke_width.max(0.0), line_cap: cap, line_join: LineJoin::Round, ..Stroke::default() };
@@ -162,7 +209,8 @@ impl<'a> Canvas<'a> {
                         st.dash = StrokeDash::new(vec![on, off], 0.0);
                     }
                 }
-                self.target().stroke_path(path, &sp, &st, m, None);
+                let (t, clip) = self.parts();
+                t.stroke_path(path, &sp, &st, m, clip);
             }
         }
     }
@@ -187,7 +235,7 @@ impl<'a> Canvas<'a> {
     }
 
     pub fn draw_circle(&mut self, cx: f32, cy: f32, r: f32, p: &Paint) {
-        if !(r > 0.0) {
+        if r.is_nan() || r <= 0.0 {
             return;
         }
         if let Some(path) = PathBuilder::from_circle(cx, cy, r) {
@@ -256,7 +304,8 @@ impl<'a> Canvas<'a> {
         }
         let m = self.m.pre_translate(l, t).pre_scale(sx, sy);
         let pp = PixmapPaint { quality: FilterQuality::Bilinear, ..PixmapPaint::default() };
-        self.target().draw_pixmap(0, 0, pm, &pp, m, None);
+        let (t, clip) = self.parts();
+        t.draw_pixmap(0, 0, pm, &pp, m, clip);
     }
 
     /// Text mit Grundlinie bei y (Schriftgroesse p.text_size, Farbe p.color).

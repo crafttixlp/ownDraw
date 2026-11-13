@@ -11,52 +11,65 @@ use zip::write::SimpleFileOptions;
 
 /// Minimale PDF-Datei mit einer Seite (Groesse pw × ph Punkt), die das Bild ganzflaechig zeigt (RGB, FlateDecode).
 pub fn pdf_from_pixmap(pm: &Pixmap, pw: f32, ph: f32) -> Vec<u8> {
-    let (w, h) = (pm.width(), pm.height());
-    let mut rgb = Vec::with_capacity((w * h * 3) as usize);
-    for px in pm.pixels() {
-        let c = px.demultiply();
-        rgb.extend_from_slice(&[c.red(), c.green(), c.blue()]);
-    }
-    let data = miniz_oxide::deflate::compress_to_vec_zlib(&rgb, 6);
-    let content = format!("q {pw:.2} 0 0 {ph:.2} 0 0 cm /Im0 Do Q\n");
+    pdf_pages(1, |_| Some((pm.clone(), pw, ph))).unwrap_or_default()
+}
+
+/// PDF mit n Seiten; `page(i)` liefert das Bild der Seite i und ihre Groesse in Punkt (das Bild fuellt die Seite).
+/// Jede Seite wird sofort komprimiert, damit nie alle Bilder gleichzeitig im Speicher liegen. None, wenn eine Seite fehlt.
+pub fn pdf_pages(n: usize, mut page: impl FnMut(usize) -> Option<(Pixmap, f32, f32)>) -> Option<Vec<u8>> {
+    let n = n.max(1);
     let mut out: Vec<u8> = Vec::new();
     let mut offs = Vec::new();
     out.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
-    let objs: Vec<Vec<u8>> = vec![
-        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
-        format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pw:.2} {ph:.2}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>")
-            .into_bytes(),
-        {
-            let mut v = format!(
-                "<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>\nstream\n",
-                data.len()
-            )
-            .into_bytes();
-            v.extend_from_slice(&data);
-            v.extend_from_slice(b"\nendstream");
-            v
-        },
-        {
-            let mut v = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
-            v.extend_from_slice(content.as_bytes());
-            v.extend_from_slice(b"endstream");
-            v
-        },
-    ];
-    for (i, o) in objs.iter().enumerate() {
+    let mut obj = |out: &mut Vec<u8>, body: &[u8]| {
         offs.push(out.len());
-        out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
-        out.extend_from_slice(o);
+        out.extend_from_slice(format!("{} 0 obj\n", offs.len()).as_bytes());
+        out.extend_from_slice(body);
         out.extend_from_slice(b"\nendobj\n");
+    };
+    // Objekte: 1 Katalog, 2 Seitenbaum, je Seite i: 3+3i Seite, 4+3i Bild, 5+3i Inhalt
+    obj(&mut out, b"<< /Type /Catalog /Pages 2 0 R >>");
+    let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 3 + 3 * i)).collect();
+    obj(&mut out, format!("<< /Type /Pages /Kids [{}] /Count {n} >>", kids.join(" ")).as_bytes());
+    for i in 0..n {
+        let (pm, pw, ph) = page(i)?;
+        let (w, h) = (pm.width(), pm.height());
+        let mut rgb = Vec::with_capacity((w * h * 3) as usize);
+        for px in pm.pixels() {
+            let c = px.demultiply();
+            rgb.extend_from_slice(&[c.red(), c.green(), c.blue()]);
+        }
+        drop(pm);
+        let data = miniz_oxide::deflate::compress_to_vec_zlib(&rgb, 6);
+        let (io, co) = (4 + 3 * i, 5 + 3 * i);
+        obj(
+            &mut out,
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {pw:.2} {ph:.2}] /Resources << /XObject << /Im0 {io} 0 R >> >> /Contents {co} 0 R >>"
+            )
+            .as_bytes(),
+        );
+        let mut v = format!(
+            "<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>\nstream\n",
+            data.len()
+        )
+        .into_bytes();
+        v.extend_from_slice(&data);
+        v.extend_from_slice(b"\nendstream");
+        obj(&mut out, &v);
+        let content = format!("q {pw:.2} 0 0 {ph:.2} 0 0 cm /Im0 Do Q\n");
+        let mut v = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+        v.extend_from_slice(content.as_bytes());
+        v.extend_from_slice(b"endstream");
+        obj(&mut out, &v);
     }
     let xref = out.len();
-    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
-    for o in offs {
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", offs.len() + 1).as_bytes());
+    for o in &offs {
         out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
     }
-    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1).as_bytes());
-    out
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", offs.len() + 1).as_bytes());
+    Some(out)
 }
 
 /// Exportiert eine einzelne Ebene als transparentes PNG, zugeschnitten auf ihren Inhalt. None wenn leer/Fehler.
@@ -334,7 +347,7 @@ pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]
                 s.push_str(&format!(";animation-delay:{}s", num(0.15 * slide_idx as f32 + 0.1, 2)));
                 slide_idx += 1;
             }
-            s.push_str("\"");
+            s.push('"');
         }
         s.push_str(&format!(" src=\"{}\" alt=\"\" width=\"{w}\" height=\"{h}\" draggable=\"false\" decoding=\"async\"></div></div>\n", esc(&files[i])));
     }

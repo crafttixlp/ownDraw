@@ -2,13 +2,16 @@
 
 pub mod board;
 pub mod canvas;
+pub mod doc;
 pub mod export;
 pub mod geom;
 pub mod icons;
 pub mod item;
 pub mod layer;
+pub mod pages;
 pub mod recognizer;
 pub mod store;
 pub mod text;
+pub mod xopp;
 
 pub use tiny_skia;

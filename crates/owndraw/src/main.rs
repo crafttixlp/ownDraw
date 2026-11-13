@@ -3,6 +3,12 @@
 mod app;
 mod editor;
 mod layers;
+#[allow(dead_code)]
+mod layout;
+#[allow(dead_code)]
+mod platform;
+#[allow(dead_code)]
+mod settings;
 mod prefs;
 mod style;
 

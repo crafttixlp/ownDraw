@@ -1744,6 +1744,8 @@ dependencies = [
  "egui-file-dialog",
  "open",
  "owndraw-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

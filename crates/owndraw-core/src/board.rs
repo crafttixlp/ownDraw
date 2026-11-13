@@ -127,6 +127,8 @@ pub struct Board {
     /// Radierer-Modus: 0 = ganze Objekte, 1 = nur ueberstrichene Stellen.
     pub erase_mode: i32,
     pub events: Vec<Event>,
+    /// Unendlich oder Seiten (WP2).
+    pub board_mode: crate::pages::BoardMode,
     /// Neu zeichnen noetig (invalidate).
     pub needs_redraw: bool,
 
@@ -229,6 +231,7 @@ impl Board {
             sel_mode: 0,
             erase_mode: 0,
             events: Vec::new(),
+            board_mode: crate::pages::BoardMode::Infinite,
             needs_redraw: true,
             width: 0.0,
             height: 0.0,

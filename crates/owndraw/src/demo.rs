@@ -3,7 +3,7 @@
 //! - `OWNDRAW_SCREENSHOT=pfad.png`: nach ein paar Frames Bild des Fensters speichern und beenden.
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
-//!   `layers`, `pagelist`, `new`, `settings`, `light` (helles Theme).
+//!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -152,6 +152,10 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             ed.board.set_tool(board::SELECT);
             let ids: Vec<u64> = ed.board.items.iter().take(2).map(|i| i.id).collect();
             ed.board.sel = ids;
+        }
+        if has("edittools") {
+            let sh = app.parts().0;
+            ed.begin_edit_tools(sh);
         }
         ed.st.opts_open = has("options");
         ed.st.menu_open = has("menu");

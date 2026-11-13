@@ -15,7 +15,7 @@ use crate::autosave::{Autosave, AutosaveStatus};
 use crate::layout::{self, Env, FormFactor};
 use crate::platform::{FileKind, FileRef};
 use crate::session;
-use crate::settings::{BarPos, Settings, DEFAULT_TOOLS};
+use crate::settings::{BarPos, Settings, ALL_TOOLS, DEFAULT_TOOLS};
 use crate::ui::dialogs::{AnimDlg, ConfirmAction, RenameWhat};
 use egui::{Align2, Color32, CursorIcon, Event, Key, Order, PointerButton, Pos2, Rect, Sense, TextureHandle, TouchPhase, Ui};
 use owndraw_core::board::{self, Action, Board, Motion, Pointer, ToolType};
@@ -126,6 +126,8 @@ pub struct UiState {
     /// Bereiche der offenen Popups (zum Schließen bei Klick daneben).
     pub popup_rects: Vec<Rect>,
     pub error_toast_shown: bool,
+    /// Bearbeiten-Modus der Werkzeugleiste (WP9): `Some` solange aktiv.
+    pub edit_tools: Option<toolbar::EditTools>,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).
@@ -331,7 +333,7 @@ impl Editor {
                 }
                 Err(e) => sh.toast(&format!("Bild konnte nicht geladen werden: {e}")),
             },
-            PickPurpose::OpenDoc | PickPurpose::NewDoc => {}
+            PickPurpose::OpenDoc | PickPurpose::NewDoc | PickPurpose::DefaultDir => {}
         }
     }
 
@@ -475,7 +477,7 @@ impl Editor {
     /// Zeichnet den Editor.
     pub fn ui(&mut self, ui: &mut Ui, sh: &mut Shared) {
         let ctx = ui.ctx().clone();
-        let tools = visible_tools(&sh.settings);
+        let tools = if self.st.edit_tools.is_some() { ALL_TOOLS.iter().filter_map(|i| Tool::from_id(i)).collect() } else { visible_tools(&sh.settings) };
         let lay = self.layout(sh, ui.max_rect(), tools.len());
         let rect = lay.canvas;
         self.canvas = rect;
@@ -492,7 +494,7 @@ impl Editor {
             pages::initial_view(&mut self.board);
         }
 
-        let modal = sh.dialog.is_some();
+        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some();
         // Klick auf die Zeichenfläche schließt offene Popups und zeichnet nicht.
         let popup_open = self.st.opts_open || self.st.menu_open;
         let mut swallow = false;

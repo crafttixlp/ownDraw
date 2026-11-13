@@ -8,6 +8,7 @@ pub mod geom;
 pub mod icons;
 pub mod item;
 pub mod layer;
+pub mod migrate;
 pub mod pages;
 pub mod recognizer;
 pub mod store;

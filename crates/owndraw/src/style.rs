@@ -1,20 +1,94 @@
-//! Farben, Leisten-Stil und Icon-Texturen der Desktop-Oberflaeche.
+//! Farben (hell/dunkel, Akzent aus den Einstellungen), Leisten-Stil und Icon-Texturen.
 
+use crate::settings::{Settings, Theme};
 use egui::{Color32, CornerRadius, Frame, Margin, Response, Sense, Shadow, Stroke, TextureHandle, Ui, Vec2};
 use owndraw_core::icons;
+use std::cell::Cell;
 use std::collections::HashMap;
 
-pub const BG: u32 = 0xFF101114;
-pub const CARD: u32 = 0xFF1C1D22;
-pub const PILL: u32 = 0xF51E1F25;
-pub const LINE: u32 = 0x24FFFFFF;
-pub const TEXT: u32 = 0xFFE9EAEE;
-pub const DIM: u32 = 0xFF8B8D98;
-pub const ACCENT: u32 = 0xFF7C8CFF;
-pub const DANGER: u32 = 0xFFFF6B6B;
-pub const DANGER_TEXT: u32 = 0xFFFF8A8A;
-pub const ACTIVE: u32 = 0x3D7C8CFF;
-pub const DISABLED: u32 = 0xFF55575F;
+/// Farbpalette der Oberfläche (alle Werte 0xAARRGGBB).
+#[derive(Clone, Copy, Debug)]
+pub struct Pal {
+    pub dark: bool,
+    pub bg: u32,
+    pub card: u32,
+    pub pill: u32,
+    pub line: u32,
+    pub text: u32,
+    pub dim: u32,
+    pub accent: u32,
+    pub active: u32,
+    pub accent_soft: u32,
+    pub hover: u32,
+    pub press: u32,
+    pub danger: u32,
+    pub danger_text: u32,
+    pub disabled: u32,
+    /// Textfarbe auf Akzentflächen.
+    pub on_accent: u32,
+}
+
+fn with_alpha(argb: u32, a: u8) -> u32 {
+    (argb & 0x00FF_FFFF) | ((a as u32) << 24)
+}
+
+fn luminance(argb: u32) -> f32 {
+    let (r, g, b) = (((argb >> 16) & 255) as f32, ((argb >> 8) & 255) as f32, (argb & 255) as f32);
+    (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+}
+
+pub fn palette(dark: bool, accent: u32) -> Pal {
+    let accent = with_alpha(accent, 0xFF);
+    let on_accent = if luminance(accent) > 0.55 { 0xFF16171B } else { 0xFFFFFFFF };
+    if dark {
+        Pal {
+            dark,
+            bg: 0xFF101114,
+            card: 0xFF1C1D22,
+            pill: 0xF51E1F25,
+            line: 0x24FFFFFF,
+            text: 0xFFE9EAEE,
+            dim: 0xFF8B8D98,
+            accent,
+            active: with_alpha(accent, 0x3D),
+            accent_soft: with_alpha(accent, 0x1F),
+            hover: 0x17FFFFFF,
+            press: 0x26FFFFFF,
+            danger: 0xFFFF6B6B,
+            danger_text: 0xFFFF8A8A,
+            disabled: 0xFF55575F,
+            on_accent,
+        }
+    } else {
+        Pal {
+            dark,
+            bg: 0xFFEDEDF0,
+            card: 0xFFFFFFFF,
+            pill: 0xF8FFFFFF,
+            line: 0x26000000,
+            text: 0xFF1F2025,
+            dim: 0xFF666875,
+            accent,
+            active: with_alpha(accent, 0x38),
+            accent_soft: with_alpha(accent, 0x22),
+            hover: 0x12000000,
+            press: 0x20000000,
+            danger: 0xFFD93F3F,
+            danger_text: 0xFFC22F2F,
+            disabled: 0xFFB0B2BB,
+            on_accent,
+        }
+    }
+}
+
+thread_local! {
+    static PAL: Cell<Pal> = Cell::new(palette(true, 0xFF7C8CFF));
+}
+
+/// Aktuelle Palette (gesetzt von `apply`).
+pub fn pal() -> Pal {
+    PAL.with(|p| p.get())
+}
 
 /// 0xAARRGGBB nach egui-Farbe.
 pub fn c(argb: u32) -> Color32 {
@@ -22,50 +96,77 @@ pub fn c(argb: u32) -> Color32 {
 }
 
 pub fn pill(radius: u8) -> Frame {
+    let p = pal();
     Frame::new()
-        .fill(c(PILL))
-        .stroke(Stroke::new(1.0, c(LINE)))
+        .fill(c(p.pill))
+        .stroke(Stroke::new(1.0, c(p.line)))
         .corner_radius(CornerRadius::same(radius))
         .inner_margin(Margin::same(4))
-        .shadow(Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(90) })
+        .shadow(Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(if p.dark { 90 } else { 45 }) })
 }
 
 pub fn card() -> Frame {
+    let p = pal();
     Frame::new()
-        .fill(c(CARD))
-        .stroke(Stroke::new(1.0, c(0x40FFFFFF)))
+        .fill(c(p.card))
+        .stroke(Stroke::new(1.0, c(p.line)))
         .corner_radius(CornerRadius::same(14))
-        .inner_margin(Margin { left: 24, right: 24, top: 20, bottom: 16 })
-        .shadow(Shadow { offset: [0, 4], blur: 20, spread: 0, color: Color32::from_black_alpha(120) })
+        .inner_margin(Margin { left: 20, right: 20, top: 18, bottom: 14 })
+        .shadow(Shadow { offset: [0, 4], blur: 20, spread: 0, color: Color32::from_black_alpha(if p.dark { 120 } else { 60 }) })
 }
 
-pub fn setup_visuals(ctx: &egui::Context) {
-    let mut v = egui::Visuals::dark();
-    v.panel_fill = c(BG);
-    v.window_fill = c(CARD);
-    v.window_stroke = Stroke::new(1.0, c(0x40FFFFFF));
-    v.window_corner_radius = CornerRadius::same(14);
-    v.menu_corner_radius = CornerRadius::same(10);
-    v.extreme_bg_color = c(BG);
-    v.selection.bg_fill = c(0x667C8CFF);
-    v.selection.stroke = Stroke::new(1.0, c(ACCENT));
-    v.hyperlink_color = c(ACCENT);
-    v.override_text_color = Some(c(TEXT));
-    v.widgets.hovered.weak_bg_fill = c(0x337C8CFF);
-    v.widgets.active.weak_bg_fill = c(0x4D7C8CFF);
-    ctx.set_visuals(v);
-    ctx.all_styles_mut(|s| {
-        s.spacing.item_spacing = Vec2::new(6.0, 6.0);
-        s.spacing.button_padding = Vec2::new(10.0, 6.0);
-        s.spacing.interact_size.y = 30.0;
-        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.5));
-        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
-        s.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(17.0));
+/// Fläche für Bottom-Sheets (oben abgerundet) und angedockte Panels.
+pub fn sheet(top_radius: u8) -> Frame {
+    let p = pal();
+    Frame::new()
+        .fill(c(p.card))
+        .stroke(Stroke::new(1.0, c(p.line)))
+        .corner_radius(CornerRadius { nw: top_radius, ne: top_radius, sw: 0, se: 0 })
+        .inner_margin(Margin { left: 16, right: 16, top: 8, bottom: 12 })
+        .shadow(Shadow { offset: [0, -2], blur: 18, spread: 0, color: Color32::from_black_alpha(if p.dark { 110 } else { 50 }) })
+}
+
+/// Wendet Theme, UI-Größe und Akzentfarbe aus den Einstellungen an.
+pub fn apply(ctx: &egui::Context, s: &Settings) {
+    ctx.set_theme(match s.theme {
+        Theme::System => egui::ThemePreference::System,
+        Theme::Light => egui::ThemePreference::Light,
+        Theme::Dark => egui::ThemePreference::Dark,
+    });
+    let dark = ctx.theme() == egui::Theme::Dark;
+    let p = palette(dark, s.accent);
+    PAL.with(|x| x.set(p));
+    ctx.set_zoom_factor((s.ui_scale.clamp(75, 200) as f32) / 100.0);
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        let d = theme == egui::Theme::Dark;
+        let q = palette(d, s.accent);
+        let mut v = if d { egui::Visuals::dark() } else { egui::Visuals::light() };
+        v.panel_fill = c(q.bg);
+        v.window_fill = c(q.card);
+        v.window_stroke = Stroke::new(1.0, c(q.line));
+        v.window_corner_radius = CornerRadius::same(14);
+        v.menu_corner_radius = CornerRadius::same(10);
+        v.extreme_bg_color = c(q.bg);
+        v.selection.bg_fill = c(with_alpha(q.accent, 0x66));
+        v.selection.stroke = Stroke::new(1.0, c(q.accent));
+        v.hyperlink_color = c(q.accent);
+        v.override_text_color = Some(c(q.text));
+        v.widgets.hovered.weak_bg_fill = c(with_alpha(q.accent, 0x33));
+        v.widgets.active.weak_bg_fill = c(with_alpha(q.accent, 0x4D));
+        ctx.set_visuals_of(theme, v);
+    }
+    ctx.all_styles_mut(|st| {
+        st.spacing.item_spacing = Vec2::new(6.0, 6.0);
+        st.spacing.button_padding = Vec2::new(10.0, 6.0);
+        st.spacing.interact_size.y = 30.0;
+        st.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.5));
+        st.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        st.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(17.0));
     });
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }
 
-/// Zwischenspeicher fuer gerenderte Icons (id, Farbe, gefuellt, Pixelgroesse).
+/// Zwischenspeicher für gerenderte Icons (id, Farbe, gefüllt, Pixelgröße).
 #[derive(Default)]
 pub struct Icons {
     map: HashMap<(i32, u32, bool, u32), TextureHandle>,
@@ -84,27 +185,39 @@ impl Icons {
         self.map.insert(key, t.clone());
         Some(t)
     }
+
+    /// Zeichnet ein Icon mittig in `rect`.
+    pub fn paint(&mut self, ui: &Ui, rect: egui::Rect, id: i32, tint: u32, filled: bool, size: f32) {
+        if let Some(t) = self.get(ui.ctx(), id, tint, filled, size) {
+            let r = egui::Rect::from_center_size(rect.center(), Vec2::splat(size));
+            ui.painter().image(t.id(), r, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        }
+    }
 }
 
-/// Runder Icon-Knopf 40 × 40 im Stil der Leisten.
-pub fn icon_btn(ui: &mut Ui, ic: &mut Icons, id: i32, tint: u32, active: bool, filled: bool, tip: &str) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(40.0), Sense::click());
+/// Hintergrund eines runden Knopfes je nach Zustand.
+pub fn btn_bg(ui: &Ui, rect: egui::Rect, resp: &Response, active: bool) {
+    let p = pal();
     let bg = if active {
-        Some(ACTIVE)
+        Some(p.active)
     } else if resp.is_pointer_button_down_on() {
-        Some(0x26FFFFFF)
+        Some(p.press)
     } else if resp.hovered() {
-        Some(0x17FFFFFF)
+        Some(p.hover)
     } else {
         None
     };
     if let Some(b) = bg {
-        ui.painter().rect_filled(rect.shrink(2.0), CornerRadius::same(24), c(b));
+        ui.painter().rect_filled(rect.shrink(2.0), CornerRadius::same(255), c(b));
     }
-    if let Some(t) = ic.get(ui.ctx(), id, tint, filled, 22.0) {
-        let r = egui::Rect::from_center_size(rect.center(), Vec2::splat(22.0));
-        ui.painter().image(t.id(), r, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
-    }
+}
+
+/// Runder Icon-Knopf mit Kantenlänge `size`.
+#[allow(clippy::too_many_arguments)]
+pub fn icon_btn(ui: &mut Ui, ic: &mut Icons, id: i32, tint: u32, active: bool, filled: bool, size: f32, tip: &str) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+    btn_bg(ui, rect, &resp, active);
+    ic.paint(ui, rect, id, tint, filled, (size * 0.55).round());
     if !tip.is_empty() {
         resp.on_hover_text(tip)
     } else {
@@ -112,44 +225,78 @@ pub fn icon_btn(ui: &mut Ui, ic: &mut Icons, id: i32, tint: u32, active: bool, f
     }
 }
 
-/// Senkrechter Trenner zwischen Knopfgruppen.
-pub fn sep(ui: &mut Ui) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(9.0, 40.0), Sense::hover());
-    ui.painter().line_segment([rect.center_top() + Vec2::new(0.0, 10.0), rect.center_bottom() - Vec2::new(0.0, 10.0)], Stroke::new(1.0, c(LINE)));
-}
-
-/// Textknopf mit Akzentfarbe (Stil 1 der Java-Version).
-pub fn accent_btn(ui: &mut Ui, label: &str) -> Response {
-    let b = egui::Button::new(egui::RichText::new(label).color(c(ACCENT)).strong())
-        .fill(c(0x1F7C8CFF))
+/// Textknopf mit Akzentfarbe.
+pub fn accent_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
+    let p = pal();
+    let b = egui::Button::new(egui::RichText::new(label).color(c(p.accent)).strong())
+        .fill(c(p.accent_soft))
         .stroke(Stroke::NONE)
+        .min_size(Vec2::new(0.0, min_h))
         .corner_radius(CornerRadius::same(14));
     ui.add(b)
 }
 
-/// Gefuellter Hauptknopf (Stil 2).
-pub fn primary_btn(ui: &mut Ui, label: &str) -> Response {
-    let b = egui::Button::new(egui::RichText::new(label).color(c(BG)).strong()).fill(c(ACCENT)).corner_radius(CornerRadius::same(14));
+/// Gefüllter Hauptknopf.
+pub fn primary_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
+    let p = pal();
+    let b = egui::Button::new(egui::RichText::new(label).color(c(p.on_accent)).strong())
+        .fill(c(p.accent))
+        .min_size(Vec2::new(0.0, min_h))
+        .corner_radius(CornerRadius::same(14));
     ui.add(b)
 }
 
-pub fn plain_btn(ui: &mut Ui, label: &str) -> Response {
-    ui.add(egui::Button::new(label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(14)))
+pub fn plain_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
+    ui.add(egui::Button::new(label).fill(Color32::TRANSPARENT).min_size(Vec2::new(0.0, min_h)).corner_radius(CornerRadius::same(14)))
 }
 
-pub fn danger_btn(ui: &mut Ui, label: &str) -> Response {
-    let b = egui::Button::new(egui::RichText::new(label).color(c(DANGER_TEXT)).strong()).fill(c(0x33FF6B6B)).corner_radius(CornerRadius::same(14));
+pub fn danger_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
+    let p = pal();
+    let b = egui::Button::new(egui::RichText::new(label).color(c(p.danger_text)).strong())
+        .fill(c(with_alpha(p.danger, 0x33)))
+        .min_size(Vec2::new(0.0, min_h))
+        .corner_radius(CornerRadius::same(14));
     ui.add(b)
 }
 
-/// Menueeintrag (volle Breite).
-pub fn menu_item(ui: &mut Ui, label: &str, danger: bool) -> bool {
-    let txt = if danger { egui::RichText::new(label).color(c(DANGER_TEXT)) } else { egui::RichText::new(label) };
-    let r = ui.add(egui::Button::new(txt).fill(Color32::TRANSPARENT).min_size(Vec2::new(170.0, 30.0)));
-    if r.clicked() {
-        ui.close();
-        true
-    } else {
-        false
-    }
+/// Auswahl-Chip (Segment) mit Text; `selected` hebt ihn hervor.
+pub fn chip(ui: &mut Ui, label: &str, selected: bool, min_h: f32) -> Response {
+    let p = pal();
+    let t = egui::RichText::new(label).color(c(if selected { p.accent } else { p.text }));
+    let t = if selected { t.strong() } else { t };
+    let b = egui::Button::new(t)
+        .fill(c(if selected { p.active } else { p.hover }))
+        .stroke(if selected { Stroke::new(1.0, c(p.accent)) } else { Stroke::NONE })
+        .min_size(Vec2::new(0.0, min_h))
+        .corner_radius(CornerRadius::same(255));
+    ui.add(b)
+}
+
+/// Menüzeile über die volle Breite; schließt ein umgebendes Menü nicht selbst.
+pub fn menu_row(ui: &mut Ui, label: &str, danger: bool, min_h: f32) -> bool {
+    let p = pal();
+    let txt = if danger { egui::RichText::new(label).color(c(p.danger_text)) } else { egui::RichText::new(label) };
+    let w = ui.available_width();
+    let r = ui.add(egui::Button::new(txt).fill(Color32::TRANSPARENT).min_size(Vec2::new(w, min_h)).corner_radius(CornerRadius::same(10)));
+    r.clicked()
+}
+
+/// Kleine Abschnittsüberschrift in Menüs und Optionen.
+pub fn caption(ui: &mut Ui, text: &str) {
+    ui.label(egui::RichText::new(text).size(12.0).strong().color(c(pal().dim)));
+}
+
+/// Gezeichnetes Icon für den Maschinenbau-Pfeil (gefülltes, schmales Dreieck am Linienende).
+/// TODO(WP3): durch `icons::ARROW_ENG` ersetzen, sobald der Kern das Icon liefert.
+pub fn paint_arrow_eng(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.22);
+    let (a, b) = (r.left_bottom(), r.right_top());
+    let d = (b - a).normalized();
+    let n = Vec2::new(-d.y, d.x);
+    let len = (b - a).length() * 0.45;
+    let base = b - d * len;
+    let half = len * (7.5f32.to_radians().tan());
+    let half = half.max(2.2);
+    painter.line_segment([a, base], Stroke::new(1.8, color));
+    painter.add(egui::Shape::convex_polygon(vec![b, base + n * half, base - n * half], color, Stroke::NONE));
 }

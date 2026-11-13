@@ -15,8 +15,7 @@ path = "src/main.rs"
 [dependencies]
 owndraw-core = { path = "../owndraw-core" }
 eframe = { version = "0.37", default-features = false, features = ["glow", "x11", "wayland", "default_fonts"] }
-egui-file-dialog = "0.16"
-open = "5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 egui = { version = "0.37", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -1,551 +1,72 @@
-//! Hauptfenster: Board-Übersicht, Dialoge, Dateiauswahl, Hinweise (Toast) und Wechsel in den Editor.
+//! Hauptfenster: Bildschirmwechsel (Start, Editor, Einstellungen), Dokumente öffnen/anlegen, Dialog-Ergebnisse,
+//! Hinweise (Toast) und das Anwenden der Einstellungen. Alle Plattform-Zugriffe laufen über `Platform`.
 
-use crate::editor::Editor;
-use crate::prefs::Prefs;
+use crate::layout::Env;
+use crate::platform::{FileKind, FileRef, Platform, PlatformEvent, Tag};
+use crate::recent::{Recent, RecentEntry};
+use crate::session::{self, NewParams};
+use crate::settings::{SaveChoice, Settings};
 use crate::style::{self, c, Icons};
-use egui::{Align2, Color32, CornerRadius, Key, Pos2, Rect, Sense, Stroke, TextureHandle, Vec2};
-use egui_file_dialog::{FileDialog, FileDialogLabels};
-use owndraw_core::layer::{A_PARALLAX, ANIM_NAMES};
-use owndraw_core::store::Store;
+use crate::ui::dialogs::{self, Dialog, Outcome};
+use crate::ui::editor::{drop as drops, Editor};
+use crate::ui::settings::SettingsAction;
+use crate::ui::start::StartState;
+use egui::{Align2, Color32, CornerRadius, Vec2};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
-pub enum RenameWhat {
-    Board(String),
-    Layer(usize),
-}
-
-pub enum ConfirmAction {
-    DeleteBoard(String),
-    DeleteLayer(usize),
-}
-
-pub struct AnimDlg {
-    pub idx: usize,
-    pub anim: i32,
-    pub speed: f32,
-    pub hover: bool,
-    pub opacity: f32,
-}
-
-pub enum Dialog {
-    Rename { what: RenameWhat, title: &'static str, text: String, focus: bool },
-    Confirm { title: &'static str, text: String, ok: &'static str, action: ConfirmAction },
-    Anim(AnimDlg),
-}
-
-#[derive(Clone)]
-pub enum FilePurpose {
-    ImportBoard,
-    ExportBoard(String),
-    ImportImage,
+/// Wofür ein System-Dialog geöffnet wurde.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PickPurpose {
     ExportPng,
     ExportPdf,
     ExportZip,
     ExportLayer(usize),
+    SaveCopy,
+    ExportXopp,
+    ImportImage,
+    OpenDoc,
+    NewDoc,
 }
 
-/// Von Übersicht und Editor gemeinsam genutzter Zustand.
+/// Aufträge der Oberfläche an die Shell (werden am Frameende abgearbeitet).
+pub enum Req {
+    /// Zurück zum Start (Dokument wird gespeichert).
+    Back,
+    OpenSettings,
+    NewDialog,
+    OpenFile(FileRef),
+    RemoveRecent(FileRef),
+    PickOpen { purpose: PickPurpose, kinds: Vec<FileKind> },
+    PickSave { purpose: PickPurpose, name: String, kind: FileKind },
+}
+
+/// Von allen Bildschirmen gemeinsam genutzter Zustand.
 pub struct Shared {
-    pub data_dir: PathBuf,
-    pub store: Store,
-    pub prefs: Prefs,
+    pub platform: Box<dyn Platform>,
+    pub settings: Settings,
     pub icons: Icons,
+    pub env: Env,
+    /// UI-Uhr in Sekunden.
+    pub now: f64,
     toast: Option<(String, f64)>,
     pub dialog: Option<Dialog>,
-    fdialog: Option<(FileDialog, FilePurpose)>,
-    pub now: f64,
+    pub reqs: Vec<Req>,
 }
 
 impl Shared {
     pub fn toast(&mut self, s: &str) {
-        self.toast_for(s, 1.8);
+        self.toast_for(s, 2.2);
     }
     pub fn toast_for(&mut self, s: &str, secs: f64) {
         self.toast = Some((s.to_string(), self.now + secs));
     }
-
-    pub fn cache_dir(&self) -> PathBuf {
-        self.data_dir.join("cache")
-    }
-
-    fn last_dir(&self) -> PathBuf {
-        self.prefs
-            .str("lastdir")
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir())
-            .unwrap_or_else(|| std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/")))
-    }
-
-    /// Öffnet die Dateiauswahl. save_name = Some(...) für Speichern.
-    pub fn open_file_dialog(&mut self, purpose: FilePurpose, title: &str, filter: (&str, &[&'static str]), save_name: Option<String>) {
-        let mut d = FileDialog::new()
-            .title(title)
-            .labels(german_labels())
-            .initial_directory(self.last_dir())
-            .add_file_filter_extensions(filter.0, filter.1.to_vec())
-            .default_file_filter(filter.0)
-            .default_size([760.0, 500.0]);
-        match save_name {
-            Some(n) => {
-                d = d.add_save_extension(filter.0, filter.1[0]).default_save_extension(filter.0).default_file_name(&n);
-                d.save_file();
-            }
-            None => d.pick_file(),
-        }
-        self.fdialog = Some((d, purpose));
-    }
-
-    fn modal_open(&self) -> bool {
-        self.dialog.is_some() || self.fdialog.is_some()
-    }
 }
 
-fn german_labels() -> FileDialogLabels {
-    FileDialogLabels {
-        title_select_directory: "Ordner wählen".into(),
-        title_select_file: "Datei öffnen".into(),
-        title_select_multiple: "Dateien wählen".into(),
-        title_save_file: "Datei speichern".into(),
-        cancel: "Abbrechen".into(),
-        overwrite: "Überschreiben".into(),
-        reload: "Neu laden".into(),
-        working_directory: "Arbeitsordner".into(),
-        show_hidden: "Versteckte Dateien zeigen".into(),
-        heading_pinned: "Angeheftet".into(),
-        heading_places: "Orte".into(),
-        heading_devices: "Geräte".into(),
-        heading_removable_devices: "Wechseldatenträger".into(),
-        home_dir: "Persönlicher Ordner".into(),
-        desktop_dir: "Schreibtisch".into(),
-        documents_dir: "Dokumente".into(),
-        downloads_dir: "Downloads".into(),
-        pictures_dir: "Bilder".into(),
-        selected_file: "Datei:".into(),
-        file_name: "Dateiname:".into(),
-        file_filter_all_files: "Alle Dateien".into(),
-        open_button: "Öffnen".into(),
-        save_button: "Speichern".into(),
-        cancel_button: "Abbrechen".into(),
-        overwrite_file_modal_text: "existiert bereits. Überschreiben?".into(),
-        err_empty_file_name: "Dateiname fehlt".into(),
-        err_file_exists: "Datei existiert bereits".into(),
-        err_directory_exists: "Ordner existiert bereits".into(),
-        ..Default::default()
-    }
-}
-
-pub struct App {
-    pub sh: Shared,
-    editor: Option<Editor>,
-    thumbs: HashMap<String, (TextureHandle, std::time::SystemTime)>,
-    pending_open: Option<PathBuf>,
-}
-
-impl App {
-    pub fn new(data_dir: PathBuf, open_file: Option<PathBuf>) -> App {
-        let store = Store::new(&data_dir.join("files"));
-        let prefs = Prefs::load(data_dir.join("prefs.txt"));
-        App {
-            sh: Shared { data_dir, store, prefs, icons: Icons::default(), toast: None, dialog: None, fdialog: None, now: 0.0 },
-            editor: None,
-            thumbs: HashMap::new(),
-            pending_open: open_file,
-        }
-    }
-
-    fn open_board(&mut self, id: &str, ctx: &egui::Context) {
-        if let Some(mut e) = self.editor.take() {
-            e.save(&mut self.sh, true);
-        }
-        let name = self.sh.store.name(id);
-        let e = Editor::open(&mut self.sh, id, &name);
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("OwnDraw – {name}")));
-        self.editor = Some(e);
-    }
-
-    fn close_board(&mut self, ctx: &egui::Context) {
-        if let Some(mut e) = self.editor.take() {
-            e.save(&mut self.sh, true);
-            self.thumbs.remove(&e.id);
-        }
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title("OwnDraw".into()));
-    }
-
-    fn import_board_file(&mut self, p: &Path) {
-        let ok = std::fs::File::open(p).ok().and_then(|f| self.sh.store.import_board(std::io::BufReader::new(f)));
-        self.sh.toast(if ok.is_some() { "Board importiert" } else { "Import fehlgeschlagen" });
-    }
-
-    // ---------------------------------------------------------------- Übersicht
-
-    fn thumb(&mut self, ctx: &egui::Context, id: &str) -> Option<TextureHandle> {
-        let p = self.sh.store.thumb(id);
-        let mt = std::fs::metadata(&p).and_then(|m| m.modified()).ok()?;
-        if let Some((t, m)) = self.thumbs.get(id) {
-            if *m == mt {
-                return Some(t.clone());
-            }
-        }
-        let pm = owndraw_core::tiny_skia::Pixmap::load_png(&p).ok()?;
-        let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
-        let t = ctx.load_texture(format!("thumb-{id}"), img, egui::TextureOptions::LINEAR);
-        self.thumbs.insert(id.to_string(), (t.clone(), mt));
-        Some(t)
-    }
-
-    fn overview(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        egui::Frame::new().inner_margin(egui::Margin { left: 40, right: 40, top: 30, bottom: 14 }).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label(egui::RichText::new("OwnDraw").size(34.0).strong().color(c(style::TEXT)));
-                    ui.label(egui::RichText::new("Zeichnen in Ebenen · Rechtsklick für Optionen").size(14.0).color(c(style::DIM)));
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if style::accent_btn(ui, "Board importieren").clicked() {
-                        self.sh.open_file_dialog(FilePurpose::ImportBoard, "Board importieren", ("OwnDraw-Board (*.owndraw)", &["owndraw"]), None);
-                    }
-                });
-            });
-        });
-        let entries = self.sh.store.entries();
-        let mut open: Option<String> = None;
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            egui::Frame::new().inner_margin(egui::Margin { left: 16 + 24, right: 16 + 24, top: 6, bottom: 24 }).show(ui, |ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(24.0, 24.0);
-                ui.horizontal_wrapped(|ui| {
-                    // "Neues Board"
-                    let (r, resp) = ui.allocate_exact_size(Vec2::new(290.0, 247.0), Sense::click());
-                    let p = ui.painter();
-                    p.rect_filled(r, CornerRadius::same(36), c(if resp.hovered() { 0x427C8CFF } else { 0x2E7C8CFF }));
-                    dashed_round_rect(p, r.shrink(1.0), 36.0, Stroke::new(1.5, c(style::ACCENT)));
-                    p.text(r.center() - Vec2::new(0.0, 16.0), Align2::CENTER_CENTER, "+", egui::FontId::proportional(52.0), c(style::ACCENT));
-                    p.text(r.center() + Vec2::new(0.0, 36.0), Align2::CENTER_CENTER, "Neues Board", egui::FontId::proportional(16.0), c(style::TEXT));
-                    if resp.clicked() {
-                        let n = self.sh.store.index().len() + 1;
-                        open = Some(self.sh.store.create(&format!("Board {n}")));
-                    }
-                    for e in &entries {
-                        let (r, resp) = ui.allocate_exact_size(Vec2::new(290.0, 247.0), Sense::click());
-                        let tex = self.thumb(&ctx, &e.id);
-                        let p = ui.painter();
-                        p.rect_filled(r, CornerRadius::same(36), c(style::CARD));
-                        let img_r = Rect::from_min_size(r.min, Vec2::new(r.width(), 181.0));
-                        let top = CornerRadius { nw: 36, ne: 36, sw: 0, se: 0 };
-                        p.rect_filled(img_r, top, c(0xFFFBFBF8));
-                        if let Some(t) = tex {
-                            // auf die Kachel zuschneiden (Mitte), Bild hat 480 × 300
-                            let ts = t.size_vec2();
-                            let k = (img_r.width() / ts.x).max(img_r.height() / ts.y);
-                            let (uw, vh) = (img_r.width() / (ts.x * k), img_r.height() / (ts.y * k));
-                            let uv = Rect::from_min_max(Pos2::new((1.0 - uw) / 2.0, (1.0 - vh) / 2.0), Pos2::new((1.0 + uw) / 2.0, (1.0 + vh) / 2.0));
-                            egui::Image::new(&t).uv(uv).corner_radius(top).paint_at(ui, img_r);
-                        }
-                        let p = ui.painter();
-                        p.line_segment([img_r.left_bottom(), img_r.right_bottom()], Stroke::new(1.0, c(0x14000000)));
-                        let name = elide(&e.name, 16.0, 258.0, ui);
-                        p.text(Pos2::new(r.left() + 16.0, r.top() + 209.0), Align2::LEFT_CENTER, name, egui::FontId::proportional(16.0), c(style::TEXT));
-                        p.text(Pos2::new(r.left() + 16.0, r.top() + 231.0), Align2::LEFT_CENTER, fmt_time(e.t), egui::FontId::proportional(12.0), c(style::DIM));
-                        if resp.hovered() {
-                            p.rect_stroke(r, CornerRadius::same(36), Stroke::new(1.5, c(0x55FFFFFF)), egui::StrokeKind::Inside);
-                        }
-                        if resp.clicked() {
-                            open = Some(e.id.clone());
-                        }
-                        resp.context_menu(|ui| {
-                            if style::menu_item(ui, "Öffnen", false) {
-                                open = Some(e.id.clone());
-                            }
-                            if style::menu_item(ui, "Umbenennen", false) {
-                                self.sh.dialog = Some(Dialog::Rename { what: RenameWhat::Board(e.id.clone()), title: "Board umbenennen", text: e.name.clone(), focus: true });
-                            }
-                            if style::menu_item(ui, "Duplizieren", false) {
-                                self.sh.store.duplicate(&e.id);
-                            }
-                            if style::menu_item(ui, "Exportieren (.owndraw)…", false) {
-                                self.sh.open_file_dialog(
-                                    FilePurpose::ExportBoard(e.id.clone()),
-                                    "Board exportieren",
-                                    ("OwnDraw-Board (*.owndraw)", &["owndraw"]),
-                                    Some(format!("{}.owndraw", safe_file_name(&e.name))),
-                                );
-                            }
-                            if style::menu_item(ui, "Löschen", true) {
-                                self.sh.dialog = Some(Dialog::Confirm {
-                                    title: "Board löschen",
-                                    text: format!("„{}“ wirklich löschen?", e.name),
-                                    ok: "Löschen",
-                                    action: ConfirmAction::DeleteBoard(e.id.clone()),
-                                });
-                            }
-                        });
-                    }
-                });
-            });
-        });
-        if let Some(id) = open {
-            self.open_board(&id, &ctx);
-        }
-    }
-
-    // ---------------------------------------------------------------- Dialoge
-
-    fn dialogs(&mut self, ctx: &egui::Context) {
-        let Some(d) = self.sh.dialog.as_mut() else { return };
-        let mut close = false;
-        let mut ok = false;
-        let (enter, esc) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape)));
-        egui::Modal::new(egui::Id::unique("dlg")).frame(style::card()).show(ctx, |ui| {
-            ui.set_min_width(360.0);
-            match d {
-                Dialog::Rename { title, text, focus, .. } => {
-                    ui.label(egui::RichText::new(*title).heading().strong());
-                    ui.add_space(8.0);
-                    let r = ui.add(egui::TextEdit::singleline(text).desired_width(320.0).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
-                    if *focus {
-                        r.request_focus();
-                        if let Some(mut st) = egui::TextEdit::load_state(ui.ctx(), r.id) {
-                            let cr = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
-                            st.cursor.set_char_range(Some(cr));
-                            st.store(ui.ctx(), r.id);
-                        }
-                        *focus = false;
-                    }
-                    ui.add_space(12.0);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ok |= style::primary_btn(ui, "OK").clicked() || enter;
-                        close |= style::plain_btn(ui, "Abbrechen").clicked() || esc;
-                    });
-                }
-                Dialog::Confirm { title, text, ok: okl, .. } => {
-                    ui.label(egui::RichText::new(*title).heading().strong());
-                    ui.add_space(8.0);
-                    ui.label(text.as_str());
-                    ui.add_space(12.0);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ok |= style::danger_btn(ui, okl).clicked() || enter;
-                        close |= style::plain_btn(ui, "Abbrechen").clicked() || esc;
-                    });
-                }
-                Dialog::Anim(a) => {
-                    ui.label(egui::RichText::new("Animation & Deckkraft").heading().strong());
-                    ui.add_space(6.0);
-                    for (i, n) in ANIM_NAMES.iter().enumerate() {
-                        let i = i as i32;
-                        if ui.radio(a.anim == i, *n).clicked() && a.anim != i {
-                            if (i == A_PARALLAX) != (a.anim == A_PARALLAX) {
-                                a.speed = if i == A_PARALLAX { 0.2 } else { 1.0 };
-                            }
-                            a.anim = i;
-                        }
-                    }
-                    ui.add_space(6.0);
-                    let par = a.anim == A_PARALLAX;
-                    let mut p = if par { a.speed * 100.0 } else { (a.speed - 0.25) / 2.75 * 100.0 };
-                    let lbl = if par { "Parallax-Faktor" } else { "Tempo" };
-                    ui.label(format!("{lbl}: {}×", format!("{:.1}", a.speed).replace('.', ",")));
-                    if ui.add(egui::Slider::new(&mut p, 0.0..=100.0).show_value(false)).changed() {
-                        let v = if par { p / 100.0 } else { 0.25 + p / 100.0 * 2.75 };
-                        a.speed = (v / 0.05).round() * 0.05;
-                    }
-                    ui.checkbox(&mut a.hover, "Hover-Effekt");
-                    let mut o = a.opacity * 100.0;
-                    ui.label(format!("Deckkraft: {} %", o.round() as i32));
-                    if ui.add(egui::Slider::new(&mut o, 0.0..=100.0).show_value(false)).changed() {
-                        a.opacity = (o.round() / 100.0).clamp(0.0, 1.0);
-                    }
-                    ui.add_space(12.0);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ok |= style::primary_btn(ui, "Übernehmen").clicked();
-                        close |= style::plain_btn(ui, "Abbrechen").clicked() || esc;
-                    });
-                }
-            }
-        });
-        if ok {
-            let d = self.sh.dialog.take().unwrap();
-            self.apply_dialog(d);
-        } else if close {
-            self.sh.dialog = None;
-        }
-    }
-
-    fn apply_dialog(&mut self, d: Dialog) {
-        match d {
-            Dialog::Rename { what, text, .. } => {
-                let t = text.trim().to_string();
-                if t.is_empty() {
-                    return;
-                }
-                match what {
-                    RenameWhat::Board(id) => {
-                        self.sh.store.meta(&id, Some(&t), false);
-                        if let Some(e) = self.editor.as_mut().filter(|e| e.id == id) {
-                            e.name = t;
-                        }
-                    }
-                    RenameWhat::Layer(i) => {
-                        if let Some(e) = self.editor.as_mut() {
-                            e.board.edit_layer(i, |l| l.name = t);
-                        }
-                    }
-                }
-            }
-            Dialog::Confirm { action, .. } => match action {
-                ConfirmAction::DeleteBoard(id) => {
-                    self.sh.store.delete(&id);
-                    self.thumbs.remove(&id);
-                }
-                ConfirmAction::DeleteLayer(i) => {
-                    if let Some(e) = self.editor.as_mut() {
-                        e.board.remove_layer(i);
-                    }
-                }
-            },
-            Dialog::Anim(a) => {
-                if let Some(e) = self.editor.as_mut() {
-                    e.board.edit_layer(a.idx, |l| {
-                        l.anim = a.anim;
-                        l.speed = a.speed;
-                        l.hover = a.hover;
-                        l.opacity = a.opacity;
-                    });
-                }
-            }
-        }
-    }
-
-    // ---------------------------------------------------------------- Dateiauswahl
-
-    fn file_dialog(&mut self, ctx: &egui::Context) {
-        let Some((d, _)) = self.sh.fdialog.as_mut() else { return };
-        d.update(ctx);
-        let picked = d.take_picked();
-        let state_closed = matches!(d.state(), egui_file_dialog::DialogState::Cancelled | egui_file_dialog::DialogState::Closed);
-        if picked.is_none() && !state_closed {
-            return;
-        }
-        let (_, purpose) = self.sh.fdialog.take().unwrap();
-        let Some(p) = picked else { return };
-        if let Some(dir) = p.parent() {
-            self.sh.prefs.set("lastdir", dir.display());
-            self.sh.prefs.save();
-        }
-        self.apply_file(purpose, p);
-    }
-
-    fn apply_file(&mut self, purpose: FilePurpose, p: PathBuf) {
-        let with_ext = |p: PathBuf, ext: &str| -> PathBuf {
-            if p.extension().map(|e| e.eq_ignore_ascii_case(ext)).unwrap_or(false) {
-                p
-            } else {
-                PathBuf::from(format!("{}.{ext}", p.display()))
-            }
-        };
-        match purpose {
-            FilePurpose::ImportBoard => self.import_board_file(&p),
-            FilePurpose::ExportBoard(id) => {
-                if let Some(e) = self.editor.as_mut().filter(|e| e.id == id) {
-                    e.save(&mut self.sh, false);
-                }
-                let p = with_ext(p, "owndraw");
-                let ok = std::fs::File::create(&p).map(|f| self.sh.store.export_board(&id, std::io::BufWriter::new(f))).unwrap_or(false);
-                self.sh.toast(if ok { "Board exportiert" } else { "Export fehlgeschlagen" });
-            }
-            FilePurpose::ImportImage => {
-                if let Some(e) = self.editor.as_mut() {
-                    e.import_image(&mut self.sh, &p);
-                }
-            }
-            FilePurpose::ExportPng | FilePurpose::ExportPdf | FilePurpose::ExportZip => {
-                let Some(e) = self.editor.as_mut() else { return };
-                let ok = match purpose {
-                    FilePurpose::ExportPng => e.board.export_png().map(|d| std::fs::write(with_ext(p, "png"), d).is_ok()).unwrap_or(false),
-                    FilePurpose::ExportPdf => e.board.export_pdf().map(|d| std::fs::write(with_ext(p, "pdf"), d).is_ok()).unwrap_or(false),
-                    _ => std::fs::File::create(with_ext(p, "zip"))
-                        .map(|f| owndraw_core::export::write_zip(&e.board, &e.name, std::io::BufWriter::new(f)))
-                        .unwrap_or(false),
-                };
-                self.sh.toast(if ok { "Export gespeichert" } else { "Export fehlgeschlagen" });
-            }
-            FilePurpose::ExportLayer(i) => {
-                let Some(e) = self.editor.as_mut() else { return };
-                let ok = e
-                    .board
-                    .layers
-                    .get(i)
-                    .and_then(|l| owndraw_core::export::layer_png(&e.board, l))
-                    .map(|d| std::fs::write(with_ext(p, "png"), d).is_ok())
-                    .unwrap_or(false);
-                self.sh.toast(if ok { "Ebene exportiert" } else { "Export fehlgeschlagen" });
-            }
-        }
-    }
-
-    fn toast_ui(&mut self, ctx: &egui::Context) {
-        let Some((msg, until)) = self.sh.toast.clone() else { return };
-        if self.sh.now >= until {
-            self.sh.toast = None;
-            return;
-        }
-        ctx.request_repaint_after(std::time::Duration::from_secs_f64((until - self.sh.now).max(0.01)));
-        let off = if self.editor.is_some() { 104.0 } else { 48.0 };
-        egui::Area::new(egui::Id::unique("toast")).order(egui::Order::Tooltip).anchor(Align2::CENTER_BOTTOM, Vec2::new(0.0, -off)).interactable(false).show(ctx, |ui| {
-            egui::Frame::new()
-                .fill(c(0xF2303138))
-                .corner_radius(CornerRadius::same(20))
-                .inner_margin(egui::Margin::symmetric(22, 11))
-                .shadow(egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: Color32::from_black_alpha(80) })
-                .show(ui, |ui| {
-                    ui.label(egui::RichText::new(msg).size(14.0).color(c(style::TEXT)));
-                });
-        });
-    }
-}
-
-impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-        self.sh.now = ctx.input(|i| i.time);
-        if let Some(p) = self.pending_open.take() {
-            if p.extension().map(|e| e == "owndraw").unwrap_or(false) {
-                self.import_board_file(&p);
-            }
-        }
-        // per Drag & Drop abgelegte Dateien
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
-        for p in dropped {
-            let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-            if ext == "owndraw" {
-                self.import_board_file(&p);
-            } else if let Some(e) = self.editor.as_mut() {
-                if ["png", "jpg", "jpeg", "gif", "bmp", "webp"].contains(&ext.as_str()) {
-                    e.import_image(&mut self.sh, &p);
-                } else {
-                    self.sh.toast("Das ist keine Bilddatei");
-                }
-            }
-        }
-        if ctx.input(|i| i.viewport().close_requested()) {
-            if let Some(e) = self.editor.as_mut() {
-                e.save(&mut self.sh, true);
-            }
-        }
-
-        let modal = self.sh.modal_open();
-        let mut back = false;
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(c(style::BG))).show(ui, |ui| match self.editor.as_mut() {
-            Some(e) => back = e.ui(ui, &mut self.sh, modal),
-            None => self.overview(ui),
-        });
-        if back {
-            self.close_board(&ctx);
-        }
-        self.dialogs(&ctx);
-        self.file_dialog(&ctx);
-        self.toast_ui(&ctx);
-    }
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Screen {
+    Start,
+    Editor,
+    Settings,
 }
 
 /// Dateiname ohne verbotene Zeichen.
@@ -558,91 +79,342 @@ pub fn safe_file_name(n: &str) -> String {
     }
 }
 
-fn elide(s: &str, size: f32, max_w: f32, ui: &egui::Ui) -> String {
-    let font = egui::FontId::proportional(size);
-    let w = |t: &str| ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), font.clone(), Color32::WHITE).size().x);
-    if w(s) <= max_w {
-        return s.to_string();
+/// Lädt `settings.json` aus dem Konfigurationsordner (fehlt sie oder ist sie kaputt: Vorgaben).
+/// TODO(WP9): durch `Settings::load` ersetzen.
+pub fn load_settings(platform: &dyn Platform) -> Settings {
+    let p = FileRef::Path(platform.config_dir().join("settings.json"));
+    platform.read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn save_settings(platform: &dyn Platform, s: &Settings) {
+    let p = FileRef::Path(platform.config_dir().join("settings.json"));
+    if let Ok(b) = serde_json::to_vec_pretty(s) {
+        let _ = platform.write_atomic(&p, &b);
     }
-    let mut chars: Vec<char> = s.chars().collect();
-    while !chars.is_empty() {
-        chars.pop();
-        let t: String = chars.iter().collect::<String>() + "…";
-        if w(&t) <= max_w {
-            return t;
+}
+
+pub struct App {
+    pub sh: Shared,
+    screen: Screen,
+    /// Bildschirm vor den Einstellungen.
+    back_screen: Screen,
+    editor: Option<Editor>,
+    start: StartState,
+    recent: Recent,
+    pending: HashMap<Tag, (PickPurpose, Option<NewParams>)>,
+    next_tag: Tag,
+    applied: Option<Settings>,
+    open_at_start: Option<FileRef>,
+    /// Screenshot-Hilfe für die Abnahme (Umgebungsvariablen `OWNDRAW_SCREENSHOT`, `OWNDRAW_DEMO`).
+    shot: Option<crate::demo::Shot>,
+    demo: Option<String>,
+}
+
+impl App {
+    pub fn new(platform: Box<dyn Platform>, settings: Settings, open_file: Option<FileRef>) -> App {
+        let recent = Recent::load(&platform.config_dir());
+        App {
+            sh: Shared { platform, settings, icons: Icons::default(), env: Env::new(1000.0, false), now: 0.0, toast: None, dialog: None, reqs: Vec::new() },
+            screen: Screen::Start,
+            back_screen: Screen::Start,
+            editor: None,
+            start: StartState::default(),
+            recent,
+            pending: HashMap::new(),
+            next_tag: 1,
+            applied: None,
+            open_at_start: open_file,
+            shot: crate::demo::Shot::from_env(),
+            demo: std::env::var("OWNDRAW_DEMO").ok().filter(|s| !s.is_empty()),
         }
     }
-    "…".into()
-}
 
-/// Lokale Zeit als "dd.MM.yyyy · HH:mm".
-fn fmt_time(ms: i64) -> String {
-    let off = local_offset_secs();
-    let secs = ms / 1000 + off;
-    let days = secs.div_euclid(86400);
-    let sod = secs.rem_euclid(86400);
-    // Tage seit 1970 nach Datum (H. Hinnant)
-    let z = days + 719468;
-    let era = z.div_euclid(146097);
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
-    format!("{d:02}.{m:02}.{y} · {:02}:{:02}", sod / 3600, sod % 3600 / 60)
-}
-
-/// Zeitzonen-Versatz aus /etc/localtime bzw. TZ (nur aktueller Versatz, ohne Abhängigkeit).
-fn local_offset_secs() -> i64 {
-    use std::sync::OnceLock;
-    static OFF: OnceLock<i64> = OnceLock::new();
-    *OFF.get_or_init(|| {
-        let now = owndraw_core::store::now_ms() / 1000;
-        let data = std::env::var("TZ")
-            .ok()
-            .filter(|t| !t.is_empty())
-            .and_then(|t| std::fs::read(Path::new("/usr/share/zoneinfo").join(t.trim_start_matches(':'))).ok())
-            .or_else(|| std::fs::read("/etc/localtime").ok());
-        data.and_then(|d| tzif_offset(&d, now)).unwrap_or(0)
-    })
-}
-
-/// Liest den zum Zeitpunkt t gültigen UTC-Versatz aus einer TZif-Datei (v1-Block).
-fn tzif_offset(d: &[u8], t: i64) -> Option<i64> {
-    if d.len() < 44 || &d[0..4] != b"TZif" {
-        return None;
+    fn title(&self, ctx: &egui::Context) {
+        let t = match (&self.editor, self.screen) {
+            (Some(e), Screen::Editor) => format!("OwnDraw – {}", e.name()),
+            _ => "OwnDraw".to_string(),
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(t));
     }
-    let be = |o: usize| -> Option<i64> { Some(i32::from_be_bytes(d.get(o..o + 4)?.try_into().ok()?) as i64) };
-    let (isutc, isstd, leap, timecnt, typecnt, charcnt) = (be(20)?, be(24)?, be(28)?, be(32)? as usize, be(36)? as usize, be(40)?);
-    let _ = (isutc, isstd, leap, charcnt);
-    let trans = 44;
-    let idx = trans + timecnt * 4;
-    let types = idx + timecnt;
-    let mut ti = 0usize;
-    for i in 0..timecnt {
-        if be(trans + i * 4)? <= t {
-            ti = *d.get(idx + i)? as usize;
+
+    fn tag(&mut self, purpose: PickPurpose, params: Option<NewParams>) -> Tag {
+        let t = self.next_tag;
+        self.next_tag += 1;
+        self.pending.insert(t, (purpose, params));
+        t
+    }
+
+    // ---------------------------------------------------------------- Dokumente
+
+    fn default_dir(&self) -> FileRef {
+        self.sh.settings.default_dir.as_deref().and_then(FileRef::from_key).unwrap_or_else(|| self.sh.platform.default_dir())
+    }
+
+    /// Schließt das offene Dokument (speichert zuerst) und merkt es in „Zuletzt“.
+    fn close_editor(&mut self, ctx: &egui::Context) {
+        if let Some(mut e) = self.editor.take() {
+            e.flush(&mut self.sh);
+            if let Some(f) = e.file().cloned() {
+                self.recent.add(RecentEntry { file: f.clone(), name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board) });
+                self.start.forget(&f);
+            }
+        }
+        self.screen = Screen::Start;
+        self.title(ctx);
+    }
+
+    fn enter_editor(&mut self, ctx: &egui::Context, ed: Editor) {
+        if self.editor.is_some() {
+            self.close_editor(ctx);
+        }
+        if let Some(f) = ed.file().cloned() {
+            self.recent.add(RecentEntry { file: f, name: ed.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&ed.board) });
+        }
+        self.editor = Some(ed);
+        self.screen = Screen::Editor;
+        self.title(ctx);
+    }
+
+    /// Öffnet `.owndraw` oder importiert `.xopp`.
+    pub fn open_ref(&mut self, ctx: &egui::Context, f: FileRef) {
+        if self.editor.as_ref().and_then(|e| e.file()) == Some(&f) {
+            self.screen = Screen::Editor;
+            return;
+        }
+        let doc = match session::open_document(&*self.sh.platform, &f) {
+            Ok(d) => d,
+            Err(e) => {
+                self.sh.toast_for(&e, 4.0);
+                if !self.sh.platform.exists(&f) {
+                    self.recent.remove(&f);
+                }
+                return;
+            }
+        };
+        let mut doc = doc;
+        let imported = FileKind::of_name(&f.display_name()) == FileKind::Xopp;
+        let target = if imported {
+            // Xournal++-Import: als .owndraw im Standard-Ort weiterarbeiten (Original bleibt unverändert).
+            if doc.meta.name.is_empty() {
+                doc.meta.name = f.display_name().trim_end_matches(".xopp").to_string();
+            }
+            let name = format!("{}.owndraw", safe_file_name(&doc.meta.name));
+            match self.sh.platform.create_in(&self.default_dir(), &name, FileKind::Owndraw) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    self.sh.toast_for(&format!("Kein Speicherort für den Import: {e}"), 4.0);
+                    None
+                }
+            }
+        } else {
+            Some(f)
+        };
+        let mut ed = Editor::open(&mut self.sh, doc, target);
+        if imported {
+            ed.autosave.mark_changed(self.sh.now);
+            self.sh.toast("Xournal++-Datei importiert");
+        }
+        self.enter_editor(ctx, ed);
+    }
+
+    fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool) {
+        let fname = format!("{}.owndraw", safe_file_name(&params.name));
+        if custom {
+            let tag = self.tag(PickPurpose::NewDoc, Some(params));
+            self.sh.platform.pick_save(&fname, FileKind::Owndraw, tag);
+            return;
+        }
+        match self.sh.platform.create_in(&self.default_dir(), &fname, FileKind::Owndraw) {
+            Ok(f) => self.finish_create(ctx, params, f),
+            Err(e) => self.sh.toast_for(&format!("Speicherort nicht verfügbar: {e}"), 4.0),
         }
     }
-    if timecnt == 0 && typecnt == 0 {
-        return None;
-    }
-    be(types + ti * 6)
-}
 
-/// Gestrichelte abgerundete Umrandung (für die "Neues Board"-Kachel).
-fn dashed_round_rect(p: &egui::Painter, r: Rect, rad: f32, st: Stroke) {
-    let mut pts = Vec::new();
-    let n = 10;
-    let corners = [(r.right() - rad, r.top() + rad, -90.0f32), (r.right() - rad, r.bottom() - rad, 0.0), (r.left() + rad, r.bottom() - rad, 90.0), (r.left() + rad, r.top() + rad, 180.0)];
-    for (cx, cy, a0) in corners {
-        for i in 0..=n {
-            let a = (a0 + 90.0 * i as f32 / n as f32).to_radians();
-            pts.push(Pos2::new(cx + rad * a.cos(), cy + rad * a.sin()));
+    fn finish_create(&mut self, ctx: &egui::Context, params: NewParams, f: FileRef) {
+        let doc = session::new_document(&params);
+        if let Err(e) = session::write_document(&*self.sh.platform, &f, &doc) {
+            self.sh.toast_for(&e, 4.0);
+        }
+        let mut ed = Editor::open(&mut self.sh, doc, Some(f));
+        ed.autosave.mark_changed(self.sh.now);
+        self.enter_editor(ctx, ed);
+    }
+
+    // ---------------------------------------------------------------- Ereignisse
+
+    fn handle_pick(&mut self, ctx: &egui::Context, tag: Tag, file: Option<FileRef>) {
+        let Some((purpose, params)) = self.pending.remove(&tag) else { return };
+        let Some(f) = file else { return };
+        match purpose {
+            PickPurpose::OpenDoc => self.open_ref(ctx, f),
+            PickPurpose::NewDoc => {
+                if let Some(p) = params {
+                    self.finish_create(ctx, p, f);
+                }
+            }
+            other => {
+                if let Some(e) = self.editor.as_mut() {
+                    e.apply_pick(&mut self.sh, other, f);
+                }
+            }
         }
     }
-    pts.push(pts[0]);
-    p.extend(egui::Shape::dashed_line(&pts, st, 6.0, 6.0));
+
+    fn handle_reqs(&mut self, ctx: &egui::Context) {
+        for r in std::mem::take(&mut self.sh.reqs) {
+            match r {
+                Req::Back => self.close_editor(ctx),
+                Req::OpenSettings => {
+                    if self.screen != Screen::Settings {
+                        self.back_screen = self.screen;
+                        self.screen = Screen::Settings;
+                    }
+                }
+                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask)),
+                Req::OpenFile(f) => self.open_ref(ctx, f),
+                Req::RemoveRecent(f) => {
+                    self.recent.remove(&f);
+                    self.start.forget(&f);
+                }
+                Req::PickOpen { purpose, kinds } => {
+                    let tag = self.tag(purpose, None);
+                    self.sh.platform.pick_open(&kinds, tag);
+                }
+                Req::PickSave { purpose, name, kind } => {
+                    let tag = self.tag(purpose, None);
+                    self.sh.platform.pick_save(&name, kind, tag);
+                }
+            }
+        }
+    }
+
+    fn handle_dialog(&mut self, ctx: &egui::Context) {
+        let Some(out) = dialogs::show(ctx, &mut self.sh) else { return };
+        match out {
+            Outcome::Create(p, custom) => self.create(ctx, p, custom),
+            Outcome::Rename(what, text) => {
+                let now = self.sh.now;
+                if let Some(e) = self.editor.as_mut() {
+                    e.apply_rename(what, text, now);
+                    self.title(ctx);
+                }
+            }
+            Outcome::Confirm(a) => {
+                if let Some(e) = self.editor.as_mut() {
+                    e.apply_confirm(a, &mut self.sh);
+                }
+            }
+            Outcome::Anim(a) => {
+                if let Some(e) = self.editor.as_mut() {
+                    e.apply_anim(a);
+                }
+            }
+        }
+    }
+
+    fn toast_ui(&mut self, ctx: &egui::Context) {
+        let Some((msg, until)) = self.sh.toast.clone() else { return };
+        if self.sh.now >= until {
+            self.sh.toast = None;
+            return;
+        }
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64((until - self.sh.now).max(0.01)));
+        let (anchor, off) = if self.screen == Screen::Editor { (Align2::CENTER_TOP, Vec2::new(0.0, 76.0)) } else { (Align2::CENTER_BOTTOM, Vec2::new(0.0, -40.0)) };
+        let maxw = (ctx.content_rect().width() - 32.0).max(120.0);
+        egui::Area::new(egui::Id::unique("toast")).order(egui::Order::Tooltip).anchor(anchor, off).interactable(false).show(ctx, |ui| {
+            egui::Frame::new()
+                .fill(c(0xF2303138))
+                .corner_radius(CornerRadius::same(20))
+                .inner_margin(egui::Margin::symmetric(20, 10))
+                .shadow(egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: Color32::from_black_alpha(80) })
+                .show(ui, |ui| {
+                    ui.set_max_width(maxw - 40.0);
+                    ui.label(egui::RichText::new(msg).size(14.0).color(c(0xFFE9EAEE)));
+                });
+        });
+    }
+}
+
+impl eframe::App for App {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.sh.now = ctx.input(|i| i.time);
+        // Einstellungen anwenden (Theme, UI-Größe, Akzent) und bei Änderung speichern
+        if self.applied.as_ref() != Some(&self.sh.settings) {
+            style::apply(&ctx, &self.sh.settings);
+            if self.applied.is_some() {
+                save_settings(&*self.sh.platform, &self.sh.settings);
+            }
+            self.applied = Some(self.sh.settings.clone());
+        }
+        self.sh.env = Env::new(ctx.content_rect().width(), self.sh.platform.is_touch());
+
+        if let Some(f) = self.open_at_start.take() {
+            self.open_ref(&ctx, f);
+        }
+        if let Some(d) = self.demo.take() {
+            crate::demo::setup(self, &ctx, &d);
+        }
+        for ev in self.sh.platform.poll() {
+            match ev {
+                PlatformEvent::Picked { tag, file } => self.handle_pick(&ctx, tag, file),
+                PlatformEvent::OpenFile(f) => self.open_ref(&ctx, f),
+                PlatformEvent::Pause => {
+                    if let Some(e) = self.editor.as_mut() {
+                        e.flush(&mut self.sh);
+                    }
+                }
+            }
+        }
+        for o in drops::handle_drops(&ctx, &*self.sh.platform, self.editor.as_mut()) {
+            match o {
+                drops::DropOutcome::Open(f) => self.open_ref(&ctx, f),
+                drops::DropOutcome::Toast(m) => self.sh.toast(&m),
+            }
+        }
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if let Some(e) = self.editor.as_mut() {
+                e.flush(&mut self.sh);
+            }
+        }
+
+        let bg = c(style::pal().bg);
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(bg)).show(ui, |ui| match (self.screen, self.editor.as_mut()) {
+            (Screen::Editor, Some(e)) => e.ui(ui, &mut self.sh),
+            (Screen::Settings, _) => {
+                let sh = &mut self.sh;
+                match crate::ui::settings::show(ui, &mut sh.settings, &*sh.platform) {
+                    SettingsAction::Back => {
+                        self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
+                    }
+                    SettingsAction::Changed | SettingsAction::None => {}
+                }
+            }
+            _ => {
+                self.screen = Screen::Start;
+                crate::ui::start::show(ui, &mut self.sh, &mut self.start, &self.recent);
+            }
+        });
+        self.handle_reqs(&ctx);
+        self.handle_dialog(&ctx);
+        self.toast_ui(&ctx);
+        if let Some(s) = self.shot.as_mut() {
+            s.frame(&ctx);
+        }
+    }
+}
+
+impl App {
+    /// Für Demo/Tests: Zugriff auf Teile des Zustands.
+    pub fn parts(&mut self) -> (&mut Shared, &mut StartState, &mut Recent) {
+        (&mut self.sh, &mut self.start, &mut self.recent)
+    }
+
+    pub fn set_screen(&mut self, s: Screen) {
+        self.screen = s;
+    }
+
+    pub fn open_editor(&mut self, ctx: &egui::Context, ed: Editor) {
+        self.enter_editor(ctx, ed);
+    }
 }

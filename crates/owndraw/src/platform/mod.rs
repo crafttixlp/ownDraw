@@ -7,6 +7,8 @@
 use std::io;
 use std::path::PathBuf;
 
+pub mod stub;
+
 /// Verweis auf eine Datei: Pfad (Desktop) oder SAF-URI (Android, `content://…`).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FileRef {

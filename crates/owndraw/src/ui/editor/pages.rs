@@ -14,7 +14,7 @@ use crate::ui::dialogs::{ConfirmAction, Dialog};
 use egui::{Align2, Order, Pos2, Sense, TextureHandle, Ui, Vec2};
 use owndraw_core::board::Board;
 use owndraw_core::geom::RectF;
-use owndraw_core::pages::{BoardMode, Page, PageBg, PAGE_GAP};
+use owndraw_core::pages::{BoardMode, PageBg, PAGE_GAP};
 
 /// Miniaturen der Seiten (Textur je Seite), nur bei sichtbarer Seitenleiste aktualisiert.
 #[derive(Default)]

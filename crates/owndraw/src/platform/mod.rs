@@ -178,3 +178,6 @@ pub trait Platform {
     /// Touch-Gerät ohne Maus (Android/Tablet)?
     fn is_touch(&self) -> bool;
 }
+
+#[cfg(not(target_os = "android"))]
+pub mod desktop;

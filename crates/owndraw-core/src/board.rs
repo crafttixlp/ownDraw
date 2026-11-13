@@ -1684,6 +1684,7 @@ impl Board {
             let k = match self.shape_kind {
                 1 => item::ELLIPSE,
                 2 => item::LINE,
+                4 => item::ARROW_ENG,
                 _ => item::ARROW,
             };
             Item::shape(k, vec![x0, y0, x1, y1], self.color, w)

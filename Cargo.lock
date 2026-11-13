@@ -1827,8 +1827,10 @@ name = "owndraw-core"
 version = "3.0.0"
 dependencies = [
  "epaint_default_fonts",
+ "flate2",
  "image",
  "miniz_oxide 0.9.1",
+ "roxmltree",
  "serde_json",
  "sha2",
  "tiny-skia",
@@ -2143,6 +2145,12 @@ dependencies = [
  "web-sys",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "rustc-hash"

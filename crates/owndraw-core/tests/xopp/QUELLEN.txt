@@ -1,0 +1,20 @@
+Testdaten für den Xournal++-Import/-Export (tests/xopp_roundtrip.rs)
+
+Aus dem Xournal++-Projekt (https://github.com/xournalpp/xournalpp, Branch master,
+abgerufen am 2026-11-13 über raw.githubusercontent.com), Lizenz GPL-2.0-or-later.
+Nur als Testdaten verwendet, unverändert, nicht Teil des ausgelieferten Programms.
+
+  strokes.xopp              <- test/files/load/strokes.xopp
+  pages.xopp                <- test/files/load/pages.xopp
+  layers.xopp               <- test/files/load/layers.xopp
+  image-fileversion-4.xopp  <- test/files/load/image-fileversion-4.xopp
+  latex-fileversion-4.xopp  <- test/files/load/latex-fileversion-4.xopp
+  text-fileversion-4.xopp   <- test/files/load/text-fileversion-4.xopp
+  suite.xopp                <- test/files/packaged_xopp/suite.xopp (gzip-XML)
+  test1.unzipped.xoj        <- test/files/test1.unzipped.xoj (unkomprimiertes XML)
+  packaged-test.xopp        <- test/files/packaged_xopp/test.xopp (ZIP-Paket mit content.xml)
+
+Selbst erzeugt (OwnDraw, nach dem Xournal++-Format fileversion 4):
+
+  pdf-hintergrund.xopp      PDF-Hintergrundseiten, 2 Ebenen, Druckbreiten, Marker, Text mit
+                            Sonderzeichen, eingebettetes PNG, unbekanntes Element, Punktraster-Seite

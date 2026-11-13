@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OwnDraw
+Comment=Zeichnen in Ebenen
+Exec=owndraw %f
+Icon=owndraw
+Terminal=false
+Categories=Graphics;2DGraphics;
+StartupWMClass=OwnDraw

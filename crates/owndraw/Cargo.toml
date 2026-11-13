@@ -1,0 +1,13 @@
+[package]
+name = "owndraw"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OwnDraw: Zeichen- und Whiteboard-App (Linux-Desktop)"
+
+[dependencies]
+owndraw-core = { path = "../owndraw-core" }
+eframe = { version = "0.37", default-features = false, features = ["glow", "x11", "wayland", "default_fonts"] }
+egui-file-dialog = "0.16"
+open = "5"
+egui = { version = "0.37", default-features = false }

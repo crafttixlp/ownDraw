@@ -1,0 +1,4 @@
+#!/bin/sh
+# Startskript der OwnDraw-AppImage (POSIX sh)
+HERE=$(dirname "$(readlink -f "$0")")
+exec "$HERE/usr/bin/owndraw" "$@"

@@ -20,3 +20,7 @@ open = "5"
 egui = { version = "0.37", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rfd = "0.18"
+arboard = { version = "3", features = ["image-data", "wayland-data-control"] }
+pollster = "0.4"
+dirs = "6"

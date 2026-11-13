@@ -40,6 +40,8 @@ pub const FRONT: i32 = 33;
 pub const BACKWARD: i32 = 34;
 pub const DUPLICATE: i32 = 35;
 pub const ERASER_PART: i32 = 36;
+/// Maschinenbau-Pfeil: schmaler gefuellter Pfeil (Form-Menue).
+pub const MACHINE_ARROW: i32 = 37;
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -143,6 +145,11 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
         ARROW => {
             poly(&mut pb, false, &[5.0, 19.0, 19.0, 5.0]);
             poly(&mut pb, false, &[11.0, 5.0, 19.0, 5.0, 19.0, 13.0]);
+        }
+        MACHINE_ARROW => {
+            // Schaft mit schmaler, gefuellter Spitze (Achse 45 Grad nach oben rechts)
+            poly(&mut pb, false, &[4.0, 20.0, 14.3, 9.7]);
+            poly(&mut pb, true, &[20.0, 4.0, 16.2, 11.5, 12.5, 7.8]);
         }
         NOTE => {
             poly(&mut pb, true, &[5.0, 5.0, 19.0, 5.0, 19.0, 14.0, 14.0, 19.0, 5.0, 19.0]);
@@ -306,7 +313,7 @@ mod tests {
 
     #[test]
     fn alle_icons_sichtbar() {
-        for id in 0..=36 {
+        for id in 0..=37 {
             for filled in [false, true] {
                 let pm = render(id, 48, 0xFFFFFFFF, filled).expect("pixmap");
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();
@@ -319,10 +326,10 @@ mod tests {
     #[ignore]
     fn sheet() {
         let (cols, cell) = (6u32, 96u32);
-        let rows = (37 + cols - 1) / cols;
+        let rows = (38 + cols - 1) / cols;
         let mut sheet = Pixmap::new(cols * cell, rows * cell).expect("sheet");
         sheet.fill(Color::from_rgba8(0x1C, 0x1D, 0x22, 0xFF));
-        for id in 0..=36 {
+        for id in 0..=37 {
             let pm = render(id, cell, 0xFFFFFFFF, false).expect("pixmap");
             let (x, y) = ((id as u32 % cols) * cell, (id as u32 / cols) * cell);
             sheet.draw_pixmap(x as i32, y as i32, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);

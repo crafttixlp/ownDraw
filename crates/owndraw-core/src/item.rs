@@ -234,8 +234,35 @@ pub const HEART: i32 = 5;
 /// Maschinenbau-Pfeil (gefülltes Dreieck, 15° gesamt), WP3.
 pub const ARROW_ENG: i32 = 6;
 
+/// Spitzenlänge des Maschinenbau-Pfeils: max(10 × Linienbreite, 12).
+pub fn arrow_eng_len(width: f32) -> f32 {
+    (10.0 * width).max(12.0)
+}
+
+/// Dreieckspunkte des Maschinenbau-Pfeils von (x0, y0) nach (x1, y1), gefüllt mit 15° Öffnungswinkel gesamt
+/// (7,5° je Seite zur Achse). Rückgabe: Spitze (x1, y1), Basis links, Basis rechts als [x, y; 3].
+/// Die Basis liegt `arrow_eng_len(width)` hinter der Spitze; die Linie endet dort (Spitze bleibt scharf).
+pub fn arrow_eng_head(x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> [f32; 6] {
+    let (dx, dy) = (x1 - x0, y1 - y0);
+    let l = hypot(dx, dy);
+    if l <= 0.0 {
+        return [x1, y1, x1, y1, x1, y1];
+    }
+    let (ux, uy) = (dx / l, dy / l);
+    let len = arrow_eng_len(width);
+    let half = len * 7.5f32.to_radians().tan();
+    let (bx, by) = (x1 - ux * len, y1 - uy * len);
+    let (nx, ny) = (-uy * half, ux * half);
+    [x1, y1, bx + nx, by + ny, bx - nx, by - ny]
+}
+
+/// Mitte der Basis eines Maschinenbau-Pfeil-Dreiecks (Endpunkt der Linie).
+fn arrow_eng_base(h: &[f32; 6]) -> (f32, f32) {
+    ((h[2] + h[4]) / 2.0, (h[3] + h[5]) / 2.0)
+}
+
 /// Geometrische Form: Linie, Pfeil, Doppelpfeil, Ellipse, Herz oder geschlossenes Polygon.
-/// q: LINE/ARROW/ARROW2 = {x0,y0,x1,y1}; ELLIPSE/HEART = ungedrehte Box {x0,y0,x1,y1} + ang; POLY = Eckpunkte.
+/// q: LINE/ARROW/ARROW2/ARROW_ENG = {x0,y0,x1,y1}; ELLIPSE/HEART = ungedrehte Box {x0,y0,x1,y1} + ang; POLY = Eckpunkte.
 #[derive(Clone, Debug, Default)]
 pub struct Shape {
     pub kind: i32,
@@ -450,6 +477,14 @@ impl Item {
                     let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
                     let (hx, hy) = ell_half((q[2] - q[0]).abs() / 2.0, (q[3] - q[1]).abs() / 2.0, g.ang);
                     RectF::new(cx - hx - w, cy - hy - w, cx + hx + w, cy + hy + w)
+                } else if g.kind == ARROW_ENG {
+                    // Dreieckspunkte gehören zur Huelle (die Basis liegt seitlich ueber der Linie).
+                    let h = arrow_eng_head(q[0], q[1], q[2], q[3], w);
+                    let mut r = RectF::new(q[0], q[1], q[0], q[1]);
+                    for c in q[..4].chunks_exact(2).chain(h.chunks_exact(2)) {
+                        r.union(&RectF::new(c[0], c[1], c[0], c[1]));
+                    }
+                    RectF::new(r.left - w, r.top - w, r.right + w, r.bottom + w)
                 } else {
                     let mut r = RectF::new(q[0], q[1], q[0], q[1]);
                     for c in q.chunks_exact(2) {
@@ -625,6 +660,20 @@ impl Item {
                     c.draw_line(q[0], q[1], h2[2], h2[3], &p);
                 }
             }
+            ARROW_ENG => {
+                // Schaft bis zur Basis, Spitze gefuellt (sie ragt nicht ueber die Basis hinaus)
+                let h = arrow_eng_head(q[0], q[1], q[2], q[3], self.width);
+                let (bx, by) = arrow_eng_base(&h);
+                c.draw_line(q[0], q[1], bx, by, &p);
+                let mut pb = PathBuilder::new();
+                pb.move_to(h[0], h[1]);
+                pb.line_to(h[2], h[3]);
+                pb.line_to(h[4], h[5]);
+                pb.close();
+                if let Some(path) = pb.finish() {
+                    c.draw_path(&path, &Paint::fill(p.color));
+                }
+            }
             ELLIPSE => {
                 if g.ang != 0.0 {
                     c.save();
@@ -702,6 +751,10 @@ impl Item {
                 let q = &g.q;
                 match g.kind {
                     LINE | ARROW | ARROW2 => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
+                    ARROW_ENG => {
+                        let h = arrow_eng_head(q[0], q[1], q[2], q[3], self.width);
+                        seg(x, y, q[0], q[1], q[2], q[3]) <= lim || poly_hit(&h, x, y, lim)
+                    }
                     HEART => poly_hit(&heart_pts(q, g.ang, 32), x, y, lim),
                     ELLIPSE => {
                         let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
@@ -847,6 +900,13 @@ impl Item {
                     out.push(self.mk(hl, &[h1[0], h1[1], q[2], q[3], h1[2], h1[3]]));
                     out.push(self.mk(hl, &[h2[0], h2[1], q[0], q[1], h2[2], h2[3]]));
                 }
+            }
+            ARROW_ENG => {
+                let h = arrow_eng_head(q[0], q[1], q[2], q[3], self.width);
+                let (bx, by) = arrow_eng_base(&h);
+                out.push(self.mk(hl, &[q[0], q[1], bx, by]));
+                // Spitze als geschlossener Strich (Strich kann nicht gefuellt werden)
+                out.push(self.mk(hl, &[h[0], h[1], h[2], h[3], h[4], h[5], h[0], h[1]]));
             }
             ELLIPSE => {
                 let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
@@ -1120,5 +1180,84 @@ mod tests {
         it.xf(2.0, 50.0, 25.0, 10.0, 0.0);
         assert_eq!(it.width, 4.0);
         assert_eq!(it.to_strokes().len(), 1);
+    }
+
+    #[test]
+    fn arrow_eng_angle_and_length() {
+        for w in [0.5f32, 1.0, 2.0, 4.0] {
+            let h = arrow_eng_head(0.0, 0.0, 100.0, 40.0, w);
+            let (tip, l, r) = ((h[0] as f64, h[1] as f64), (h[2] as f64, h[3] as f64), (h[4] as f64, h[5] as f64));
+            let (vl, vr) = ((l.0 - tip.0, l.1 - tip.1), (r.0 - tip.0, r.1 - tip.1));
+            let dot = vl.0 * vr.0 + vl.1 * vr.1;
+            let cos = dot / ((vl.0.hypot(vl.1)) * (vr.0.hypot(vr.1)));
+            let deg = cos.acos().to_degrees();
+            assert!((deg - 15.0).abs() < 0.1, "w={w}: Winkel {deg}");
+            // Spitzenlaenge: Abstand Spitze -> Basismitte
+            let base = ((l.0 + r.0) / 2.0, (l.1 + r.1) / 2.0);
+            let len = (tip.0 - base.0).hypot(tip.1 - base.1);
+            assert!((len - arrow_eng_len(w) as f64).abs() < 1e-3, "w={w}: Laenge {len}");
+        }
+    }
+
+    #[test]
+    fn arrow_eng_length_rule() {
+        assert_eq!(arrow_eng_len(0.5), 12.0);
+        assert_eq!(arrow_eng_len(1.0), 12.0);
+        assert_eq!(arrow_eng_len(1.2), 12.0);
+        assert_eq!(arrow_eng_len(2.0), 20.0);
+        assert_eq!(arrow_eng_len(3.5), 35.0);
+        // degenerierte Linie: keine NaN-Punkte
+        let h = arrow_eng_head(5.0, 5.0, 5.0, 5.0, 2.0);
+        assert!(h.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn arrow_eng_json_roundtrip() {
+        let it = Item::shape(ARROW_ENG, vec![1.0, 2.0, 30.5, 40.25], 0xFF0000FF, 2.0);
+        let j = it.json();
+        assert_eq!(j["k"], json!(ARROW_ENG));
+        assert_eq!(j["t"], json!("g"));
+        let again = Item::from_json(&j).unwrap();
+        assert_eq!(again.as_shape().unwrap().kind, ARROW_ENG);
+        assert_eq!(again.json(), j);
+        // Datei-Eintrag wie von der Java-Version/anderen Clients geschrieben
+        let v: Value = serde_json::from_str(r#"{"t":"g","c":-16776961,"w":2,"k":6,"h":false,"q":[0,0,50,0],"ly":1}"#).unwrap();
+        let it = Item::from_json(&v).unwrap();
+        assert_eq!(it.as_shape().unwrap().kind, ARROW_ENG);
+        assert_eq!(it.as_shape().unwrap().q, vec![0.0, 0.0, 50.0, 0.0]);
+    }
+
+    #[test]
+    fn arrow_eng_render_and_hit() {
+        // Pfeil horizontal nach rechts, Spitze bei x = 50, Linienbreite 2 -> Spitzenlaenge 20
+        let it = Item::shape(ARROW_ENG, vec![5.0, 30.0, 50.0, 30.0], 0xFFFF0000, 2.0);
+        let mut pm = Pixmap::new(60, 60).unwrap();
+        {
+            let mut c = Canvas::new(&mut pm);
+            it.draw(&mut c, false);
+        }
+        let alpha = |x: u32, y: u32| pm.pixel(x, y).unwrap().alpha();
+        // Mitte der Spitze (innerhalb des Dreiecks)
+        assert!(alpha(41, 30) > 200, "Spitze nicht gefaerbt");
+        // Schaft
+        assert!(alpha(15, 30) > 200, "Schaft nicht gefaerbt");
+        // knapp neben der Spitze, ausserhalb des Dreiecks
+        assert_eq!(alpha(45, 27), 0, "Pixel neben der Spitze gefaerbt");
+        assert_eq!(alpha(51, 30), 0, "Pixel hinter der Spitze gefaerbt");
+        // Trefferpruefung: nahe Spitze und Schaft
+        assert!(it.hit(45.0, 30.0, 1.0));
+        assert!(!it.hit(45.0, 20.0, 1.0));
+    }
+
+    #[test]
+    fn arrow_eng_strokes_and_bounds() {
+        let it = Item::shape(ARROW_ENG, vec![0.0, 0.0, 100.0, 0.0], INK, 2.0);
+        let strokes = it.to_strokes();
+        assert_eq!(strokes.len(), 2);
+        // Schaft endet an der Basis, nicht in der Spitze
+        let shaft = strokes[0].as_stroke().unwrap();
+        assert!(shaft.p[3] < 100.0 - 15.0);
+        let b = it.bounds();
+        assert!(b.right >= 100.0 + 2.0 && b.left <= 0.0 && b.top < -1.0 && b.bottom > 1.0);
     }
 }

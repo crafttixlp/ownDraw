@@ -1,0 +1,133 @@
+# CI für OwnDraw: Build, Tests, Clippy (nicht blockierend) sowie AppImage- und APK-Artefakte.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Build und Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Systempakete für den Desktop-Build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev \
+            libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
+
+      - name: cargo build
+        run: cargo build --workspace --locked
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      - name: cargo clippy (nicht blockierend)
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  apk:
+    name: APK bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r26d
+
+      - name: NDK-Pfad setzen
+        run: echo "ANDROID_NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: apk
+
+      - name: Signierschlüssel vorbereiten
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/owndraw-release.jks"
+            {
+              echo "OWNDRAW_KEYSTORE=$RUNNER_TEMP/owndraw-release.jks"
+              echo "OWNDRAW_KEYSTORE_PASS=$KS_PASS"
+              echo "OWNDRAW_KEY_ALIAS=$KS_ALIAS"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning title=Debug-Keystore::Secret ANDROID_KEYSTORE_B64 fehlt – die APK wird mit dem Debug-Schlüssel gebaut (nicht für Releases geeignet)."
+          fi
+
+      - name: APK bauen
+        run: crates/owndraw-android/build-apk.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owndraw-apk
+          path: target/apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  appimage:
+    name: AppImage bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Systempakete für AppImage und Desktop-Build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc zlib1g-dev squashfs-tools pkg-config libxkbcommon-dev \
+            libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: appimage
+
+      - name: AppImage bauen
+        run: ./build-appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owndraw-appimage
+          path: OwnDraw-*-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 30

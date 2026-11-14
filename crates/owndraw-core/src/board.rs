@@ -9,6 +9,7 @@ use crate::geom::{hypot, RectF};
 use crate::icons;
 use crate::item::{self, Item, Kind, INK};
 use crate::layer::Layer;
+use crate::pages::{BoardMode, PageBg, PageSetup};
 use crate::recognizer;
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -24,6 +25,8 @@ pub const SHAPE: i32 = 4;
 pub const NOTE: i32 = 5;
 pub const TEXT: i32 = 6;
 pub const ACCENT: u32 = 0xFF7C8CFF;
+/// Linienabstand des Seitenhintergrunds (liniert/kariert/punktiert) in pt.
+pub const PAGE_LINE: f32 = 24.0;
 
 /// Rueckmeldungen an die Oberflaeche (entspricht BoardView.Host).
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +94,8 @@ pub struct Snap {
     items: Vec<Rc<Item>>,
     layers: Vec<Layer>,
     active: usize,
+    /// Seiten-Einstellungen (Seitenmodus: Seiten hinzufuegen/loeschen/verschieben ist rueckgaengig machbar).
+    mode: BoardMode,
 }
 
 thread_local! {
@@ -127,6 +132,8 @@ pub struct Board {
     /// Radierer-Modus: 0 = ganze Objekte, 1 = nur ueberstrichene Stellen.
     pub erase_mode: i32,
     pub events: Vec<Event>,
+    /// Unendlich oder Seiten (WP2).
+    pub board_mode: BoardMode,
     /// Neu zeichnen noetig (invalidate).
     pub needs_redraw: bool,
 
@@ -229,6 +236,7 @@ impl Board {
             sel_mode: 0,
             erase_mode: 0,
             events: Vec::new(),
+            board_mode: BoardMode::Infinite,
             needs_redraw: true,
             width: 0.0,
             height: 0.0,
@@ -488,6 +496,11 @@ impl Board {
 
     /// Fuegt ein bereits im Bildordner gespeichertes Bild (Dateiname, Pixelgroesse) mittig ein.
     pub fn add_image(&mut self, file: &str, pw: u32, ph: u32) -> bool {
+        self.add_image_at(file, pw, ph, None)
+    }
+
+    /// Wie `add_image`, aber mit Mittelpunkt `at` (Weltkoordinaten); im Seitenmodus auf der Seite unter `at`.
+    pub fn add_image_at(&mut self, file: &str, pw: u32, ph: u32, at: Option<(f32, f32)>) -> bool {
         if self.layer_blocked() || pw == 0 || ph == 0 {
             return false;
         }
@@ -496,7 +509,7 @@ impl Board {
         let (vw, vh) = (w / self.sc, h / self.sc);
         let s = (1.0 / self.sc).min((0.6 * vw / pw as f32).min(0.6 * vh / ph as f32));
         let (iw, ih) = (pw as f32 * s, ph as f32 * s);
-        let (cx, cy) = ((w / 2.0 - self.tx) / self.sc, (h / 2.0 - self.ty) / self.sc);
+        let (cx, cy) = self.paste_center(at);
         let it = Item::new(Kind::Img(item::Img { x: cx - iw / 2.0, y: cy - ih / 2.0, w: iw, h: ih, ang: 0.0, file: file.to_string() }));
         let id = it.id;
         self.add_top(it);
@@ -509,8 +522,11 @@ impl Board {
         true
     }
 
-    /// Huelle aller sichtbaren Objekte.
+    /// Huelle aller sichtbaren Objekte; im Seitenmodus die Huelle aller Seiten.
     pub fn export_bounds(&self) -> Option<RectF> {
+        if let BoardMode::Pages(ps) = &self.board_mode {
+            return ps.bounds();
+        }
         let mut b: Option<RectF> = None;
         for it in &self.items {
             if !self.layers[self.layer_idx(it.layer)].visible {
@@ -531,6 +547,7 @@ impl Board {
             let mut c = Canvas::new(&mut bm);
             c.scale(k, k);
             c.translate(-b.left, -b.top);
+            self.clip_pages(&mut c);
             let li = self.layers.iter().position(|x| x == l);
             for it in &self.items {
                 let x = self.layer_idx(it.layer);
@@ -547,11 +564,11 @@ impl Board {
         {
             let mut c = Canvas::new(&mut bm);
             if with_bg {
-                c.draw_color(self.bg_color());
+                c.draw_color(self.base_color());
             }
             c.scale(k, k);
             c.translate(-b.left, -b.top);
-            self.draw_layered(&mut c, None, false);
+            self.draw_scene(&mut c, None, false, with_bg, 1.0 / k);
         }
         Some(bm)
     }
@@ -641,7 +658,7 @@ impl Board {
     }
 
     fn snapshot(&self) -> Snap {
-        Snap { items: self.items.clone(), layers: self.layers.clone(), active: self.active }
+        Snap { items: self.items.clone(), layers: self.layers.clone(), active: self.active, mode: self.board_mode.clone() }
     }
 
     pub fn can_undo(&self) -> bool {
@@ -676,6 +693,7 @@ impl Board {
             sn.layers.iter().map(|o| self.layers.iter().find(|l| l.id == o.id).cloned().unwrap_or_else(|| o.clone())).collect();
         self.layers = nl;
         self.active = sn.active.min(self.layers.len() - 1);
+        self.board_mode = sn.mode;
         self.sel_clear();
         self.modified = true;
         self.refresh();
@@ -694,13 +712,16 @@ impl Board {
                 top = false;
             }
         }
-        if top && self.cache.is_some() && !self.dirty {
+        let clip = if top && !self.dirty { self.pages_path() } else { None };
+        if let (true, false, Some(cache)) = (top, self.dirty, self.cache.as_mut()) {
             let (ps, tx, ty, sc, dark) = (self.px_scale, self.tx, self.ty, self.sc, self.dark);
-            let cache = self.cache.as_mut().unwrap();
             let mut c = Canvas::new(cache);
             c.scale(ps, ps);
             c.translate(tx, ty);
             c.scale(sc, sc);
+            if let Some(p) = &clip {
+                c.clip_path(p);
+            }
             it.draw(&mut c, dark);
         } else {
             self.dirty = true;
@@ -785,6 +806,74 @@ impl Board {
     }
     fn view_cy(&self) -> f32 {
         ((if self.height > 0.0 { self.height } else { 1000.0 }) / 2.0 - self.ty) / self.sc
+    }
+
+    /// Weltpunkt zu einem Punkt in Board-Bildschirmkoordinaten (Pixel relativ zur Zeichenflaeche).
+    pub fn screen_to_world(&self, x: f32, y: f32) -> (f32, f32) {
+        ((x - self.tx) / self.sc, (y - self.ty) / self.sc)
+    }
+
+    /// Mittelpunkt der Ansicht in Weltkoordinaten.
+    pub fn view_center(&self) -> (f32, f32) {
+        (self.view_cx(), self.view_cy())
+    }
+
+    /// Zielpunkt fuers Einfuegen: `at` oder Ansichtsmitte; im Seitenmodus auf die Seite unter dem Punkt
+    /// (liegt er daneben, auf die naechste Seite begrenzt).
+    pub fn paste_center(&self, at: Option<(f32, f32)>) -> (f32, f32) {
+        let (mut x, mut y) = at.unwrap_or_else(|| self.view_center());
+        if let BoardMode::Pages(ps) = &self.board_mode {
+            if let Some(r) = ps.nearest_page(x, y).and_then(|i| ps.rect(i)) {
+                x = x.clamp(r.left, r.right);
+                y = y.clamp(r.top, r.bottom);
+            }
+        }
+        (x, y)
+    }
+
+    /// Nur die ausgewaehlten Objekte, transparent gerendert (Zwischenablage-Bild). Aufloesung `scale`-fach
+    /// (hoechstens `max_px` Pixel Kantenlaenge). None ohne Auswahl.
+    pub fn render_selection(&self, scale: f32, max_px: u32) -> Option<Pixmap> {
+        let b = self.sel_bounds()?;
+        let k = scale.min(max_px as f32 / b.width().max(b.height()).max(1.0));
+        let mut tmp = Board::new(1.0);
+        tmp.items = self.sel_items().iter().map(|it| Rc::new((*it).clone())).collect();
+        tmp.layers = self.layers.clone();
+        tmp.dark = self.dark;
+        tmp.render_composite(&b, k, false)
+    }
+
+    /// Fuegt Objekte als Kopien (neue ids, aktive Ebene) mit Mittelpunkt `at` (Welt) bzw. Ansichtsmitte ein
+    /// und waehlt sie aus. Liefert die Anzahl der eingefuegten Objekte.
+    pub fn paste_items(&mut self, items: &[Item], at: Option<(f32, f32)>) -> usize {
+        if items.is_empty() || self.layer_blocked() {
+            return 0;
+        }
+        let mut b = items[0].bounds();
+        for it in &items[1..] {
+            b.union(&it.bounds());
+        }
+        let (cx, cy) = self.paste_center(at);
+        let (dx, dy) = (cx - b.center_x(), cy - b.center_y());
+        self.checkpoint();
+        let lid = self.active_layer().id;
+        self.sel_clear();
+        for it in items {
+            let mut n = it.dup();
+            n.layer = lid;
+            if let Some(ex) = n.extra.as_mut() {
+                // Seitenzuordnung (Xournal++) ergibt sich im Seitenmodus aus der Lage
+                ex.remove("page");
+            }
+            n.xf(1.0, 0.0, 0.0, dx, dy);
+            self.sel.push(n.id);
+            self.items.push(Rc::new(n));
+        }
+        self.frame_ok = false;
+        self.tool = SELECT;
+        self.refresh();
+        self.changed();
+        items.len()
     }
 
     pub fn copy_sel(&mut self) {
@@ -894,7 +983,11 @@ impl Board {
         self.frame_ok = false;
     }
 
+    /// Huelle aller Objekte; im Seitenmodus die Huelle aller Seiten.
     pub fn content_bounds(&self) -> Option<RectF> {
+        if let BoardMode::Pages(ps) = &self.board_mode {
+            return ps.bounds();
+        }
         let mut it = self.items.iter();
         let mut b = it.next()?.bounds();
         for x in it {
@@ -906,6 +999,21 @@ impl Board {
     /// Alles zeigen.
     pub fn fit(&mut self) {
         let (w, hh) = (self.width, self.height);
+        if let (BoardMode::Pages(ps), true) = (&self.board_mode, w > 0.0) {
+            // Seitenmodus: auf die Seitenbreite einpassen, Oberkante der aktuellen Seite oben
+            let rs = ps.rects();
+            if let Some(pw) = rs.iter().map(|r| r.width()).reduce(f32::max) {
+                let m = 16.0 * self.dp;
+                let (cx, cy) = ((w / 2.0 - self.tx) / self.sc, (hh / 2.0 - self.ty) / self.sc);
+                let cur = ps.nearest_page(cx, cy).unwrap_or(0);
+                self.sc = ((w - 2.0 * m) / pw.max(1.0)).clamp(0.05, 12.0);
+                self.tx = w / 2.0 - pw / 2.0 * self.sc;
+                self.ty = m - rs[cur].top * self.sc;
+                self.refresh();
+                self.changed();
+                return;
+            }
+        }
         match self.content_bounds() {
             Some(b) if w > 0.0 => {
                 let m = 48.0 * self.dp;
@@ -1033,12 +1141,12 @@ impl Board {
     }
 
     fn render_all(&self, c: &mut Canvas, b: &RectF, k: f32, ox: f32, oy: f32) {
-        c.draw_color(self.bg_color());
+        c.draw_color(self.base_color());
         c.save();
         c.translate(ox, oy);
         c.scale(k, k);
         c.translate(-b.left, -b.top);
-        self.draw_layered(c, None, false);
+        self.draw_scene(c, None, false, true, 1.0 / k);
         c.restore();
     }
 
@@ -1047,10 +1155,20 @@ impl Board {
         let mut bm = Pixmap::new(480, 300).unwrap();
         {
             let mut c = Canvas::new(&mut bm);
-            match self.export_bounds() {
-                None => c.draw_color(self.bg_color()),
-                Some(mut b) => {
+            let bounds = match &self.board_mode {
+                // Seitenmodus: oberer Teil der ersten Seite
+                BoardMode::Pages(ps) => ps.rect(0).map(|r| {
+                    let w = r.width() + 40.0;
+                    RectF::new(r.left - 20.0, r.top - 20.0, r.left - 20.0 + w, r.top - 20.0 + w * 300.0 / 480.0)
+                }),
+                BoardMode::Infinite => self.export_bounds().map(|mut b| {
                     b.inset(-20.0, -20.0);
+                    b
+                }),
+            };
+            match bounds {
+                None => c.draw_color(self.base_color()),
+                Some(b) => {
                     let k = (480.0 / b.width()).min(300.0 / b.height()).min(2.0);
                     self.render_all(&mut c, &b, k, (480.0 - b.width() * k) / 2.0, (300.0 - b.height() * k) / 2.0);
                 }
@@ -1079,6 +1197,9 @@ impl Board {
 
     /// PDF mit einer Seite (Seitengroesse wie die Android-Version, Inhalt mit doppelter Aufloesung als Bild).
     pub fn export_pdf(&self) -> Option<Vec<u8>> {
+        if let BoardMode::Pages(ps) = &self.board_mode {
+            return self.export_pdf_pages(ps);
+        }
         let mut b = self.export_bounds()?;
         b.inset(-40.0, -40.0);
         let k = (2400.0 / b.width().max(b.height())).min(1.0);
@@ -1089,6 +1210,302 @@ impl Board {
             self.render_all(&mut c, &b, k * 2.0, 0.0, 0.0);
         }
         Some(crate::export::pdf_from_pixmap(&bm, pw as f32, ph as f32))
+    }
+
+    // ---------- Seitenmodus (WP2) ----------
+
+    /// Seiten-Einstellungen im Seitenmodus, sonst None.
+    pub fn pages(&self) -> Option<&PageSetup> {
+        match &self.board_mode {
+            BoardMode::Pages(ps) => Some(ps),
+            BoardMode::Infinite => None,
+        }
+    }
+
+    /// Seitenrechtecke in Weltkoordinaten (leer im unendlichen Modus).
+    pub fn page_rects(&self) -> Vec<RectF> {
+        self.pages().map(|p| p.rects()).unwrap_or_default()
+    }
+
+    /// Seite unter dem Weltpunkt (wx, wy); None im Zwischenraum oder im unendlichen Modus.
+    pub fn page_at(&self, wx: f32, wy: f32) -> Option<usize> {
+        self.pages()?.page_at(wx, wy)
+    }
+
+    /// Seite je Objekt (gleiche Reihenfolge wie `items`): die Seite unter dem Mittelpunkt des Objekts,
+    /// liegt er im Zwischenraum/ausserhalb, die naechstgelegene Seite. Im unendlichen Modus ueberall None.
+    /// Gedacht fuer den Xournal++-Export (Objekte je Seite, Koordinaten dann relativ zu `page_rects()[i]`).
+    pub fn page_of_items(&self) -> Vec<Option<usize>> {
+        match self.pages() {
+            Some(ps) => self.items.iter().map(|it| ps.page_of(it)).collect(),
+            None => vec![None; self.items.len()],
+        }
+    }
+
+    /// Seitenmodus: liegt der Weltpunkt ausserhalb aller Seiten?
+    fn outside_pages(&self, wx: f32, wy: f32) -> bool {
+        self.pages().map(|ps| ps.page_at(wx, wy).is_none()).unwrap_or(false)
+    }
+
+    /// Ersetzt die Seiten durch `new`; `order[neuer Index]` = alter Index (None = neue, leere Seite).
+    /// Objekte entfallender Seiten werden geloescht, die uebrigen mit ihrer Seite verschoben. Mit Undo-Schritt.
+    fn relayout_pages(&mut self, new: PageSetup, order: &[Option<usize>]) {
+        let BoardMode::Pages(old) = &self.board_mode else { return };
+        let shifts = old.shifts(&new, order);
+        let assign: Vec<Option<usize>> = self.items.iter().map(|it| old.page_of(it)).collect();
+        self.checkpoint();
+        let mut keep = Vec::with_capacity(self.items.len());
+        for (it, pg) in self.items.drain(..).zip(assign) {
+            match pg.map(|p| shifts[p]) {
+                Some(None) => {} // Seite geloescht
+                Some(Some(dy)) if dy != 0.0 => {
+                    let mut it = it;
+                    Rc::make_mut(&mut it).xf(1.0, 0.0, 0.0, 0.0, dy);
+                    keep.push(it);
+                }
+                _ => keep.push(it),
+            }
+        }
+        self.items = keep;
+        self.board_mode = BoardMode::Pages(new);
+        self.sel_clear();
+        self.refresh();
+        self.changed();
+    }
+
+    /// Fuegt nach Seite `after` (None = vor der ersten) eine leere Seite mit den Vorgaben ein; folgende Seiten
+    /// rutschen samt Inhalt nach unten. Liefert den Index der neuen Seite (None im unendlichen Modus).
+    pub fn add_page(&mut self, after: Option<usize>) -> Option<usize> {
+        let mut new = self.pages()?.clone();
+        let n = new.pages.len();
+        let at = new.insert_page(after);
+        let order: Vec<Option<usize>> = (0..=n).map(|i| if i < at { Some(i) } else if i == at { None } else { Some(i - 1) }).collect();
+        self.relayout_pages(new, &order);
+        Some(at)
+    }
+
+    /// Loescht Seite i samt ihrer Objekte; folgende Seiten ruecken nach oben. Die letzte Seite bleibt immer erhalten.
+    pub fn remove_page(&mut self, i: usize) -> bool {
+        let Some(ps) = self.pages() else { return false };
+        if i >= ps.pages.len() || ps.pages.len() <= 1 {
+            return false;
+        }
+        let mut new = ps.clone();
+        new.pages.remove(i);
+        let order: Vec<Option<usize>> = (0..ps.pages.len()).filter(|&k| k != i).map(Some).collect();
+        self.relayout_pages(new, &order);
+        true
+    }
+
+    /// Verschiebt Seite `from` an Position `to` (Index nach dem Verschieben), Objekte wandern mit.
+    pub fn move_page(&mut self, from: usize, to: usize) -> bool {
+        let Some(ps) = self.pages() else { return false };
+        let n = ps.pages.len();
+        if from >= n || to >= n || from == to {
+            return false;
+        }
+        let mut idx: Vec<usize> = (0..n).collect();
+        let x = idx.remove(from);
+        idx.insert(to, x);
+        let mut new = ps.clone();
+        new.pages = idx.iter().map(|&k| ps.pages[k].clone()).collect();
+        let order: Vec<Option<usize>> = idx.into_iter().map(Some).collect();
+        self.relayout_pages(new, &order);
+        true
+    }
+
+    /// Setzt den Hintergrund von Seite i (None = alle Seiten und Vorgabe fuer neue Seiten). Mit Undo-Schritt.
+    pub fn set_page_bg(&mut self, i: Option<usize>, bg: PageBg) -> bool {
+        let Some(ps) = self.pages() else { return false };
+        if i.is_some_and(|i| i >= ps.pages.len()) {
+            return false;
+        }
+        self.checkpoint();
+        if let BoardMode::Pages(ps) = &mut self.board_mode {
+            match i {
+                Some(i) => ps.pages[i].bg = bg,
+                None => {
+                    ps.bg = bg;
+                    ps.pages.iter_mut().for_each(|p| p.bg = bg);
+                }
+            }
+        }
+        self.refresh();
+        self.changed();
+        true
+    }
+
+    /// Ansicht so verschieben, dass Seite i oben (mit kleinem Rand) und waagrecht mittig steht. Zoom bleibt.
+    pub fn show_page(&mut self, i: usize) {
+        let Some(r) = self.pages().and_then(|p| p.rect(i)) else { return };
+        self.tx = self.width / 2.0 - r.center_x() * self.sc;
+        self.ty = 16.0 * self.dp - r.top * self.sc;
+        self.refresh();
+        self.changed();
+    }
+
+    /// Farbe der Flaeche zwischen den Seiten.
+    pub fn desk_color(&self) -> u32 {
+        if self.dark {
+            0xFF0F1013
+        } else {
+            0xFFE3E4E8
+        }
+    }
+
+    /// Papierfarbe einer Seite.
+    pub fn page_color(&self) -> u32 {
+        if self.dark {
+            0xFF202228
+        } else {
+            0xFFFFFFFF
+        }
+    }
+
+    /// Grundfarbe der ganzen Flaeche (unendlich: Board-Hintergrund, Seitenmodus: Zwischenraum).
+    fn base_color(&self) -> u32 {
+        if self.pages().is_some() {
+            self.desk_color()
+        } else {
+            self.bg_color()
+        }
+    }
+
+    /// Bildschirm-Hintergrund vor dem Inhalt (Koordinaten: logische Pixel).
+    fn backdrop(&self, c: &mut Canvas) {
+        c.draw_color(self.base_color());
+        if self.pages().is_none() {
+            self.pattern(c);
+        }
+    }
+
+    /// Vereinigung aller Seitenrechtecke als Pfad (Weltkoordinaten); None im unendlichen Modus.
+    fn pages_path(&self) -> Option<tiny_skia::Path> {
+        let ps = self.pages()?;
+        let mut pb = PathBuilder::new();
+        for r in ps.rects() {
+            if let Some(rc) = tiny_skia::Rect::from_ltrb(r.left, r.top, r.right, r.bottom) {
+                pb.push_rect(rc);
+            }
+        }
+        // ohne Seiten: leerer Clip (nichts sichtbar)
+        Some(pb.finish().unwrap_or_else(|| PathBuilder::from_rect(tiny_skia::Rect::from_ltrb(0.0, 0.0, 0.0001, 0.0001).unwrap())))
+    }
+
+    /// Seitenmodus: schneidet alles Folgende auf die Seiten zu (aktuelle Transformation = Welt).
+    fn clip_pages(&self, c: &mut Canvas) {
+        if let Some(p) = self.pages_path() {
+            c.clip_path(&p);
+        }
+    }
+
+    /// Inhalt in Weltkoordinaten. Seitenmodus: Seitenblaetter (wenn `sheets`) und auf die Seiten geschnittene Objekte.
+    /// `px` = Welteinheiten je Pixel (fuer Mindest-Linienbreiten und Schatten).
+    fn draw_scene(&self, c: &mut Canvas, vis: Option<&RectF>, skip_lift: bool, sheets: bool, px: f32) {
+        if self.pages().is_none() {
+            self.draw_layered(c, vis, skip_lift);
+            return;
+        }
+        if sheets {
+            self.draw_sheets(c, vis, px);
+        }
+        c.save();
+        self.clip_pages(c);
+        self.draw_layered(c, vis, skip_lift);
+        c.restore();
+    }
+
+    /// Zeichnet die Seitenblaetter (Schatten, Papier, Linien/Raster/Punkte) in Weltkoordinaten.
+    fn draw_sheets(&self, c: &mut Canvas, vis: Option<&RectF>, px: f32) {
+        let Some(ps) = self.pages() else { return };
+        let sh = 3.0 * px;
+        for (p, r) in ps.pages.iter().zip(ps.rects()) {
+            if let Some(v) = vis {
+                let mut rr = r;
+                rr.inset(-sh, -sh);
+                if !RectF::intersects(v, &rr) {
+                    continue;
+                }
+            }
+            c.draw_rect(r.left + sh * 0.5, r.top + sh, r.right + sh * 0.5, r.bottom + sh, &Paint::fill(0x30000000));
+            c.draw_rect(r.left, r.top, r.right, r.bottom, &Paint::fill(self.page_color()));
+            self.draw_page_bg(c, p.bg, &r, px);
+        }
+    }
+
+    /// Seitenhintergrund (Linienabstand PAGE_LINE) im Rechteck r.
+    fn draw_page_bg(&self, c: &mut Canvas, bg: PageBg, r: &RectF, px: f32) {
+        const STEP: f32 = PAGE_LINE;
+        let col = if self.dark { 0xFF3B3F4C } else { 0xFFC3CDE0 };
+        let lw = 0.6f32.max(px);
+        let mut pb = PathBuilder::new();
+        match bg {
+            PageBg::Plain => return,
+            PageBg::Lined => {
+                // Rand oben (3 Zeilen), unten eine Zeile frei; roter Rand links
+                let mut y = r.top + 3.0 * STEP;
+                while y <= r.bottom - STEP + 0.01 {
+                    pb.move_to(r.left, y);
+                    pb.line_to(r.right, y);
+                    y += STEP;
+                }
+                let mx = r.left + 2.5 * STEP;
+                let mcol = if self.dark { 0xFF5A3A40 } else { 0xFFF0B0B0 };
+                c.draw_line(mx, r.top, mx, r.bottom, &Paint::stroke(mcol, lw, Cap::Butt));
+            }
+            PageBg::Grid => {
+                let mut y = r.top + STEP;
+                while y < r.bottom - 0.01 {
+                    pb.move_to(r.left, y);
+                    pb.line_to(r.right, y);
+                    y += STEP;
+                }
+                let mut x = r.left + STEP;
+                while x < r.right - 0.01 {
+                    pb.move_to(x, r.top);
+                    pb.line_to(x, r.bottom);
+                    x += STEP;
+                }
+            }
+            PageBg::Dotted => {
+                let mut dots = Vec::new();
+                let mut y = r.top + STEP;
+                while y < r.bottom - 0.01 {
+                    let mut x = r.left + STEP;
+                    while x < r.right - 0.01 {
+                        dots.push(x);
+                        dots.push(y);
+                        x += STEP;
+                    }
+                    y += STEP;
+                }
+                c.draw_points(&dots, &Paint::stroke(col, (1.6f32).max(2.0 * px), Cap::Round));
+                return;
+            }
+        }
+        if let Some(p) = pb.finish() {
+            c.draw_path(&p, &Paint::stroke(col, lw, Cap::Butt));
+        }
+    }
+
+    /// PDF im Seitenmodus: eine PDF-Seite je Board-Seite in Seitengroesse (pt), Inhalt mit 2× Aufloesung (144 dpi).
+    fn export_pdf_pages(&self, ps: &PageSetup) -> Option<Vec<u8>> {
+        const K: f32 = 2.0;
+        let rects = ps.rects();
+        crate::export::pdf_pages(rects.len(), |i| {
+            let r = rects.get(i)?;
+            let mut bm = Pixmap::new(((r.width() * K).round() as u32).max(1), ((r.height() * K).round() as u32).max(1))?;
+            {
+                let mut c = Canvas::new(&mut bm);
+                c.draw_color(self.page_color());
+                c.scale(K, K);
+                c.translate(-r.left, -r.top);
+                self.draw_page_bg(&mut c, ps.pages[i].bg, r, 1.0 / K);
+                c.clip_rect(r.left, r.top, r.right, r.bottom);
+                self.draw_layered(&mut c, Some(r), false);
+            }
+            Some((bm, r.width(), r.height()))
+        })
     }
 
     // ---------- Eingabe ----------
@@ -1178,7 +1595,7 @@ impl Board {
                         self.finish();
                     }
                 } else if self.mode == 3 {
-                    if e.pointers.len() - 1 >= 2 {
+                    if e.pointers.len() > 2 {
                         self.zinit = true;
                     } else if r < e.pointers.len() {
                         self.mode = 2;
@@ -1259,6 +1676,10 @@ impl Board {
         if self.tool != SELECT && self.layer_blocked() {
             self.blocked = true;
             self.ex = -1.0;
+        } else if !self.erasing && self.tool != SELECT && self.outside_pages(self.sx, self.sy) {
+            // Seitenmodus: ausserhalb aller Seiten begonnene Striche/Formen/Texte werden verworfen
+            self.blocked = true;
+            self.ex = -1.0;
         } else if self.erasing {
             self.ex = x;
             self.ey = y;
@@ -1336,6 +1757,7 @@ impl Board {
             let k = match self.shape_kind {
                 1 => item::ELLIPSE,
                 2 => item::LINE,
+                4 => item::ARROW_ENG,
                 _ => item::ARROW,
             };
             Item::shape(k, vec![x0, y0, x1, y1], self.color, w)
@@ -1422,7 +1844,8 @@ impl Board {
         }
     }
 
-    fn sel_bounds(&self) -> Option<RectF> {
+    /// Huelle der ausgewaehlten Objekte.
+    pub fn sel_bounds(&self) -> Option<RectF> {
         let s = self.sel_items();
         let mut b = s.first()?.bounds();
         for it in &s[1..] {
@@ -1803,12 +2226,11 @@ impl Board {
         {
             let mut c = Canvas::new(&mut cache);
             c.scale(ps, ps);
-            c.draw_color(self.bg_color());
-            self.pattern(&mut c);
+            self.backdrop(&mut c);
             c.translate(self.tx, self.ty);
             c.scale(self.sc, self.sc);
             let vis = RectF::new(-self.tx / self.sc, -self.ty / self.sc, (self.width - self.tx) / self.sc, (self.height - self.ty) / self.sc);
-            self.draw_layered(&mut c, Some(&vis), true);
+            self.draw_scene(&mut c, Some(&vis), true, true, self.dp / self.sc);
         }
         let wt: usize = self.items.iter().map(|it| it.weight()).sum();
         self.heavy = wt > 30000;
@@ -1932,24 +2354,22 @@ impl Board {
         }
         let gest = self.mode == 2 || self.mode == 3 || self.wheel_until.is_some();
         let ps = self.px_scale;
-        if gest && (self.heavy || self.wheel_until.is_some()) && self.cache.is_some() && !self.dirty {
+        let scaled_cache = if gest && (self.heavy || self.wheel_until.is_some()) && !self.dirty { self.cache.as_ref() } else { None };
+        if let Some(cache) = scaled_cache {
             let mut c = Canvas::new(target);
             c.scale(ps, ps);
-            c.draw_color(self.bg_color());
-            self.pattern(&mut c);
+            self.backdrop(&mut c);
             let k = self.sc / self.csc;
             let (l, t) = (self.tx - self.ctx * k, self.ty - self.cty * k);
-            let cache = self.cache.as_ref().unwrap();
             c.draw_pixmap(cache.as_ref(), l, t, l + self.width * k, t + self.height * k);
         } else if gest {
             let mut c = Canvas::new(target);
             c.scale(ps, ps);
-            c.draw_color(self.bg_color());
-            self.pattern(&mut c);
+            self.backdrop(&mut c);
             let vis = RectF::new(-self.tx / self.sc, -self.ty / self.sc, (self.width - self.tx) / self.sc, (self.height - self.ty) / self.sc);
             c.translate(self.tx, self.ty);
             c.scale(self.sc, self.sc);
-            self.draw_layered(&mut c, Some(&vis), false);
+            self.draw_scene(&mut c, Some(&vis), false, true, self.dp / self.sc);
         } else {
             if self.dirty || self.cache.is_none() {
                 self.render_cache();
@@ -1960,7 +2380,7 @@ impl Board {
                 }
                 Some(cache) => {
                     let mut c = Canvas::new(target);
-                    c.draw_color(self.bg_color());
+                    c.draw_color(self.base_color());
                     c.draw_pixmap(cache.as_ref(), 0.0, 0.0, cache.width() as f32, cache.height() as f32);
                 }
                 None => {}
@@ -1972,6 +2392,8 @@ impl Board {
         c.save();
         c.translate(self.tx, self.ty);
         c.scale(self.sc, self.sc);
+        c.save();
+        self.clip_pages(&mut c);
         if self.lifted && !gest {
             for it in self.sel_items() {
                 it.draw(&mut c, self.dark);
@@ -1985,6 +2407,7 @@ impl Board {
         if let Some(p) = &self.prev {
             p.draw(&mut c, self.dark);
         }
+        c.restore();
         let dp = self.dp;
         if self.tool == SELECT && self.mode == 1 && self.drag == 3 && self.sel_mode == 0 && self.lasso.len() > 2 && self.moved {
             let mut pb = PathBuilder::new();
@@ -2120,5 +2543,196 @@ mod tests {
     fn note_bg_colors() {
         assert_eq!(note_bg(INK), 0xFFFFE27A);
         assert_eq!(note_bg(0xFFE5484D), 0xFFF4B5B7);
+    }
+
+    // ---------- Seitenmodus (WP2) ----------
+
+    use crate::pages::{PageSetup, PAGE_GAP};
+
+    /// Board im Seitenmodus mit n A4-Seiten (595 × 842), Massstab 0,5, Ursprung bei (10, 10).
+    fn paged(n: usize, bg: PageBg) -> Board {
+        let mut b = board();
+        b.board_mode = BoardMode::Pages(PageSetup::new(595.0, 842.0, bg, n));
+        b.sc = 0.5;
+        b.tx = 10.0;
+        b.ty = 10.0;
+        b
+    }
+    /// Welt → Bildschirm fuer paged().
+    fn scr(x: f32, y: f32) -> (f32, f32) {
+        (10.0 + x * 0.5, 10.0 + y * 0.5)
+    }
+
+    #[test]
+    fn page_layout_and_lookup() {
+        let ps = PageSetup::new(595.0, 842.0, PageBg::Grid, 3);
+        let r = ps.rects();
+        assert_eq!(r.len(), 3);
+        assert_eq!(r[0], RectF::new(0.0, 0.0, 595.0, 842.0));
+        assert_eq!(r[1].top, 842.0 + PAGE_GAP);
+        assert_eq!(r[2].top, 2.0 * (842.0 + PAGE_GAP));
+        assert!(r.iter().all(|x| x.left == 0.0 && x.width() == 595.0));
+        assert_eq!(ps.bounds().unwrap().bottom, 3.0 * 842.0 + 2.0 * PAGE_GAP);
+        assert_eq!(ps.page_at(10.0, 10.0), Some(0));
+        assert_eq!(ps.page_at(300.0, 842.0 + PAGE_GAP + 5.0), Some(1));
+        assert_eq!(ps.page_at(300.0, 842.0 + PAGE_GAP / 2.0), None);
+        assert_eq!(ps.page_at(-5.0, 10.0), None);
+        assert_eq!(ps.nearest_page(300.0, 842.0 + 2.0), Some(0));
+        assert_eq!(ps.nearest_page(300.0, 99999.0), Some(2));
+        let it = Item::shape(0, vec![10.0, 900.0, 50.0, 940.0], INK, 2.0);
+        assert_eq!(ps.page_of(&it), Some(1));
+    }
+
+    #[test]
+    fn page_ops_move_items_and_undo() {
+        let mut b = paged(2, PageBg::Lined);
+        // Strich auf Seite 0 und auf Seite 1
+        let (a0, a1) = (scr(100.0, 100.0), scr(200.0, 120.0));
+        drag(&mut b, &[a0, a1], ToolType::Stylus);
+        let y1 = 842.0 + PAGE_GAP + 100.0;
+        let (c0, c1) = (scr(100.0, y1), scr(200.0, y1 + 20.0));
+        drag(&mut b, &[c0, c1], ToolType::Stylus);
+        assert_eq!(b.items.len(), 2);
+        assert_eq!(b.page_of_items(), vec![Some(0), Some(1)]);
+        let top = |b: &Board, i: usize| b.items[i].bounds().top;
+        let (t0, t1) = (top(&b, 0), top(&b, 1));
+        let ids: Vec<String> = b.pages().unwrap().pages.iter().map(|p| p.id.clone()).collect();
+
+        // Seite vorne einfuegen: beide Striche rutschen um eine Seite nach unten
+        assert_eq!(b.add_page(None), Some(0));
+        assert_eq!(b.pages().unwrap().pages.len(), 3);
+        assert!((top(&b, 0) - t0 - (842.0 + PAGE_GAP)).abs() < 0.01);
+        assert!((top(&b, 1) - t1 - (842.0 + PAGE_GAP)).abs() < 0.01);
+        assert_eq!(b.page_of_items(), vec![Some(1), Some(2)]);
+        b.undo();
+        assert_eq!(b.pages().unwrap().pages.len(), 2);
+        assert!((top(&b, 0) - t0).abs() < 0.01);
+        b.redo();
+        assert_eq!(b.pages().unwrap().pages.len(), 3);
+        b.undo();
+
+        // Seiten tauschen
+        assert!(b.move_page(1, 0));
+        let ids2: Vec<String> = b.pages().unwrap().pages.iter().map(|p| p.id.clone()).collect();
+        assert_eq!(ids2, vec![ids[1].clone(), ids[0].clone()]);
+        assert_eq!(b.page_of_items(), vec![Some(1), Some(0)]);
+        assert!((top(&b, 0) - t0 - (842.0 + PAGE_GAP)).abs() < 0.01);
+        assert!((top(&b, 1) - t0).abs() < 0.01);
+        b.undo();
+        assert_eq!(b.page_of_items(), vec![Some(0), Some(1)]);
+
+        // Seite 0 loeschen: ihr Strich verschwindet, der andere rueckt nach oben
+        assert!(b.remove_page(0));
+        assert_eq!(b.items.len(), 1);
+        assert!((top(&b, 0) - t0).abs() < 0.01);
+        assert_eq!(b.pages().unwrap().pages[0].id, ids[1]);
+        assert!(!b.remove_page(0), "letzte Seite bleibt");
+        b.undo();
+        assert_eq!(b.items.len(), 2);
+        assert_eq!(b.pages().unwrap().pages.len(), 2);
+
+        // Hintergrund je Seite
+        assert!(b.set_page_bg(Some(1), PageBg::Dotted));
+        assert_eq!(b.pages().unwrap().pages[1].bg, PageBg::Dotted);
+        assert_eq!(b.pages().unwrap().pages[0].bg, PageBg::Lined);
+        b.undo();
+        assert_eq!(b.pages().unwrap().pages[1].bg, PageBg::Lined);
+
+        // unendlicher Modus: keine Seiten-Operationen
+        let mut inf = board();
+        assert_eq!(inf.add_page(None), None);
+        assert!(!inf.remove_page(0));
+    }
+
+    #[test]
+    fn strokes_outside_pages_are_dropped() {
+        let mut b = paged(2, PageBg::Plain);
+        // beginnt im Zwischenraum
+        let g = 842.0 + PAGE_GAP / 2.0;
+        drag(&mut b, &[scr(100.0, g), scr(100.0, g + 200.0)], ToolType::Stylus);
+        assert!(b.items.is_empty());
+        // beginnt rechts neben der Seite
+        drag(&mut b, &[scr(700.0, 100.0), scr(300.0, 100.0)], ToolType::Stylus);
+        assert!(b.items.is_empty());
+        // beginnt auf der Seite, endet ausserhalb: bleibt
+        drag(&mut b, &[scr(300.0, 100.0), scr(700.0, 100.0)], ToolType::Stylus);
+        assert_eq!(b.items.len(), 1);
+    }
+
+    #[test]
+    fn page_clipping_render() {
+        let mut b = paged(2, PageBg::Plain);
+        // senkrechter Strich ueber die Seitengrenze hinweg (von Seite 0 bis Seite 1)
+        drag(&mut b, &[scr(300.0, 700.0), scr(300.0, 842.0 + PAGE_GAP + 150.0)], ToolType::Stylus);
+        assert_eq!(b.items.len(), 1);
+        b.pen_w = 6.0;
+        let mut pm = Pixmap::new(800, 600).unwrap();
+        b.render(&mut pm);
+        let px = |x: f32, y: f32| {
+            let (sx, sy) = scr(x, y);
+            let p = pm.pixel(sx.round() as u32, sy.round() as u32).unwrap();
+            0xFF000000 | (p.red() as u32) << 16 | (p.green() as u32) << 8 | p.blue() as u32
+        };
+        let desk = b.desk_color();
+        // im Zwischenraum: Strich geht darueber, sichtbar ist nur der Zwischenraum
+        assert_eq!(px(300.0, 842.0 + PAGE_GAP / 2.0), desk);
+        // auf der Seite ist der Strich sichtbar
+        assert_ne!(px(300.0, 780.0), b.page_color());
+        assert_ne!(px(300.0, 780.0), desk);
+        // neben dem Strich: Papier
+        assert_eq!(px(200.0, 780.0), b.page_color());
+        // ausserhalb rechts: Zwischenraum-Farbe
+        assert_eq!(px(700.0, 100.0), desk);
+        // Export-PNG: alle Seiten untereinander
+        let (img, bounds, _) = b.export_image(3072.0, 2.0).unwrap();
+        assert!(img.height() > img.width());
+        assert!((bounds.height() - (2.0 * 842.0 + PAGE_GAP + 80.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn lasso_across_pages_and_eraser() {
+        let mut b = paged(2, PageBg::Grid);
+        drag(&mut b, &[scr(100.0, 800.0), scr(200.0, 800.0)], ToolType::Stylus);
+        let y1 = 842.0 + PAGE_GAP + 30.0;
+        drag(&mut b, &[scr(100.0, y1), scr(200.0, y1)], ToolType::Stylus);
+        assert_eq!(b.page_of_items(), vec![Some(0), Some(1)]);
+        b.set_tool(SELECT);
+        b.sel_mode = 0;
+        let pts = [scr(50.0, 750.0), scr(250.0, 750.0), scr(250.0, y1 + 50.0), scr(50.0, y1 + 50.0), scr(50.0, 755.0)];
+        drag(&mut b, &pts, ToolType::Mouse);
+        assert_eq!(b.sel.len(), 2);
+        // Rechteckauswahl ebenso
+        b.sel_mode = 1;
+        drag(&mut b, &[scr(30.0, 600.0), scr(150.0, 870.0), scr(260.0, y1 + 60.0)], ToolType::Mouse);
+        assert_eq!(b.sel.len(), 2);
+        // Radierer, der im Zwischenraum beginnt und beide Striche ueberstreicht
+        b.set_tool(ERASER);
+        drag(&mut b, &[scr(150.0, 780.0), scr(150.0, 842.0 + PAGE_GAP / 2.0), scr(150.0, y1 + 20.0)], ToolType::Stylus);
+        assert!(b.items.is_empty());
+    }
+
+    #[test]
+    fn pdf_has_one_page_per_board_page() {
+        let mut b = paged(3, PageBg::Lined);
+        drag(&mut b, &[scr(100.0, 100.0), scr(300.0, 300.0)], ToolType::Stylus);
+        let pdf = b.export_pdf().unwrap();
+        let s = String::from_utf8_lossy(&pdf);
+        assert_eq!(s.matches("/Type /Page ").count(), 3);
+        assert!(s.contains("/Count 3"));
+        assert!(s.contains("/MediaBox [0 0 595.00 842.00]"));
+        assert!(s.ends_with("%%EOF\n"));
+        // auch ein leeres Seiten-Board ist exportierbar
+        let e = paged(1, PageBg::Plain);
+        assert!(e.export_bounds().is_some());
+        assert_eq!(String::from_utf8_lossy(&e.export_pdf().unwrap()).matches("/Type /Page ").count(), 1);
+    }
+
+    #[test]
+    fn fit_pages_width() {
+        let mut b = paged(2, PageBg::Plain);
+        b.fit();
+        assert!((595.0 * b.sc - (800.0 - 32.0)).abs() < 0.01);
+        assert!((b.tx + 595.0 / 2.0 * b.sc - 400.0).abs() < 0.01);
+        let _ = b.thumb();
     }
 }

@@ -4,7 +4,7 @@ use super::Error;
 use minisign_verify::{PublicKey, Signature};
 use std::path::Path;
 
-/// Öffentlicher Schlüssel der Releases (Platzhalter, solange `minisign.pub` nicht ersetzt wurde).
+/// Öffentlicher Schlüssel der Releases (minisign, Schlüssel-ID FE8B7DCAA4C21501).
 pub const PUBKEY: &str = include_str!("minisign.pub");
 
 /// Ob der Text der Platzhalter ist (dann sind Updates „nicht eingerichtet“).
@@ -35,10 +35,12 @@ pub fn verify_file(pubkey: &str, file: &Path, sig_text: &str) -> Result<(), Erro
 #[cfg(test)]
 mod tests {
     use super::*;
+    const PLACEHOLDER: &str = include_str!("placeholder.pub");
 
     #[test]
     fn platzhalter_wird_erkannt() {
-        assert!(is_placeholder(PUBKEY));
-        assert!(matches!(verify_bytes(PUBKEY, b"x", "y"), Err(Error::NotConfigured)));
+        assert!(is_placeholder(PLACEHOLDER));
+        assert!(matches!(verify_bytes(PLACEHOLDER, b"x", "y"), Err(Error::NotConfigured)));
+        assert!(!is_placeholder(PUBKEY), "eingebauter Release-Schlüssel muss gültig sein");
     }
 }

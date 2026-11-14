@@ -60,9 +60,7 @@ Die App prüft die Signatur gegen den einkompilierten öffentlichen Schlüssel, 
 
 ## 6. Öffentlicher Schlüssel in der App (Pflicht vor dem ersten Release)
 
-`crates/owndraw/src/update/minisign.pub` enthält derzeit einen **Platzhalter** („PLATZHALTER …“). Solange er drin ist, zeigt die App unter Einstellungen → Updates „Updates nicht eingerichtet“ und installiert nichts; die Release-CI bricht beim Prüfen der Signaturen ab.
-
-**Vor dem ersten Release ersetzen:** den Inhalt der in Abschnitt 1 erzeugten `minisign.pub` (zwei Zeilen: `untrusted comment: …` und der Base64-Schlüssel) unverändert in diese Datei kopieren und committen. Der Platzhalter wird am Wort „PLATZHALTER“ erkannt; ein echter Schlüssel darf es nicht enthalten.
+`crates/owndraw/src/update/minisign.pub` enthält den echten öffentlichen Release-Schlüssel (Schlüssel-ID `FE8B7DCAA4C21501`, erzeugt am 14.11.2026). Der geheime Schlüssel gehört nur in das GitHub-Secret `MINISIGN_KEY`, das Passwort in `MINISIGN_PASSWORD`. Bei einem Schlüsselwechsel die neue `minisign.pub` hierher kopieren; Apps mit dem alten Schlüssel können Releases mit neuem Schlüssel nicht mehr installieren. Der Test-Platzhalter liegt in `placeholder.pub` (nur für Tests).
 
 Die Update-Tests erzeugen ihre Schlüssel zur Laufzeit (Crate `minisign` als dev-dependency) und brauchen den echten Schlüssel nicht.
 

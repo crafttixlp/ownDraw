@@ -230,7 +230,7 @@ fn fehlende_signatur_wird_abgelehnt() {
 #[test]
 fn platzhalterschluessel_installiert_nichts() {
     let mut f = fixture("4.0.0");
-    f.cfg.pubkey = verify::PUBKEY.to_string();
+    f.cfg.pubkey = include_str!("placeholder.pub").to_string();
     assert!(!f.cfg.configured());
     let rel = check(&{ let mut c = f.cfg.clone(); c.pubkey = f.keys.pk_text.clone(); c }, &*http()).unwrap().latest.unwrap();
     let before = f.srv.hits.load(Ordering::SeqCst);

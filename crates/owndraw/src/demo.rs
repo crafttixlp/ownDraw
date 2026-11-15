@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -129,6 +129,17 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     // Andocken: Werkzeugleiste links, Rückgängig-Leiste rechts, Auswahlleiste rechts (senkrecht)
     if has("dock") {
         apply_dock(&mut app.sh.settings);
+    }
+    // Bündig oben: Titel- und Werkzeugleiste am oberen Rand, Seiten-Kachel links senkrecht
+    if has("docktop") {
+        use crate::settings::{BarPos, Dock};
+        for ff in ["Expanded", "Medium", "Compact"] {
+            for (id, e, f) in [("bar-tl", BarPos::Top, [0.0, 0.0]), ("bar-tools", BarPos::Top, [0.5, 0.0]), ("pages-chip", BarPos::Left, [0.0, 0.4])] {
+                let key = format!("{id}@{ff}");
+                app.sh.settings.tile_pos.insert(key.clone(), f);
+                app.sh.settings.tile_dock.insert(key, Dock { edge: Some(e), vert: matches!(e, BarPos::Left | BarPos::Right) });
+            }
+        }
     }
     let ms = owndraw_core::store::now_ms();
     if has("start") {

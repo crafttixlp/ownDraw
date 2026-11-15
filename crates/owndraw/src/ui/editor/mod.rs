@@ -160,6 +160,8 @@ pub struct Editor {
     pix: Option<Pixmap>,
     drawing: bool,
     panning: Option<(Pos2, PointerButton)>,
+    /// Startpunkt des Verschiebens (mittlere Maustaste ohne Bewegung = Objekt auswählen).
+    pan_start: Option<Pos2>,
     touches: Vec<(u64, Pos2)>,
     pub(super) text: Option<text::TextEdState>,
     pub st: UiState,
@@ -207,6 +209,7 @@ impl Editor {
             pix: None,
             drawing: false,
             panning: None,
+            pan_start: None,
             touches: Vec::new(),
             text: None,
             st: UiState::default(),
@@ -467,7 +470,7 @@ impl Editor {
                 canvas.max.x -= DOCK_LAYERS;
                 dock_layers = Some(r);
             }
-            if pages_mode && self.st.pages_open.unwrap_or(true) {
+            if pages_mode && self.st.pages_open.unwrap_or_else(|| sh.settings.extra.get("pages_dock").and_then(|v| v.as_bool()).unwrap_or(true)) {
                 let r = Rect::from_min_max(canvas.min, Pos2::new(canvas.left() + DOCK_PAGES, canvas.bottom()));
                 canvas.min.x += DOCK_PAGES;
                 dock_pages = Some(r);
@@ -585,7 +588,7 @@ impl Editor {
         toolbar::show(self, &ctx, sh, &lay, &tools);
         options::show(self, &ctx, sh, &lay);
         menu::show(self, &ctx, sh, &lay);
-        self.text_editor(&ctx, &lay);
+        self.text_editor(&ctx);
         self.close_popups_on_esc(&ctx);
         self.drain_events(sh);
 
@@ -651,9 +654,8 @@ impl Editor {
         for e in std::mem::take(&mut self.board.events) {
             match e {
                 board::Event::Notice(s) => sh.toast(&s),
-                board::Event::AskText { wx, wy, note } => {
-                    self.text = Some(text::TextEdState { wx, wy, note, edit: None, text: String::new(), focus: true });
-                }
+                board::Event::AskText { wx, wy, note } => self.start_text(wx, wy, note),
+                board::Event::EditNote(id) => self.edit_note(id),
                 board::Event::Changed | board::Event::Haptic => {}
             }
         }
@@ -673,7 +675,8 @@ impl Editor {
             match ev {
                 Event::Touch { id, phase, pos, force, .. } => {
                     // Ein Finger, der auf einer Leiste beginnt, gehört nicht zur Zeichenfläche.
-                    if phase == TouchPhase::Start && !on_board(pos) {
+                    // Während der Texteingabe beendet ein Tippen daneben nur die Eingabe.
+                    if phase == TouchPhase::Start && (!on_board(pos) || self.text.is_some()) {
                         continue;
                     }
                     self.touch(id.0, phase, rel(pos).to_pos2(), force.unwrap_or(0.5))
@@ -699,12 +702,18 @@ impl Editor {
                             self.board.on_touch(&Motion::single(Action::Down, r.x, r.y, 0.5, ToolType::Stylus));
                         } else if matches!(button, PointerButton::Primary | PointerButton::Secondary | PointerButton::Middle) {
                             self.panning = Some((pos, button));
+                            self.pan_start = Some(pos);
                         }
                     } else if self.drawing && button == PointerButton::Primary {
                         self.drawing = false;
                         self.board.on_touch(&Motion::single(Action::Up, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if self.panning.map(|(_, b)| b == button).unwrap_or(false) {
                         self.panning = None;
+                        // Mittlere Maustaste ohne Verschieben: Objekt darunter auswählen (erweitertes Menü)
+                        let still = self.pan_start.take().map(|s| s.distance(pos) < 5.0).unwrap_or(false);
+                        if button == PointerButton::Middle && still && !self.board.select_at_screen(r.x, r.y, false) && self.board.tool == board::SELECT {
+                            self.board.deselect();
+                        }
                     }
                 }
                 Event::MouseWheel { unit, delta, modifiers, .. } => {
@@ -846,12 +855,6 @@ impl Editor {
         if paste {
             clip::paste(self, &*sh.platform);
         }
-    }
-
-    pub fn edit_note(&mut self, id: u64) {
-        let Some(it) = self.board.items.iter().find(|it| it.id == id) else { return };
-        let Some(n) = it.as_note() else { return };
-        self.text = Some(text::TextEdState { wx: n.x, wy: n.y, note: n.bg != 0, edit: Some(id), text: n.text.clone(), focus: true });
     }
 
     /// Statusanzeige des Autosave für die Leiste.

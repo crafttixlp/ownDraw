@@ -83,6 +83,16 @@ pub fn palette(dark: bool, accent: u32) -> Pal {
 
 thread_local! {
     static PAL: Cell<Pal> = Cell::new(palette(true, 0xFF7C8CFF));
+    /// Abrundung der Kacheln/Leisten in px (Einstellungen, Standard 26).
+    static TILE_R: Cell<f32> = const { Cell::new(TILE_RADIUS_DEFAULT) };
+}
+
+/// Standard-Abrundung der Leisten (entspricht 4.1).
+pub const TILE_RADIUS_DEFAULT: f32 = 26.0;
+
+/// Eingestellte Abrundung der Kacheln aus den Einstellungen (0–40 px).
+pub fn tile_radius_setting(s: &Settings) -> f32 {
+    s.extra.get("tile_radius").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(TILE_RADIUS_DEFAULT).clamp(0.0, 40.0)
 }
 
 /// Aktuelle Palette (gesetzt von `apply`).
@@ -95,8 +105,10 @@ pub fn c(argb: u32) -> Color32 {
     Color32::from_rgba_unmultiplied((argb >> 16) as u8, (argb >> 8) as u8, argb as u8, (argb >> 24) as u8)
 }
 
+/// Kachel/Leiste; `radius` ist der Entwurfswert bei Standard-Abrundung, er wird nach der Einstellung skaliert.
 pub fn pill(radius: u8) -> Frame {
     let p = pal();
+    let radius = (radius as f32 * TILE_R.with(|r| r.get()) / TILE_RADIUS_DEFAULT).round().clamp(0.0, 255.0) as u8;
     Frame::new()
         .fill(c(p.pill))
         .stroke(Stroke::new(1.0, c(p.line)))
@@ -136,6 +148,7 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
     let dark = ctx.theme() == egui::Theme::Dark;
     let p = palette(dark, s.accent);
     PAL.with(|x| x.set(p));
+    TILE_R.with(|r| r.set(tile_radius_setting(s)));
     ctx.set_zoom_factor((s.ui_scale.clamp(75, 200) as f32) / 100.0);
     for theme in [egui::Theme::Dark, egui::Theme::Light] {
         let d = theme == egui::Theme::Dark;

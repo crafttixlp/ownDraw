@@ -212,6 +212,10 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
                     });
                 });
                 ed.st.popup_rects.push(r);
+            } else {
+                // eingeklappt: kleine Seiten-Kachel zum Aufklappen
+                let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+                ed.st.popup_rects.push(r);
             }
         }
         FormFactor::Medium => {
@@ -275,8 +279,14 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
                 sh.toast("Seite konnte nicht verschoben werden");
             }
         }
-        Some(Act::Close) => ed.st.pages_open = Some(false),
-        Some(Act::Open) => ed.st.pages_open = Some(true),
+        Some(Act::Close) | Some(Act::Open) => {
+            let open = matches!(act, Some(Act::Open));
+            ed.st.pages_open = Some(open);
+            // angedockte Seitenleiste am PC: Zustand merken
+            if lay.env.ff == FormFactor::Expanded {
+                sh.settings.extra.insert("pages_dock".into(), serde_json::json!(open));
+            }
+        }
         None => {}
     }
 }
@@ -285,7 +295,11 @@ fn header(ui: &mut Ui, sh: &Shared, act: &mut Option<Act>) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Seiten").size(16.0).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if sh.env.ff != FormFactor::Expanded && style::plain_btn(ui, "Schließen", sh.env.btn - 8.0).clicked() {
+            if sh.env.ff == FormFactor::Expanded {
+                if ui.add(egui::Button::new(egui::RichText::new("‹").size(18.0)).fill(egui::Color32::TRANSPARENT).min_size(Vec2::splat(sh.env.btn - 10.0))).on_hover_text("Seitenleiste einklappen").clicked() {
+                    *act = Some(Act::Close);
+                }
+            } else if style::plain_btn(ui, "Schließen", sh.env.btn - 8.0).clicked() {
                 *act = Some(Act::Close);
             }
         });

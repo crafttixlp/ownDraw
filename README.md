@@ -38,7 +38,7 @@ Voraussetzung: Rust ≥ 1.85.
 ```sh
 cargo run --release      # Desktop starten
 cargo test               # Tests
-./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.1.0-x86_64.AppImage
+./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.2.0-x86_64.AppImage
 crates/owndraw-android/build-apk.sh   # APK (braucht Android SDK + NDK, siehe docs/android.md)
 ```
 
@@ -57,9 +57,12 @@ Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL, `libxkbcommon-x11` (X1
 - Linke Maustaste zeichnet, rechte/mittlere Taste oder Leertaste + Ziehen verschiebt, Mausrad zoomt.
 - Tasten: P Stift, M Marker, E Radierer, S Auswahl, R Form, T Text, 0 alles zeigen, +/− Zoom;
   Strg+Z/Y/C/X/V/D, Entf löscht die Auswahl. Tooltips zeigen die Kürzel.
+- Mittlere Maustaste kurz auf ein Objekt klicken: Objekt auswählen, Auswahlleiste (erweitertes Menü) erscheint.
+- Text: aufs Blatt tippen und direkt schreiben (Enter = neue Zeile); Esc, Strg+Enter oder Tippen daneben übernimmt.
+  Tippen auf einen fertigen Text zeigt das erweiterte Menü (Größe, Farbe, Bearbeiten …), erneutes Tippen bearbeitet ihn.
 
 ## Stand
 
-Version 4.1.0. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
+Version 4.2.0. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
 entsteht in CI; auf echten Geräten noch ungetestet. Für Updates muss vor dem ersten Release der echte
 minisign-Schlüssel eingetragen werden (`docs/release.md`).

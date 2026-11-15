@@ -1,92 +1,164 @@
-//! Texteingabe für Text und Notizen (schwebendes Eingabefeld).
+//! Texteingabe direkt auf dem Blatt (Text und Haftnotizen) mit Cursor am Ort.
+//!
+//! Bestätigen: Tippen/Klicken daneben, Esc oder Strg+Enter. Enter = neue Zeile.
 
-use super::{Editor, Lay};
-use crate::layout::FormFactor;
+use super::Editor;
 use crate::style::{self, c};
 use egui::{CornerRadius, Key, Stroke, Vec2};
-use owndraw_core::board;
+use owndraw_core::{board, item};
+use std::sync::Arc;
 
 pub struct TextEdState {
-    pub wx: f32,
-    pub wy: f32,
+    /// Rechteck in Weltkoordinaten: x, y, Schriftgröße, Breite (Notiz), Mindesthöhe (Notiz).
+    pub r: (f32, f32, f32, f32, f32),
     pub note: bool,
     pub edit: Option<u64>,
     pub text: String,
     pub focus: bool,
+    /// Textfarbe (Weltfarbe des Objekts).
+    pub color: u32,
+    pub bg: u32,
+    /// Danebengetippt: im nächsten Frame übernehmen.
+    pub commit: bool,
 }
 
+/// Zeilenhöhe wie beim Zeichnen auf dem Blatt (TextLayout, Faktor 1,15).
+const LINE: f32 = 1.15;
+
 impl Editor {
-    pub(super) fn text_editor(&mut self, ctx: &egui::Context, lay: &Lay) {
-        let Some(te) = self.text.as_mut() else { return };
-        let rect = lay.canvas;
-        let pal = style::pal();
+    /// Neuer Text am Weltpunkt.
+    pub(super) fn start_text(&mut self, wx: f32, wy: f32, note: bool) {
         let b = &self.board;
-        let w = (300.0f32).min(rect.width() - 20.0);
-        let sx = te.wx * b.sc + b.tx;
-        let sy = te.wy * b.sc + b.ty;
-        let x = sx.clamp(12.0, (rect.width() - w - 12.0).max(12.0));
-        let top = 70.0;
-        let y = if lay.env.ff == FormFactor::Compact {
-            // Handy: oben, damit die Bildschirmtastatur nichts verdeckt
-            top + if lay.row2 { 60.0 } else { 0.0 }
+        let r = b.new_note_rect(wx, wy, note);
+        let bg = if note { board::note_bg(b.color) } else { 0 };
+        self.text = Some(TextEdState { r, note, edit: None, text: String::new(), focus: true, color: b.color, bg, commit: false });
+    }
+
+    /// Abnahme-Hilfe (demo.rs): neuer Text mit Inhalt.
+    pub fn demo_text(&mut self, wx: f32, wy: f32, t: &str) {
+        self.start_text(wx, wy, false);
+        if let Some(te) = self.text.as_mut() {
+            te.text = t.trim_end_matches('|').to_string();
+        }
+    }
+
+    /// Abnahme-Hilfe (demo.rs): Text an laufende Eingabe anhängen.
+    pub fn demo_append(&mut self, t: &str) {
+        if let Some(te) = self.text.as_mut() {
+            te.text.push_str(t);
+        }
+    }
+
+    pub fn edit_note(&mut self, id: u64) {
+        let Some(it) = self.board.items.iter().find(|it| it.id == id) else { return };
+        let Some(n) = it.as_note() else { return };
+        let st = TextEdState { r: (n.x, n.y, n.size, n.w, n.mh), note: n.bg != 0, edit: Some(id), text: n.text.clone(), focus: true, color: it.color, bg: n.bg, commit: false };
+        self.text = Some(st);
+        self.board.set_hidden(Some(id));
+    }
+
+    pub(super) fn text_editor(&mut self, ctx: &egui::Context) {
+        let Some(te) = self.text.as_mut() else { return };
+        let b = &self.board;
+        let canvas = self.canvas;
+        let (x, y, size, w, mh) = te.r;
+        let sc = b.sc;
+        let fpx = (size * sc).clamp(4.0, 400.0);
+        let pad = if te.note { size * 0.7 * sc } else { 0.0 };
+        let pos = canvas.min + Vec2::new(x * sc + b.tx, y * sc + b.ty);
+        let fg = if te.note { 0xFF1B1B1Fu32 } else { item::ink(te.color, b.dark) };
+        let inner_w = if te.note {
+            ((w * sc) - 2.0 * pad).max(fpx)
         } else {
-            sy.clamp(top, (rect.height() / 2.0 - 200.0).max(top))
+            // freier Text wächst mit der längsten Zeile (wie auf dem Blatt)
+            let mw = te.text.split('\n').map(|l| owndraw_core::text::measure(l, fpx)).fold(0.0f32, f32::max);
+            mw.max(fpx * 4.0) + fpx
         };
-        let note_col = board::note_bg(b.color);
-        let (bg, fg, hint) = if te.note { (note_col, 0xFF1F2025u32, "Notiz schreiben …") } else { (pal.card, pal.text, "Text schreiben …") };
-        let mut done = ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::Enter) || i.consume_key(egui::Modifiers::CTRL, Key::Enter));
-        let mut cancel = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
-        let mh = lay.env.btn;
-        let r = egui::Area::new(egui::Id::unique("text-ed")).order(egui::Order::Foreground).fixed_pos(rect.min + Vec2::new(x, y)).show(ctx, |ui| {
-            egui::Frame::new()
-                .fill(c(bg))
-                .stroke(Stroke::new(1.0, c(if te.note { 0x22000000 } else { pal.line })))
-                .corner_radius(CornerRadius::same(18))
-                .inner_margin(egui::Margin::same(12))
-                .shadow(egui::Shadow { offset: [0, 4], blur: 18, spread: 0, color: egui::Color32::from_black_alpha(110) })
-                .show(ui, |ui| {
-                    ui.set_width(w - 24.0);
-                    let hint_col = if te.note { 0x801F2025 } else { 0x808B8D98 };
-                    let ed = egui::TextEdit::multiline(&mut te.text)
-                        .hint_text(egui::RichText::new(hint).color(c(hint_col)))
-                        .font(egui::FontId::proportional(17.0))
-                        .text_color(c(fg))
-                        .desired_rows(4)
-                        .desired_width(w - 24.0)
-                        .frame(egui::Frame::NONE)
-                        .background_color(egui::Color32::TRANSPARENT);
-                    let r = egui::ScrollArea::vertical().max_height(17.0 * 1.35 * 4.0 + 8.0).show(ui, |ui| ui.add(ed)).inner;
-                    if te.focus {
-                        r.request_focus();
-                        te.focus = false;
-                    }
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let (okc, cc) = if te.note { (0xFF3B4BD6u32, 0xFF4A4D5Cu32) } else { (pal.accent, pal.dim) };
-                            let hint = if lay.env.hints() { "Fertig (Strg+↵)" } else { "Fertig" };
-                            if ui.add(egui::Button::new(egui::RichText::new(hint).strong().color(c(okc))).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(0.0, mh))).clicked() {
-                                done = true;
-                            }
-                            if ui.add(egui::Button::new(egui::RichText::new("Abbrechen").color(c(cc))).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(0.0, mh))).clicked() {
-                                cancel = true;
-                            }
-                        });
-                    });
-                });
+        let min_h = if te.note { mh * sc } else { 0.0 };
+        let mut done = te.commit || ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::Enter) || i.consume_key(egui::Modifiers::CTRL, Key::Enter) || i.consume_key(egui::Modifiers::NONE, Key::Escape));
+        let pal = style::pal();
+        let hint = if te.note { "Notiz schreiben …" } else { "Text schreiben …" };
+        let hint_col = if te.note { 0x801F2025u32 } else { (pal.dim & 0x00FF_FFFF) | 0x9900_0000 };
+        let accent = pal.accent;
+        let (note, bg) = (te.note, te.bg);
+        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| -> Arc<egui::Galley> {
+            let mut job = egui::text::LayoutJob::simple(buf.as_str().to_owned(), egui::FontId::proportional(fpx), c(fg), wrap);
+            for s in job.sections.iter_mut() {
+                s.format.line_height = Some(fpx * LINE);
+            }
+            ui.fonts_mut(|f| f.layout_job(job))
+        };
+        let area = egui::Area::new(egui::Id::unique("text-inline")).order(egui::Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
+            let frame = if note {
+                egui::Frame::new()
+                    .fill(c(bg))
+                    .corner_radius(CornerRadius::same((size * 0.4 * sc).clamp(0.0, 255.0) as u8))
+                    .inner_margin(egui::Margin::same(pad.round().clamp(0.0, 127.0) as i8))
+                    .shadow(egui::Shadow { offset: [0, 3], blur: 10, spread: 0, color: egui::Color32::from_black_alpha(60) })
+            } else {
+                // dezenter Rahmen, damit man sieht, wo geschrieben wird
+                egui::Frame::new().stroke(Stroke::new(1.0, c((accent & 0x00FF_FFFF) | 0x8800_0000))).outer_margin(egui::Margin::same(0)).inner_margin(egui::Margin::ZERO)
+            };
+            frame.show(ui, |ui| {
+                ui.set_min_size(Vec2::new(inner_w, (min_h - 2.0 * pad).max(fpx * LINE)));
+                let ed = egui::TextEdit::multiline(&mut te.text)
+                    .hint_text(egui::RichText::new(hint).size(fpx).color(c(hint_col)))
+                    .font(egui::FontId::proportional(fpx))
+                    .text_color(c(fg))
+                    .desired_rows(1)
+                    .desired_width(inner_w)
+                    .margin(egui::Margin::ZERO)
+                    .frame(egui::Frame::NONE)
+                    .background_color(egui::Color32::TRANSPARENT)
+                    .layouter(&mut layouter);
+                let r = ui.add(ed);
+                if te.focus {
+                    r.request_focus();
+                    te.focus = false;
+                }
+            });
         });
-        let _ = r;
-        if done {
-            let te = self.text.take().unwrap();
-            let t = te.text.trim();
-            if !t.is_empty() {
-                match te.edit {
-                    Some(id) => self.board.edit_note(id, t),
-                    None => self.board.add_note(te.wx, te.wy, t, te.note),
+        // Klick ins Leere außerhalb (z. B. Leisten) beendet ebenfalls
+        if !done && ctx.input(|i| i.pointer.any_pressed()) {
+            if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
+                if !area.response.rect.contains(p) && canvas.contains(p) && ctx.layer_id_at(p).map(|l| l.order == egui::Order::Background).unwrap_or(true) {
+                    done = true;
                 }
             }
-        } else if cancel {
-            self.text = None;
         }
+        if done {
+            self.finish_text();
+        }
+    }
+
+    /// Übernimmt die laufende Eingabe (leerer Text löscht ein vorhandenes Objekt).
+    pub(super) fn finish_text(&mut self) {
+        let Some(te) = self.text.take() else { return };
+        self.board.set_hidden(None);
+        let t = te.text.trim_end();
+        let t = t.trim_start_matches('\n');
+        match te.edit {
+            Some(id) if t.trim().is_empty() => self.board.delete_item(id),
+            Some(id) => {
+                let orig = self.board.items.iter().find(|it| it.id == id).and_then(|it| it.as_note().map(|n| n.text.clone()));
+                if orig.as_deref() != Some(t) {
+                    self.board.edit_note(id, t);
+                } else if self.board.tool == board::SELECT {
+                    // unverändert: wieder auswählen, damit das Menü bleibt
+                    self.board.select_only(id);
+                }
+                if self.board.tool != board::SELECT {
+                    self.board.deselect();
+                }
+            }
+            None if t.trim().is_empty() => {}
+            None => {
+                let col = self.board.color;
+                self.board.color = te.color;
+                self.board.add_note_rect(t, te.r, te.note);
+                self.board.color = col;
+            }
+        }
+        self.board.invalidate();
     }
 }

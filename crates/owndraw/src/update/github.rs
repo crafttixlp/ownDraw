@@ -79,11 +79,19 @@ impl Api<'_> {
         Ok(format!("{}/repos/{}/releases{}", self.base.trim_end_matches('/'), self.repo, tail))
     }
 
-    /// `/releases/latest`; `None`, wenn es (noch) kein Release gibt.
+    /// `/releases/latest`; `None`, wenn es (noch) kein Release gibt. Bei 404 wird geprüft, ob das Repository
+    /// überhaupt existiert (sonst wäre „kein Release“ irreführend).
     pub fn latest(&self) -> Result<Option<Release>, Error> {
         let t = match self.http.get_text(&self.url("/latest")?) {
             Ok(t) => t,
-            Err(Error::Other(m)) if m.contains("404") => return Ok(None),
+            Err(Error::Status(404)) => {
+                let repo_url = format!("{}/repos/{}", self.base.trim_end_matches('/'), self.repo);
+                return match self.http.get_text(&repo_url) {
+                    Ok(_) => Ok(None),
+                    Err(Error::Status(404)) => Err(Error::Other(format!("Das Repository „{}“ wurde auf GitHub nicht gefunden (oder ist nicht öffentlich).", self.repo))),
+                    Err(e) => Err(e),
+                };
+            }
             Err(e) => return Err(e),
         };
         let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
@@ -114,5 +122,17 @@ mod tests {
         assert_eq!(r.assets.len(), 1);
         assert!(parse_release(&serde_json::json!({"tag_name":"nightly"})).is_none());
         assert!(parse_release(&serde_json::json!({"tag_name":"v1.0.0","draft":true})).is_none());
+    }
+
+    #[test]
+    fn fehler_werden_verstaendlich() {
+        use super::super::http::classify;
+        assert_eq!(classify("http status: 403"), Error::RateLimit);
+        assert_eq!(classify("java.io.IOException: http status: 404"), Error::Status(404));
+        assert_eq!(classify("java.net.UnknownHostException: Unable to resolve host \"api.github.com\""), Error::Offline);
+        assert_eq!(classify("io: Connection refused (os error 111)"), Error::Offline);
+        assert_eq!(classify("java.net.SocketTimeoutException: timeout"), Error::Timeout);
+        assert!(matches!(classify("seltsam"), Error::Other(_)));
+        assert!(Error::Offline.to_string().starts_with("Offline"));
     }
 }

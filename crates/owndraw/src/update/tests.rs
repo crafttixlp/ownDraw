@@ -57,6 +57,11 @@ impl Server {
                 let is_slow = sl.lock().unwrap().contains(&url);
                 std::thread::spawn(move || match body {
                     None => drop(req.respond(tiny_http::Response::from_string("nicht gefunden").with_status_code(404))),
+                    // Inhalt „STATUS:<code>“ = mit diesem HTTP-Status antworten.
+                    Some(b) if b.starts_with(b"STATUS:") => {
+                        let code: u16 = String::from_utf8_lossy(&b[7..]).parse().unwrap();
+                        drop(req.respond(tiny_http::Response::from_string("{}").with_status_code(code)));
+                    }
                     Some(b) if is_slow => {
                         let len = b.len();
                         drop(req.respond(tiny_http::Response::new(tiny_http::StatusCode(200), vec![], Slow { data: Cursor::new(b) }, Some(len), None)));
@@ -427,4 +432,45 @@ fn abbruch_beim_bauen_toetet_den_prozess() {
     assert_eq!(e, Error::Cancelled);
     assert!(t.elapsed() < Duration::from_secs(40));
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.0.0");
+}
+
+#[test]
+fn kein_release_offline_und_grenzen_verstaendlich() {
+    let h = http();
+    // Repository vorhanden, aber noch kein Release → „kein Update“, kein Fehler.
+    let f = fixture("4.0.0");
+    f.srv.files.lock().unwrap().retain(|k, _| !k.contains("/releases"));
+    f.srv.put("/repos/o/r", b"{}".to_vec());
+    let r = check(&f.cfg, &*h).unwrap();
+    assert!(r.latest.is_none() && !r.newer);
+    // Repository fehlt → verständlicher Fehler statt „kein Release“.
+    f.srv.files.lock().unwrap().remove("/repos/o/r");
+    match check(&f.cfg, &*h) {
+        Err(Error::Other(m)) => assert!(m.contains("nicht gefunden"), "{m}"),
+        e => panic!("{e:?}"),
+    }
+    // Abfragegrenze (GitHub ohne Token: 403).
+    f.srv.put("/repos/o/r/releases/latest", b"STATUS:403".to_vec());
+    assert_eq!(check(&f.cfg, &*h), Err(Error::RateLimit));
+    f.srv.put("/repos/o/r/releases/latest", b"STATUS:500".to_vec());
+    assert_eq!(check(&f.cfg, &*h), Err(Error::Status(500)));
+    // Offline: niemand lauscht auf dem Port.
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let mut cfg = f.cfg.clone();
+    cfg.api_base = format!("http://127.0.0.1:{port}");
+    assert_eq!(check(&cfg, &*h), Err(Error::Offline));
+}
+
+/// Echte GitHub-API (nur von Hand: `cargo test -p owndraw echtes_github -- --ignored --nocapture`).
+#[test]
+#[ignore]
+fn echtes_github() {
+    let mut cfg = fixture("4.0.0").cfg;
+    cfg.api_base = "https://api.github.com".into();
+    cfg.repo = crate::settings::Settings::default().update_repo;
+    cfg.allow_http = false;
+    let h = http::default_http(false);
+    let r = check(&cfg, &*h);
+    println!("{r:?}");
+    assert!(r.is_ok(), "{r:?}");
 }

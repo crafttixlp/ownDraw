@@ -34,6 +34,14 @@ pub enum Error {
     NoAppImage(String),
     /// Keine Rust-Toolchain für den Quellbau.
     NoToolchain,
+    /// Keine Verbindung (DNS/Verbindungsaufbau gescheitert).
+    Offline,
+    /// Server antwortet nicht rechtzeitig.
+    Timeout,
+    /// GitHub-Abfragegrenze ohne Anmeldung (60/Stunde) erreicht (HTTP 403/429).
+    RateLimit,
+    /// Sonstiger HTTP-Status (404 wird von der API-Schicht ausgewertet).
+    Status(u16),
     Other(String),
 }
 
@@ -45,6 +53,10 @@ impl std::fmt::Display for Error {
             Error::BadSignature(m) => write!(f, "Signatur ungültig, nichts installiert ({m})."),
             Error::NoAppImage(m) | Error::Other(m) => write!(f, "{m}"),
             Error::NoToolchain => write!(f, "Keine Rust-Toolchain gefunden (cargo)."),
+            Error::Offline => write!(f, "Offline: Keine Verbindung zu GitHub. Bitte Internetverbindung prüfen und erneut suchen."),
+            Error::Timeout => write!(f, "Zeitüberschreitung: GitHub antwortet nicht. Bitte später erneut versuchen."),
+            Error::RateLimit => write!(f, "GitHub-Abfragegrenze erreicht (60 Abfragen pro Stunde ohne Anmeldung). Bitte in etwa einer Stunde erneut versuchen."),
+            Error::Status(c) => write!(f, "GitHub meldet einen Fehler (HTTP {c}). Bitte später erneut versuchen."),
         }
     }
 }
@@ -272,6 +284,10 @@ pub fn install_release(cfg: &Config, http: &dyn Http, rel: &Release, ctl: &Ctl) 
         ctl.step("System-Installer öffnen …");
         let note = crate::platform::android::install_apk(&apk).map_err(|e| Error::Other(format!("Installer nicht startbar: {e}")))?;
         ctl.log(&note);
+        // Fehlt das Recht „Unbekannte Apps installieren“, öffnet Java die Systemeinstellung statt des Installers.
+        if note.starts_with("Erlauben") {
+            return Err(Error::Other(note));
+        }
         Ok(Installed { version: rel.version.clone(), path: apk.clone(), backup: apk, restart: false })
     }
     #[cfg(not(target_os = "android"))]

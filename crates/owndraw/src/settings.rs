@@ -222,7 +222,7 @@ impl Default for Settings {
             update_mode: UpdateMode::Package,
             update_check_on_start: false,
             update_skip: None,
-            update_repo: "crafttixlp/owndraw".into(),
+            update_repo: "crafttixlp/ownDraw".into(),
             snap: Snapping::default(),
             extra: Default::default(),
         }

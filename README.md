@@ -14,7 +14,7 @@ Komplett in Rust (egui/eframe), eine Oberfläche für Linux/Windows/macOS und An
 - **Maschinenbau-Pfeil**: gefüllte Spitze, 15° Öffnungswinkel (DIN ISO 128).
 - **Anpassende Oberfläche**: Handy (Leiste unten, Bottom-Sheets), Tablet (schwebende Leiste, Popover), PC (Leisten oben, Panels angedockt).
   7 Hauptwerkzeuge, alles Weitere im Kontext-Popover oder im „⋯“-Menü.
-- **Einstellungen**: Hell/Dunkel/System, Akzentfarbe, UI-Größe 75–200 %, Leistenposition, Werkzeuge umordnen/ausblenden, Speicherort.
+- **Einstellungen**: Hell/Dunkel/System, Akzentfarbe, UI-Größe 75–200 %, Leistenposition, Werkzeuge umordnen/ausblenden, Speicherort, Einrasten (Winkelraster und Fangbereich für Formerkennung und Griffe, einzeln abschaltbar).
 - **System-Dateidialoge** (xdg-desktop-portal unter Linux, Storage Access Framework unter Android).
 - **Strg+C / Strg+V** für Objekte und Bilder (auch in/aus anderen Programmen), **Drag & Drop** von Bildern, `.owndraw` und `.xopp`.
 - **Updates von GitHub** nur auf Klick: fertiges Paket oder aus dem Quellcode bauen, Signaturprüfung (minisign),
@@ -38,7 +38,7 @@ Voraussetzung: Rust ≥ 1.85.
 ```sh
 cargo run --release      # Desktop starten
 cargo test               # Tests
-./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.3.2-x86_64.AppImage
+./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.4.0-x86_64.AppImage
 crates/owndraw-android/build-apk.sh   # APK (braucht Android SDK + NDK, siehe docs/android.md)
 ```
 
@@ -63,6 +63,6 @@ Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL, `libxkbcommon-x11` (X1
 
 ## Stand
 
-Version 4.3.2. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
+Version 4.4.0. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
 entsteht in CI; auf echten Geräten noch ungetestet. Für Updates muss vor dem ersten Release der echte
 minisign-Schlüssel eingetragen werden (`docs/release.md`).

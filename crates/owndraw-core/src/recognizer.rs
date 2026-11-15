@@ -29,8 +29,58 @@ impl G {
     }
 }
 
+/// Einrast-Einstellungen (Formerkennung und Griffe), in den App-Einstellungen änderbar.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SnapCfg {
+    /// Erkannte Linien/Pfeile auf ein Winkelraster drehen.
+    pub lines: bool,
+    /// Winkelraster für erkannte Linien/Pfeile (Grad).
+    pub line_step: f32,
+    /// Größte Abweichung, bei der eingerastet wird (Grad).
+    pub line_tol: f32,
+    /// Erkannte Rechtecke/Vielecke waagerecht/senkrecht ausrichten.
+    pub shapes: bool,
+    /// Pfeil-Endpunkte und Drehen einer Auswahl rasten ein.
+    pub handles: bool,
+    /// Winkelraster der Griffe (Grad).
+    pub handle_step: f32,
+    /// Größte Abweichung der Griffe (Grad).
+    pub handle_tol: f32,
+}
+
+impl Default for SnapCfg {
+    fn default() -> Self {
+        SnapCfg { lines: true, line_step: 45.0, line_tol: 6.0, shapes: true, handles: true, handle_step: 15.0, handle_tol: 4.0 }
+    }
+}
+
+impl SnapCfg {
+    /// Rastet `deg` auf das Raster `step` ein, wenn die Abweichung höchstens `tol` beträgt.
+    pub fn snap_deg(deg: f32, step: f32, tol: f32) -> Option<f32> {
+        if step <= 0.0 || tol <= 0.0 {
+            return None;
+        }
+        let r = (deg / step).round() * step;
+        ((deg - r).abs() <= tol).then_some(r)
+    }
+}
+
+thread_local! {
+    static CFG: std::cell::Cell<SnapCfg> = std::cell::Cell::new(SnapCfg::default());
+}
+
+fn cfg() -> SnapCfg {
+    CFG.with(|c| c.get())
+}
+
 /// Erkennt eine Form im Strich `s`; `sc` = Zoomfaktor. Liefert die Form oder None.
 pub fn run(s: &Item, sc: f32) -> Option<Item> {
+    run_cfg(s, sc, SnapCfg::default())
+}
+
+/// Wie `run`, aber mit eigenen Einrast-Einstellungen.
+pub fn run_cfg(s: &Item, sc: f32, snap: SnapCfg) -> Option<Item> {
+    CFG.with(|c| c.set(snap));
     let st = s.as_stroke()?;
     let hl = st.hl;
     let p = st.p.clone();
@@ -1086,6 +1136,9 @@ fn to_q(v: &[[f64; 2]]) -> Vec<f32> {
 
 /// Polygon um seinen Schwerpunkt drehen, wenn eine laengere Seite fast waagrecht/senkrecht ist (< 7 Grad).
 fn axis_snap(v: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    if !cfg().shapes {
+        return v.to_vec();
+    }
     let k = v.len();
     let kf = k as f64;
     let (mut cx, mut cy, mut best, mut bl) = (0.0, 0.0, 1e9f64, 0.0);
@@ -1188,6 +1241,9 @@ fn regular(v: &[[f64; 2]]) -> Vec<f32> {
 
 /// Drehung eines k-fach symmetrischen Koerpers auf "Spitze oben" bzw. "Seite oben" ausrichten (< 7 Grad).
 fn snap_phase(phi: f64, k: usize) -> f64 {
+    if !cfg().shapes {
+        return phi;
+    }
     let st = 2.0 * PI / k as f64;
     for cand in [-PI / 2.0, -PI / 2.0 + st / 2.0] {
         let mut d = phi - cand;
@@ -1771,14 +1827,16 @@ fn dev(x: &[f64], y: &[f64], a: usize, b: usize) -> f64 {
     m
 }
 
-/// Ausrichten auf 0/45/90 Grad bei weniger als 6 Grad Abweichung (Drehung um die Mitte, Laenge bleibt).
+/// Ausrichten aufs Winkelraster (Vorgabe 45 Grad) bei weniger als `line_tol` Abweichung (Vorgabe 6 Grad) (Drehung um die Mitte, Laenge bleibt).
 fn snap_line(mut x0: f64, mut y0: f64, mut x1: f64, mut y1: f64) -> Vec<f32> {
     let (dx, dy) = (x1 - x0, y1 - y0);
     let l = hyp(dx, dy);
     if l > 0.0 {
         let ang = dy.atan2(dx).to_degrees();
-        let snap = jround(ang / 45.0) as f64 * 45.0;
-        if (ang - snap).abs() < 6.0 {
+        let c = cfg();
+        let step = c.line_step.max(1.0) as f64;
+        let snap = jround(ang / step) as f64 * step;
+        if c.lines && (ang - snap).abs() < c.line_tol as f64 {
             let (mx, my) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
             let (cx, cy) = (snap.to_radians().cos() * l / 2.0, snap.to_radians().sin() * l / 2.0);
             x0 = mx - cx;
@@ -1793,6 +1851,21 @@ fn snap_line(mut x0: f64, mut y0: f64, mut x1: f64, mut y1: f64) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn einrasten_einstellbar() {
+        assert_eq!(SnapCfg::snap_deg(13.0, 15.0, 4.0), Some(15.0));
+        assert_eq!(SnapCfg::snap_deg(10.0, 15.0, 4.0), None);
+        assert_eq!(SnapCfg::snap_deg(10.0, 15.0, 0.0), None);
+        let ang = |q: &[f32]| ((q[3] - q[1]) as f64).atan2((q[2] - q[0]) as f64).to_degrees();
+        CFG.with(|c| c.set(SnapCfg::default()));
+        assert!((ang(&snap_line(0.0, 0.0, 100.0, 8.0)) - 0.0).abs() < 1e-3);
+        CFG.with(|c| c.set(SnapCfg { lines: false, ..SnapCfg::default() }));
+        assert!(ang(&snap_line(0.0, 0.0, 100.0, 8.0)) > 4.0);
+        CFG.with(|c| c.set(SnapCfg { line_step: 15.0, line_tol: 10.0, ..SnapCfg::default() }));
+        assert!((ang(&snap_line(0.0, 0.0, 100.0, 22.0)) - 15.0).abs() < 1e-3);
+        CFG.with(|c| c.set(SnapCfg::default()));
+    }
 
     fn stroke(pts: &[(f64, f64)]) -> Item {
         let mut it = Item::stroke(0xFF000000, 4.0, false, false);

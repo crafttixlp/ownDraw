@@ -334,6 +334,8 @@ pub struct Board {
     pub bg: i32,
     pub dark: bool,
     pub finger_draw: bool,
+    /// Einrast-Einstellungen (Formerkennung, Griffe).
+    pub snap_cfg: recognizer::SnapCfg,
     pub modified: bool,
     /// Auswahl-Modus: 0 = Lasso, 1 = Rechteck.
     pub sel_mode: i32,
@@ -459,6 +461,7 @@ impl Board {
             bg: 0,
             dark: false,
             finger_draw: false,
+            snap_cfg: recognizer::SnapCfg::default(),
             modified: false,
             sel_mode: 0,
             erase_mode: 0,
@@ -1519,7 +1522,7 @@ impl Board {
             return;
         }
         let Some(cur) = self.cur.as_ref() else { return };
-        if let Some(s) = recognizer::run(cur, self.sc) {
+        if let Some(s) = recognizer::run_cfg(cur, self.sc, self.snap_cfg) {
             self.snap = Some(self.style_arrow(s));
             self.events.push(Event::Haptic);
             self.invalidate();
@@ -2576,9 +2579,9 @@ impl Board {
                 let (dx, dy) = (wx - ox, wy - oy);
                 let l = hypot(dx, dy);
                 if l > 0.0001 {
+                    let c = self.snap_cfg;
                     let deg = dy.atan2(dx).to_degrees();
-                    let r = (deg / 15.0).round() * 15.0;
-                    if (deg - r).abs() <= 4.0 {
+                    if let Some(r) = recognizer::SnapCfg::snap_deg(deg, c.handle_step, c.handle_tol).filter(|_| c.handles) {
                         let a = r.to_radians();
                         nx = ox + l * a.cos();
                         ny = oy + l * a.sin();
@@ -2598,9 +2601,8 @@ impl Board {
                 dl += 2.0 * pi;
             }
             let mut na = self.g_ang0 + dl;
-            let deg = na.to_degrees();
-            let r = (deg / 15.0).round() * 15.0;
-            if (deg - r).abs() <= 4.0 {
+            let c = self.snap_cfg;
+            if let Some(r) = recognizer::SnapCfg::snap_deg(na.to_degrees(), c.handle_step, c.handle_tol).filter(|_| c.handles) {
                 na = r.to_radians();
             }
             let d = na - self.sel_ang;
@@ -2706,7 +2708,7 @@ impl Board {
         } else if let Some(cur) = self.cur.take() {
             let mut it = self.snap.take();
             if it.is_none() && self.recog == 1 {
-                it = recognizer::run(&cur, self.sc).map(|s| self.style_arrow(s));
+                it = recognizer::run_cfg(&cur, self.sc, self.snap_cfg).map(|s| self.style_arrow(s));
             }
             self.add_top(it.unwrap_or(cur));
         } else if self.tool == SHAPE {

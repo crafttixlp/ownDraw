@@ -50,6 +50,61 @@ pub enum UpdateMode {
     Source,
 }
 
+/// Einrasten von Winkeln (Formerkennung und Griffe).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Snapping {
+    /// Erkannte Linien/Pfeile auf das Winkelraster drehen.
+    pub lines: bool,
+    /// Winkelraster für erkannte Linien/Pfeile (Grad).
+    pub line_step: u32,
+    /// Größte Abweichung zum Einrasten (Grad, 0–15).
+    pub line_tol: u32,
+    /// Erkannte Rechtecke/Vielecke gerade ausrichten.
+    pub shapes: bool,
+    /// Pfeil-Endpunkte und Drehen einer Auswahl rasten ein.
+    pub handles: bool,
+    /// Winkelraster der Griffe (Grad).
+    pub handle_step: u32,
+    /// Größte Abweichung der Griffe (Grad, 0–15).
+    pub handle_tol: u32,
+}
+
+/// Wählbare Winkelraster (Grad).
+pub const SNAP_STEPS: [u32; 5] = [5, 15, 30, 45, 90];
+
+impl Default for Snapping {
+    fn default() -> Self {
+        Snapping { lines: true, line_step: 45, line_tol: 6, shapes: true, handles: true, handle_step: 15, handle_tol: 4 }
+    }
+}
+
+impl Snapping {
+    pub fn to_core(&self) -> owndraw_core::recognizer::SnapCfg {
+        owndraw_core::recognizer::SnapCfg {
+            lines: self.lines,
+            line_step: self.line_step as f32,
+            line_tol: self.line_tol as f32,
+            shapes: self.shapes,
+            handles: self.handles,
+            handle_step: self.handle_step as f32,
+            handle_tol: self.handle_tol as f32,
+        }
+    }
+
+    fn sanitize(&mut self) {
+        let d = Snapping::default();
+        if !SNAP_STEPS.contains(&self.line_step) {
+            self.line_step = d.line_step;
+        }
+        if !SNAP_STEPS.contains(&self.handle_step) {
+            self.handle_step = d.handle_step;
+        }
+        self.line_tol = self.line_tol.min(15);
+        self.handle_tol = self.handle_tol.min(15);
+    }
+}
+
 /// Werkzeug-Kennungen der Hauptleiste (Reihenfolge = Anzeige-Reihenfolge).
 /// Bekannt: "pen", "marker", "eraser", "select", "shape", "note", "text", "image", "undo", "redo", "layers", "pages".
 pub type ToolId = String;
@@ -85,6 +140,8 @@ pub struct Settings {
     pub update_skip: Option<String>,
     /// GitHub-Repo "owner/name" für Updates.
     pub update_repo: String,
+    /// Einrasten von Winkeln.
+    pub snap: Snapping,
     /// Unbekannte/zusätzliche Werte anderer Module (z. B. Werkzeug-Vorgaben aus prefs.txt).
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -127,6 +184,7 @@ impl Default for Settings {
             update_check_on_start: false,
             update_skip: None,
             update_repo: "crafttixlp/owndraw".into(),
+            snap: Snapping::default(),
             extra: Default::default(),
         }
     }
@@ -158,6 +216,7 @@ impl Settings {
                 d.vert = matches!(e, BarPos::Left | BarPos::Right);
             }
         }
+        self.snap.sanitize();
         if self.update_repo.trim().is_empty() {
             self.update_repo = Settings::default().update_repo;
         }
@@ -270,6 +329,14 @@ mod tests {
         s.reset();
         assert!(s.tile_pos.is_empty());
         assert!(Settings::parse(br#"{"tile_dock": {"bar-tools@Expanded": {"edge": "Left", "vert": false}}}"#).unwrap().tile_dock["bar-tools@Expanded"] == Dock { edge: Some(BarPos::Left), vert: true });
+    }
+
+    #[test]
+    fn einrasten_alt_und_begrenzt() {
+        let s = Settings::parse(b"{}").unwrap();
+        assert_eq!(s.snap, Snapping::default());
+        let s = Settings::parse(br#"{"snap":{"line_step":7,"line_tol":99,"handles":false}}"#).unwrap();
+        assert_eq!((s.snap.line_step, s.snap.line_tol, s.snap.handles, s.snap.handle_step), (45, 15, false, 15));
     }
 
     #[test]

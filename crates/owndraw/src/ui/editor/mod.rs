@@ -213,6 +213,7 @@ impl Editor {
         board.shape_kind = geti("shape", 0).clamp(0, 4) as i32;
         board.arrow_style = geti("arrow", 0).clamp(0, owndraw_core::item::ARROW_STYLES.len() as i64 - 1) as i32;
         // Auf Touch-Geräten zeichnet der Finger standardmäßig (Schalter im Werkzeug-Popover).
+        board.snap_cfg = sh.settings.snap.to_core();
         board.finger_draw = x.get("finger").and_then(|v| v.as_bool()).unwrap_or_else(|| sh.platform.is_touch());
         Editor {
             doc,
@@ -691,6 +692,7 @@ impl Editor {
             self.st.error_toast_shown = false;
         }
         self.sync_tool_prefs(&mut sh.settings);
+        self.board.snap_cfg = sh.settings.snap.to_core();
 
         // Zeitgesteuertes Neuzeichnen (Halte-Timer, Ende von Zoom-Gesten, Autosave)
         let mut wait = 30.0f64;

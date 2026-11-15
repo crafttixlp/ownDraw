@@ -224,6 +224,41 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         });
     });
 
+    // ---- Einrasten
+    section(ui, "Einrasten", |ui| {
+        let sn = &mut settings.snap;
+        let slider_w = if env.ff == FormFactor::Compact { (ui.available_width() - 100.0).clamp(80.0, 300.0) } else { 220.0 };
+        row(ui, env, "Formerkennung", Some("Erkannte Linien und Pfeile auf ein Winkelraster drehen."), |ui| {
+            ui.checkbox(&mut sn.lines, "Linien und Pfeile einrasten");
+        });
+        ui.add_enabled_ui(sn.lines, |ui| {
+            row(ui, env, "Winkelraster", None, |ui| snap_steps(ui, btn, &mut sn.line_step));
+            row(ui, env, "Fangbereich", Some("Bis zu dieser Abweichung wird eingerastet. 0 = aus."), |ui| {
+                ui.spacing_mut().slider_width = slider_w;
+                ui.add(egui::Slider::new(&mut sn.line_tol, 0..=15).suffix("°"));
+            });
+        });
+        row(ui, env, "Formen ausrichten", Some("Erkannte Rechtecke und Vielecke waagerecht/senkrecht drehen, wenn sie fast gerade sind."), |ui| {
+            ui.checkbox(&mut sn.shapes, "Gerade ausrichten");
+        });
+        row(ui, env, "Griffe", Some("Pfeil-Endpunkte ziehen und Auswahl drehen rastet auf das Raster ein."), |ui| {
+            ui.checkbox(&mut sn.handles, "Griffe einrasten");
+        });
+        ui.add_enabled_ui(sn.handles, |ui| {
+            row(ui, env, "Winkelraster", None, |ui| snap_steps(ui, btn, &mut sn.handle_step));
+            row(ui, env, "Fangbereich", Some("0 = aus."), |ui| {
+                ui.spacing_mut().slider_width = slider_w;
+                ui.add(egui::Slider::new(&mut sn.handle_tol, 0..=15).suffix("°"));
+            });
+        });
+        row(ui, env, "", None, |ui| {
+            let d = crate::settings::Snapping::default();
+            if ui.add_enabled(*sn != d, egui::Button::new("Einrasten zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
+                *sn = d;
+            }
+        });
+    });
+
     // ---- Speichern
     section(ui, "Speichern", |ui| {
         let (dir_name, is_default) = match settings.default_dir.as_deref().and_then(FileRef::from_key) {
@@ -293,6 +328,14 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             ui.data_mut(|d| d.insert_temp(cid, true));
         }
     });
+}
+
+fn snap_steps(ui: &mut Ui, btn: f32, cur: &mut u32) {
+    for v in crate::settings::SNAP_STEPS {
+        if style::chip(ui, &format!("{v}°"), *cur == v, btn).clicked() {
+            *cur = v;
+        }
+    }
 }
 
 fn icon_step(ui: &mut Ui, label: &str, h: f32) -> egui::Response {

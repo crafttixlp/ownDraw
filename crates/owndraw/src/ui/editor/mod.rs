@@ -666,6 +666,7 @@ impl Editor {
         // Leisten und Panels (Reihenfolge: Docks, Leisten, Popups)
         self.st.popup_rects.clear();
         self.st.tool_rects.clear();
+        self.st.dock_rects.clear();
         pages::show(self, &ctx, sh, &lay);
         layers::show(self, &ctx, sh, &lay);
         toolbar::show(self, &ctx, sh, &lay, &tools);

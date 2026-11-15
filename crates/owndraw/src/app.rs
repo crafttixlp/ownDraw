@@ -516,6 +516,9 @@ impl eframe::App for App {
         self.toast_ui(&ctx);
         if let Some(s) = self.shot.as_mut() {
             s.frame(&ctx);
+            if s.frames() == 10 && std::env::var("OWNDRAW_DEMO").is_ok_and(|d| d.split(',').any(|t| t.trim() == "docklate")) {
+                crate::demo::apply_dock(&mut self.sh.settings);
+            }
         }
     }
 }

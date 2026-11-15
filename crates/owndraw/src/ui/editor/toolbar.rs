@@ -10,7 +10,6 @@ use owndraw_core::board;
 use owndraw_core::icons as ic;
 
 pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, tools: &[Tool]) {
-    ed.st.dock_rects.clear();
     top_bar(ed, ctx, sh, lay);
     tool_bar(ed, ctx, sh, lay, tools);
     selection_bar(ed, ctx, sh, lay);
@@ -26,9 +25,10 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     let name_max = (canvas.width() - 2.0 * M - btn - 2.0 * PAD - right_w - 3.0 * M - 14.0).clamp(40.0, 260.0);
 
     // links: Zurück + Titel
-    let r = tile(ed, ctx, sh, lay, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, Some(BarPos::Top), false, |ed, sh, ui, vert| {
-        style::pill(26).show(ui, |ui| {
-            orient(ui, vert, |ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, Some(BarPos::Top), false, |ed, sh, ui, tl| {
+        let vert = tl.vert;
+        tl.frame.show(ui, |ui| {
+            orient(ui, vert, btn, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::splat(2.0);
                 let g = grip(ui, btn, !vert);
                 if icon_btn(ui, &mut sh.icons, ic::BACK, p.text, false, false, btn, "Zurück zum Start").clicked() {
@@ -63,9 +63,10 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     ed.st.popup_rects.push(r);
 
     // rechts: Rückgängig, Wiederholen, Zoom, ⋯
-    let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, Some(BarPos::Top), false, |ed, sh, ui, vert| {
-        style::pill(26).show(ui, |ui| {
-            orient(ui, vert, |ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, Some(BarPos::Top), false, |ed, sh, ui, tl| {
+        let vert = tl.vert;
+        tl.frame.show(ui, |ui| {
+            orient(ui, vert, btn, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let g = grip(ui, btn, !vert);
                 let b = &mut ed.board;
@@ -78,9 +79,9 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     b.redo();
                 }
                 if !compact {
-                    let t = format!("{} %", (ed.board.sc * 100.0).round() as i32);
+                    let t = if vert { format!("{}%", (ed.board.sc * 100.0).round() as i32) } else { format!("{} %", (ed.board.sc * 100.0).round() as i32) };
                     let r = if vert {
-                        ui.add(egui::Button::new(egui::RichText::new(t).size(11.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(btn, 28.0)))
+                        ui.add(egui::Button::new(egui::RichText::new(t).size(11.0)).fill(Color32::TRANSPARENT).wrap_mode(egui::TextWrapMode::Extend).min_size(Vec2::new(btn, 28.0)))
                     } else {
                         ui.add(egui::Button::new(egui::RichText::new(t).size(13.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(60.0, btn - 6.0)))
                     };
@@ -121,10 +122,10 @@ pub(super) fn pos_to_frac(canvas: Rect, size: Vec2, pos: Pos2) -> [f32; 2] {
 }
 
 /// Antwort des Griffs einer Kachel in diesem Frame.
-struct Grip(egui::Response);
+pub(super) struct Grip(egui::Response);
 
 /// Greif-Griff am Anfang einer Kachel (6 Punkte). `horiz`: Leiste läuft waagerecht (Griff links, sonst oben).
-fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
+pub(super) fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
     let size = if horiz { Vec2::new(14.0, btn) } else { Vec2::new(btn, 14.0) };
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let resp = resp.on_hover_text("Ziehen zum Verschieben, Doppelklick: zurücksetzen");
@@ -147,9 +148,15 @@ fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
 }
 
 /// Waagerechte oder senkrechte Anordnung des Inhalts einer Kachel.
-fn orient<R>(ui: &mut Ui, vert: bool, f: impl FnOnce(&mut Ui) -> R) -> R {
+/// Senkrecht mit fester Breite `w` (sonst würde die Spalte die ganze verfügbare Breite füllen),
+/// Inhalt mittig.
+pub(super) fn orient<R>(ui: &mut Ui, vert: bool, w: f32, f: impl FnOnce(&mut Ui) -> R) -> R {
     if vert {
-        ui.vertical_centered(f).inner
+        ui.allocate_ui_with_layout(Vec2::new(w, 0.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+            ui.set_width(w);
+            f(ui)
+        })
+        .inner
     } else {
         ui.horizontal(f).inner
     }
@@ -167,9 +174,9 @@ pub(super) fn snap_edge(canvas: Rect, p: Pos2) -> Option<BarPos> {
         .map(|(e, _)| e)
 }
 
-/// Linke obere Ecke einer am Rand `e` angedockten Kachel (Abstand M); längs des Randes per Anteil `f`.
+/// Linke obere Ecke einer am Rand `e` angedockten Kachel (bündig am Rand); längs des Randes per Anteil `f`.
 pub(super) fn dock_pos(canvas: Rect, size: Vec2, e: BarPos, f: [f32; 2]) -> Pos2 {
-    let area = canvas.shrink(M);
+    let area = canvas;
     let p = frac_to_pos(area, size, f);
     match e {
         BarPos::Left => Pos2::new(area.left(), p.y),
@@ -194,12 +201,32 @@ pub(super) fn stack(mut r: Rect, e: BarPos, placed: &[(BarPos, Rect)]) -> Rect {
     r
 }
 
+/// Was der Inhalt einer Kachel braucht: Ausrichtung und Rahmen (bündig angedockt: Randseite flach).
+pub(super) struct Tl {
+    pub vert: bool,
+    pub frame: egui::Frame,
+}
+
+/// Pillen-Rahmen einer Leiste; bündig an `flush` angedockt ohne Rundung auf dieser Seite.
+pub(super) fn bar_frame(flush: Option<BarPos>) -> egui::Frame {
+    let mut f = style::pill(26);
+    let r = &mut f.corner_radius;
+    match flush {
+        Some(BarPos::Top) => (r.nw, r.ne) = (0, 0),
+        Some(BarPos::Bottom) => (r.sw, r.se) = (0, 0),
+        Some(BarPos::Left) => (r.nw, r.sw) = (0, 0),
+        Some(BarPos::Right) => (r.ne, r.se) = (0, 0),
+        None => {}
+    }
+    f
+}
+
 /// Verschiebbare, andockbare Kachel. Position: angedockt (Rand + Anteil längs), frei (Anteil) oder
 /// Vorgabe `pos`/`pivot` am Rand `def_edge`. Ziehen am Griff verschiebt; Loslassen nahe einem Rand
 /// dockt dort an (links/rechts senkrecht, oben/unten waagerecht), sonst bleibt sie frei liegen.
 /// Doppelklick auf den Griff setzt zurück. `content` bekommt `vert` (senkrechte Anordnung).
 #[allow(clippy::too_many_arguments)]
-fn tile(
+pub(super) fn tile(
     ed: &mut Editor,
     ctx: &egui::Context,
     sh: &mut Shared,
@@ -209,7 +236,7 @@ fn tile(
     pivot: Align2,
     def_edge: Option<BarPos>,
     def_vert: bool,
-    content: impl FnOnce(&mut Editor, &mut Shared, &mut Ui, bool) -> Grip,
+    content: impl FnOnce(&mut Editor, &mut Shared, &mut Ui, Tl) -> Grip,
 ) -> Rect {
     let canvas = lay.canvas;
     let key = tile_key(id, lay.env.ff);
@@ -229,13 +256,26 @@ fn tile(
         edge = def_edge;
     }
     // Angedockte Kacheln am selben Rand stapeln statt überlappen
+    let mut flush = None;
     if let (Some(e), true) = (edge, size.x > 0.0) {
         let r = stack(pivot.anchor_size(pos, size), e, &ed.st.dock_rects);
         (pos, pivot) = (r.min, Align2::LEFT_TOP);
+        // vom Nutzer angedockt und direkt am Rand: Randseite flach
+        let touches = match e {
+            BarPos::Top => r.top() <= canvas.top() + 0.5,
+            BarPos::Bottom => r.bottom() >= canvas.bottom() - 0.5,
+            BarPos::Left => r.left() <= canvas.left() + 0.5,
+            BarPos::Right => r.right() >= canvas.right() - 0.5,
+        };
+        if dock.is_some_and(|d| d.edge.is_some()) && touches {
+            flush = Some(e);
+        }
     }
     let mut grip_resp = None;
-    let r = Editor::float(ctx, id, pos, pivot, canvas, Order::Middle, |ui| {
-        grip_resp = Some(content(ed, sh, ui, vert).0);
+    // eigene Area je Ausrichtung, damit keine Größe der anderen Ausrichtung hängen bleibt
+    let area_id = if vert { format!("{id}-v") } else { id.to_string() };
+    let r = Editor::float(ctx, &area_id, pos, pivot, canvas, Order::Middle, |ui| {
+        grip_resp = Some(content(ed, sh, ui, Tl { vert, frame: bar_frame(flush) }).0);
     });
     ed.st.tile_sizes.insert(id.to_string(), r.size());
     if let Some(e) = edge {
@@ -277,8 +317,8 @@ fn tile(
                         let v = matches!(e, BarPos::Left | BarPos::Right);
                         // Größe nach dem Drehen schätzen (Länge und Dicke tauschen)
                         let sz = if v != vert { Vec2::new(r.height(), r.width()) } else { r.size() };
-                        let sz = sz.min(canvas.shrink(M).size());
-                        let mut f = pos_to_frac(canvas.shrink(M), sz, p);
+                        let sz = sz.min(canvas.size());
+                        let mut f = pos_to_frac(canvas, sz, p);
                         if v {
                             f[0] = 0.0;
                         } else {
@@ -393,11 +433,12 @@ fn tool_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, to
         BarPos::Left => (Pos2::new(canvas.left() + M, lay.y_below), Align2::LEFT_TOP, false),
         BarPos::Right => (Pos2::new(canvas.right() - M, lay.y_below), Align2::RIGHT_TOP, false),
     };
-    let r = tile(ed, ctx, sh, lay, "bar-tools", pos, pivot, lay.tb_edge, !horiz, |ed, sh, ui, vert| {
+    let r = tile(ed, ctx, sh, lay, "bar-tools", pos, pivot, lay.tb_edge, !horiz, |ed, sh, ui, tl| {
+        let vert = tl.vert;
         ed.st.tools_vert = vert;
-        style::pill(26)
+        tl.frame
             .show(ui, |ui| {
-                orient(ui, vert, |ui| {
+                orient(ui, vert, btn, |ui| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
                     let g = grip(ui, btn, !vert);
                     for &t in tools {
@@ -428,8 +469,9 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
     let bottom = canvas.bottom() - M - if lay.tb_edge == Some(BarPos::Bottom) { lay.thick + M } else { 0.0 };
     let maxw = canvas.width() - 2.0 * M;
     let maxh = canvas.height() - 2.0 * M;
-    let r = tile(ed, ctx, sh, lay, "bar-sel", Pos2::new(canvas.center().x, bottom), Align2::CENTER_BOTTOM, Some(BarPos::Bottom), false, |ed, sh, ui, vert| {
-        style::pill(26)
+    let r = tile(ed, ctx, sh, lay, "bar-sel", Pos2::new(canvas.center().x, bottom), Align2::CENTER_BOTTOM, Some(BarPos::Bottom), false, |ed, sh, ui, tl| {
+        let vert = tl.vert;
+        tl.frame
             .show(ui, |ui| {
                 let body = |ui: &mut Ui| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
@@ -505,7 +547,9 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                     g
                 };
                 if vert {
-                    egui::ScrollArea::vertical().max_height(maxh - 2.0 * PAD).auto_shrink([true, true]).show(ui, |ui| ui.vertical_centered(body).inner).inner
+                    // min_scrolled_height: nicht auf den Platz unter der aktuellen Lage schrumpfen (sonst bleibt
+                    // die am unteren Rand ausgerichtete Leiste abgeschnitten)
+                    egui::ScrollArea::vertical().max_height(maxh - 2.0 * PAD).min_scrolled_height(maxh - 2.0 * PAD).auto_shrink([true, true]).show(ui, |ui| orient(ui, true, btn.max(48.0), body)).inner
                 } else {
                     ui.set_max_width(maxw - 2.0 * PAD);
                     ui.horizontal_wrapped(body).inner
@@ -757,7 +801,7 @@ mod tile_tests {
         assert_eq!(snap_edge(canvas, Pos2::new(500.0, 400.0)), None);
         let sz = Vec2::new(50.0, 300.0);
         let p = dock_pos(canvas, sz, BarPos::Right, [0.0, 0.0]);
-        assert_eq!(p, Pos2::new(1000.0 - M - 50.0, M));
+        assert_eq!(p, Pos2::new(1000.0 - 50.0, 0.0));
         let a = Rect::from_min_size(Pos2::new(M, M), Vec2::new(200.0, 50.0));
         let b = stack(Rect::from_min_size(Pos2::new(100.0, M), Vec2::new(300.0, 50.0)), BarPos::Top, &[(BarPos::Top, a)]);
         assert_eq!(b.top(), a.bottom() + M);

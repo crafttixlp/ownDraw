@@ -5,7 +5,7 @@
 //! UI ruft sie ausschließlich über die Funktionen dieser Datei auf (`add_page`, `delete_page`, `move_page`,
 //! `set_bg`) über die Seiten-Methoden des Boards.
 
-use super::{Editor, Lay, DOCK_PAGES, M};
+use super::{toolbar, Editor, Lay, DOCK_PAGES, M};
 use crate::app::Shared;
 use crate::layout::FormFactor;
 use crate::settings::BarPos;
@@ -165,30 +165,45 @@ enum Act {
 }
 
 /// Kleine Navigations-Pille: ‹ Seite n / m › und + (neue Seite); Tipp auf den Text öffnet die Seitenliste.
-fn nav_chip(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, act: &mut Option<Act>) {
+/// Verschiebbar und andockbar wie die anderen Leisten (senkrecht: ‹ n/m › + untereinander).
+fn nav_chip(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, pos: Pos2, act: &mut Option<Act>) -> egui::Rect {
     let n = page_count(&ed.board);
     let cur = current_page(&ed.board);
     let btn = sh.env.btn;
     let p = style::pal();
-    style::pill(26).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            let small = Vec2::splat(btn - 6.0);
-            if ui.add_enabled(cur > 0, egui::Button::new("‹").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Vorherige Seite").clicked() {
-                *act = Some(Act::Goto(cur - 1));
-            }
-            let t = egui::RichText::new(format!("Seite {} / {}", cur + 1, n)).size(14.0).color(c(p.text));
-            if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(0.0, btn - 6.0))).on_hover_text("Seitenliste").clicked() {
-                *act = Some(Act::Open);
-            }
-            if ui.add_enabled(cur + 1 < n, egui::Button::new("›").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Nächste Seite").clicked() {
-                *act = Some(Act::Goto(cur + 1));
-            }
-            if ui.add(egui::Button::new("+").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Neue Seite nach dieser").clicked() {
-                *act = Some(Act::Add);
-            }
-        });
-    });
+    toolbar::tile(ed, ctx, sh, lay, "pages-chip", pos, Align2::LEFT_TOP, None, false, |_ed, _sh, ui, tl| {
+        let vert = tl.vert;
+        tl.frame
+            .show(ui, |ui| {
+                let body = |ui: &mut Ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    let g = toolbar::grip(ui, btn, !vert);
+                    let small = if vert { Vec2::new(btn, btn - 10.0) } else { Vec2::splat(btn - 6.0) };
+                    if ui.add_enabled(cur > 0, egui::Button::new("‹").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Vorherige Seite").clicked() {
+                        *act = Some(Act::Goto(cur - 1));
+                    }
+                    let (label, size) = if vert { (format!("{}/{}", cur + 1, n), 12.0) } else { (format!("Seite {} / {}", cur + 1, n), 14.0) };
+                    let t = egui::RichText::new(label).size(size).color(c(p.text));
+                    let min = if vert { Vec2::new(btn, 26.0) } else { Vec2::new(0.0, btn - 6.0) };
+                    if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).wrap_mode(egui::TextWrapMode::Extend).min_size(min)).on_hover_text("Seitenliste").clicked() {
+                        *act = Some(Act::Open);
+                    }
+                    if ui.add_enabled(cur + 1 < n, egui::Button::new("›").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Nächste Seite").clicked() {
+                        *act = Some(Act::Goto(cur + 1));
+                    }
+                    if ui.add(egui::Button::new("+").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Neue Seite nach dieser").clicked() {
+                        *act = Some(Act::Add);
+                    }
+                    g
+                };
+                if vert {
+                    toolbar::orient(ui, true, btn, body)
+                } else {
+                    ui.horizontal(body).inner
+                }
+            })
+            .inner
+    })
 }
 
 /// Zielindex beim Ziehen einer Seite: Zeiger-y gegen die Mitten der Zeilen.
@@ -222,13 +237,13 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
                 ed.st.popup_rects.push(r);
             } else {
                 // eingeklappt: kleine Seiten-Kachel zum Aufklappen
-                let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+                let r = nav_chip(ed, ctx, sh, lay, Pos2::new(left, lay.y_below), &mut act);
                 ed.st.popup_rects.push(r);
             }
         }
         FormFactor::Medium => {
             if ed.st.pages_open != Some(true) {
-                let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+                let r = nav_chip(ed, ctx, sh, lay, Pos2::new(left, lay.y_below), &mut act);
                 ed.st.popup_rects.push(r);
             } else {
                 let max_h = (canvas.bottom() - lay.y_below - M - 70.0).max(140.0);
@@ -246,7 +261,7 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
         }
         FormFactor::Compact => {
             let p = style::pal();
-            let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+            let r = nav_chip(ed, ctx, sh, lay, Pos2::new(left, lay.y_below), &mut act);
             ed.st.popup_rects.push(r);
             if ed.st.pages_open == Some(true) {
                 let r = Editor::float(ctx, "pages-full", canvas.min, Align2::LEFT_TOP, canvas, Order::Foreground, |ui| {

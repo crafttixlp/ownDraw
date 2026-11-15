@@ -25,10 +25,11 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     let name_max = (canvas.width() - 2.0 * M - btn - 2.0 * PAD - right_w - 3.0 * M - 14.0).clamp(40.0, 260.0);
 
     // links: Zurück + Titel
-    let r = Editor::float(ctx, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, canvas, Order::Middle, |ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, |ed, sh, ui| {
         style::pill(26).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+                let g = grip(ui, btn, true);
                 if icon_btn(ui, &mut sh.icons, ic::BACK, p.text, false, false, btn, "Zurück zum Start").clicked() {
                     sh.reqs.push(Req::Back);
                 }
@@ -49,16 +50,20 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     }
                 });
                 ui.add_space(6.0);
-            });
-        });
+                g
+            })
+            .inner
+        })
+        .inner
     });
     ed.st.popup_rects.push(r);
 
     // rechts: Rückgängig, Wiederholen, Zoom, ⋯
-    let r = Editor::float(ctx, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, canvas, Order::Middle, |ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, |ed, sh, ui| {
         style::pill(26).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
+                let g = grip(ui, btn, true);
                 let b = &mut ed.board;
                 let u = if b.can_undo() { p.text } else { p.disabled };
                 if icon_btn(ui, &mut sh.icons, ic::UNDO, u, false, false, btn, &env.tip("Rückgängig", "Strg+Z")).clicked() {
@@ -81,10 +86,96 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     ed.st.menu_open = !ed.st.menu_open;
                     ed.st.opts_open = false;
                 }
-            });
-        });
+                g
+            })
+            .inner
+        })
+        .inner
     });
     ed.st.popup_rects.push(r);
+}
+
+/// Schlüssel einer Kachel in den Einstellungen: Kennung + Formfaktor.
+pub(super) fn tile_key(id: &str, ff: FormFactor) -> String {
+    format!("{id}@{ff:?}")
+}
+
+/// Anteil (0..1) der linken oberen Ecke bezogen auf den freien Platz (Zeichenfläche minus Kachel) -> Position.
+pub(super) fn frac_to_pos(canvas: Rect, size: Vec2, f: [f32; 2]) -> Pos2 {
+    let free = (canvas.size() - size).max(Vec2::ZERO);
+    Pos2::new(canvas.min.x + f[0].clamp(0.0, 1.0) * free.x, canvas.min.y + f[1].clamp(0.0, 1.0) * free.y)
+}
+
+/// Position der linken oberen Ecke -> Anteil (0..1, geklammert; bei keinem freien Platz 0).
+pub(super) fn pos_to_frac(canvas: Rect, size: Vec2, pos: Pos2) -> [f32; 2] {
+    let free = (canvas.size() - size).max(Vec2::ZERO);
+    let f = |p: f32, o: f32, fr: f32| if fr > 0.5 { ((p - o) / fr).clamp(0.0, 1.0) } else { 0.0 };
+    [f(pos.x, canvas.min.x, free.x), f(pos.y, canvas.min.y, free.y)]
+}
+
+/// Antwort des Griffs einer Kachel in diesem Frame.
+struct Grip(egui::Response);
+
+/// Greif-Griff am Anfang einer Kachel (6 Punkte). `horiz`: Leiste läuft waagerecht (Griff links, sonst oben).
+fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
+    let size = if horiz { Vec2::new(14.0, btn) } else { Vec2::new(btn, 14.0) };
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    let resp = resp.on_hover_text("Ziehen zum Verschieben, Doppelklick: zurücksetzen");
+    if resp.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    } else if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+    }
+    let p = style::pal();
+    let col = if resp.hovered() || resp.dragged() { c(p.text) } else { c(p.disabled) };
+    let (cols, rows) = if horiz { (2, 3) } else { (3, 2) };
+    let step = 5.0;
+    for i in 0..cols {
+        for j in 0..rows {
+            let o = Vec2::new((i as f32 - (cols - 1) as f32 / 2.0) * step, (j as f32 - (rows - 1) as f32 / 2.0) * step);
+            ui.painter().circle_filled(rect.center() + o, 1.3, col);
+        }
+    }
+    Grip(resp)
+}
+
+/// Verschiebbare Kachel: Position aus den Einstellungen (falls vorhanden) sonst `pos`/`pivot`;
+/// Ziehen am Griff verschiebt, Loslassen speichert, Doppelklick setzt zurück.
+#[allow(clippy::too_many_arguments)]
+fn tile(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, id: &str, pos: Pos2, pivot: Align2, content: impl FnOnce(&mut Editor, &mut Shared, &mut Ui) -> Grip) -> Rect {
+    let canvas = lay.canvas;
+    let key = tile_key(id, lay.env.ff);
+    let size = ed.st.tile_sizes.get(id).copied().unwrap_or(Vec2::ZERO);
+    let dragging = ed.st.tile_drag.as_ref().is_some_and(|(k, _)| *k == key);
+    let (pos, pivot) = if let (true, Some((_, p))) = (dragging, &ed.st.tile_drag) {
+        (*p, Align2::LEFT_TOP)
+    } else if let Some(f) = sh.settings.tile_pos.get(&key) {
+        (frac_to_pos(canvas, size, *f), Align2::LEFT_TOP)
+    } else {
+        (pos, pivot)
+    };
+    let mut grip_resp = None;
+    let r = Editor::float(ctx, id, pos, pivot, canvas, Order::Middle, |ui| {
+        grip_resp = Some(content(ed, sh, ui).0);
+    });
+    ed.st.tile_sizes.insert(id.to_string(), r.size());
+    if let Some(g) = grip_resp {
+        if g.double_clicked() {
+            ed.st.tile_drag = None;
+            sh.settings.tile_pos.remove(&key);
+        } else if g.dragged() {
+            let cur = if dragging { ed.st.tile_drag.as_ref().map(|d| d.1).unwrap_or(r.min) } else { r.min };
+            let np = cur + g.drag_delta();
+            // in der Zeichenfläche halten
+            let np = frac_to_pos(canvas, r.size(), pos_to_frac(canvas, r.size(), np));
+            ed.st.tile_drag = Some((key, np));
+        } else if g.drag_stopped() && dragging {
+            if let Some((_, p)) = ed.st.tile_drag.take() {
+                sh.settings.tile_pos.insert(key, pos_to_frac(canvas, r.size(), p));
+            }
+        }
+    }
+    r
 }
 
 fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
@@ -182,20 +273,24 @@ fn tool_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, to
         BarPos::Left => (Pos2::new(canvas.left() + M, lay.y_below), Align2::LEFT_TOP, false),
         BarPos::Right => (Pos2::new(canvas.right() - M, lay.y_below), Align2::RIGHT_TOP, false),
     };
-    let r = Editor::float(ctx, "bar-tools", pos, pivot, canvas, Order::Middle, |ui| {
-        style::pill(26).show(ui, |ui| {
-            let body = |ui: &mut Ui| {
-                ui.spacing_mut().item_spacing = Vec2::ZERO;
-                for &t in tools {
-                    tool_btn(ui, ed, sh, t, btn);
+    let r = tile(ed, ctx, sh, lay, "bar-tools", pos, pivot, |ed, sh, ui| {
+        style::pill(26)
+            .show(ui, |ui| {
+                let body = |ui: &mut Ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    let g = grip(ui, btn, horiz);
+                    for &t in tools {
+                        tool_btn(ui, ed, sh, t, btn);
+                    }
+                    g
+                };
+                if horiz {
+                    ui.horizontal(body).inner
+                } else {
+                    ui.vertical(body).inner
                 }
-            };
-            if horiz {
-                ui.horizontal(body);
-            } else {
-                ui.vertical(body);
-            }
-        });
+            })
+            .inner
     });
     ed.st.popup_rects.push(r);
 }
@@ -216,11 +311,12 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
     let single_note = b.single_note().map(|n| n.id);
     let bottom = canvas.bottom() - M - if lay.tb == BarPos::Bottom { lay.thick + M } else { 0.0 };
     let maxw = canvas.width() - 2.0 * M;
-    let r = Editor::float(ctx, "bar-sel", Pos2::new(canvas.center().x, bottom), Align2::CENTER_BOTTOM, canvas, Order::Middle, |ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-sel", Pos2::new(canvas.center().x, bottom), Align2::CENTER_BOTTOM, |ed, sh, ui| {
         style::pill(26).show(ui, |ui| {
             ui.set_max_width(maxw - 2.0 * PAD);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let g = grip(ui, btn, true);
                 let env = sh.env;
                 if has_sel {
                     if icon_btn(ui, &mut sh.icons, ic::COPY, p.text, false, false, btn, &env.tip("Kopieren", "Strg+C")).clicked() {
@@ -255,8 +351,11 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                         ed.board.delete_sel();
                     }
                 }
-            });
-        });
+                g
+            })
+            .inner
+        })
+        .inner
     });
     ed.st.popup_rects.push(r);
 }
@@ -427,5 +526,28 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
         sh.reqs.push(Req::ToolsEdited);
     } else {
         ed.st.edit_tools = Some(st);
+    }
+}
+
+#[cfg(test)]
+mod tile_tests {
+    use super::*;
+
+    #[test]
+    fn anteil_und_position() {
+        let canvas = Rect::from_min_size(Pos2::new(10.0, 20.0), Vec2::new(400.0, 300.0));
+        let size = Vec2::new(100.0, 50.0);
+        assert_eq!(frac_to_pos(canvas, size, [0.0, 0.0]), Pos2::new(10.0, 20.0));
+        assert_eq!(frac_to_pos(canvas, size, [1.0, 1.0]), Pos2::new(310.0, 270.0));
+        assert_eq!(frac_to_pos(canvas, size, [5.0, -2.0]), Pos2::new(310.0, 20.0));
+        let f = pos_to_frac(canvas, size, Pos2::new(160.0, 145.0));
+        assert!((f[0] - 0.5).abs() < 1e-5 && (f[1] - 0.5).abs() < 1e-5);
+        assert_eq!(pos_to_frac(canvas, size, Pos2::new(-100.0, 999.0)), [0.0, 1.0]);
+        assert_eq!(pos_to_frac(canvas, Vec2::new(400.0, 50.0), Pos2::new(50.0, 20.0)), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn schluessel() {
+        assert_eq!(tile_key("bar-tools", FormFactor::Expanded), "bar-tools@Expanded");
     }
 }

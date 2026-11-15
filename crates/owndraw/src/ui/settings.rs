@@ -193,6 +193,11 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     section(ui, "Leisten anpassen", |ui| {
         row(ui, env, "Werkzeugleiste", None, |ui| bar_chips(ui, env, &mut settings.toolbar_pos));
         row(ui, env, "Optionsleiste", None, |ui| bar_chips(ui, env, &mut settings.options_pos));
+        row(ui, env, "Leisten-Positionen", Some("Mit dem Griff verschobene Leisten zurück an den Standardplatz."), |ui| {
+            if ui.add_enabled(!settings.tile_pos.is_empty(), egui::Button::new("Leisten-Positionen zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
+                settings.tile_pos.clear();
+            }
+        });
         row(ui, env, "Werkzeuge", Some("Reihenfolge ändern und Werkzeuge aus- oder einblenden."), |ui| {
             if style::accent_btn(ui, "Werkzeuge bearbeiten…", btn).clicked() {
                 *act = SettingsAction::EditTools;

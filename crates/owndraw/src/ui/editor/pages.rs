@@ -153,6 +153,43 @@ enum Act {
     Delete(usize),
     Move(usize, usize),
     Close,
+    Open,
+}
+
+/// Kleine Navigations-Pille: ‹ Seite n / m › und + (neue Seite); Tipp auf den Text öffnet die Seitenliste.
+fn nav_chip(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, act: &mut Option<Act>) {
+    let n = page_count(&ed.board);
+    let cur = current_page(&ed.board);
+    let btn = sh.env.btn;
+    let p = style::pal();
+    style::pill(26).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            let small = Vec2::splat(btn - 6.0);
+            if ui.add_enabled(cur > 0, egui::Button::new("‹").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Vorherige Seite").clicked() {
+                *act = Some(Act::Goto(cur - 1));
+            }
+            let t = egui::RichText::new(format!("Seite {} / {}", cur + 1, n)).size(14.0).color(c(p.text));
+            if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(0.0, btn - 6.0))).on_hover_text("Seitenliste").clicked() {
+                *act = Some(Act::Open);
+            }
+            if ui.add_enabled(cur + 1 < n, egui::Button::new("›").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Nächste Seite").clicked() {
+                *act = Some(Act::Goto(cur + 1));
+            }
+            if ui.add(egui::Button::new("+").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Neue Seite nach dieser").clicked() {
+                *act = Some(Act::Add);
+            }
+        });
+    });
+}
+
+/// Zielindex beim Ziehen einer Seite: Zeiger-y gegen die Mitten der Zeilen.
+fn drop_target(rows: &[egui::Rect], from: usize, y: f32) -> usize {
+    let mut to = rows.iter().filter(|r| r.center().y < y).count();
+    if to > from {
+        to -= 1;
+    }
+    to.min(rows.len().saturating_sub(1))
 }
 
 pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
@@ -178,7 +215,10 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
             }
         }
         FormFactor::Medium => {
-            if ed.st.pages_open == Some(true) {
+            if ed.st.pages_open != Some(true) {
+                let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+                ed.st.popup_rects.push(r);
+            } else {
                 let max_h = (canvas.bottom() - lay.y_below - M - 70.0).max(140.0);
                 let r = Editor::float(ctx, "pages-float", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| {
                     style::pill(20).show(ui, |ui| {
@@ -193,27 +233,8 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
             }
         }
         FormFactor::Compact => {
-            let n = page_count(&ed.board);
-            let cur = current_page(&ed.board);
-            let btn = sh.env.btn;
             let p = style::pal();
-            let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| {
-                style::pill(26).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        if cur > 0 && ui.add(egui::Button::new("‹").fill(egui::Color32::TRANSPARENT).min_size(Vec2::splat(btn - 6.0))).clicked() {
-                            act = Some(Act::Goto(cur - 1));
-                        }
-                        let t = egui::RichText::new(format!("Seite {} / {}", cur + 1, n)).size(14.0).color(c(p.text));
-                        if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(0.0, btn - 6.0))).on_hover_text("Seitenliste").clicked() {
-                            ed.st.pages_open = Some(true);
-                        }
-                        if cur + 1 < n && ui.add(egui::Button::new("›").fill(egui::Color32::TRANSPARENT).min_size(Vec2::splat(btn - 6.0))).clicked() {
-                            act = Some(Act::Goto(cur + 1));
-                        }
-                    });
-                });
-            });
+            let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
             ed.st.popup_rects.push(r);
             if ed.st.pages_open == Some(true) {
                 let r = Editor::float(ctx, "pages-full", canvas.min, Align2::LEFT_TOP, canvas, Order::Foreground, |ui| {
@@ -251,10 +272,11 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
             if move_page(&mut ed.board, a, b) {
                 goto_page(&mut ed.board, b);
             } else {
-                sh.toast("Seiten verschieben: folgt mit dem Seitenmodus (WP2)");
+                sh.toast("Seite konnte nicht verschoben werden");
             }
         }
         Some(Act::Close) => ed.st.pages_open = Some(false),
+        Some(Act::Open) => ed.st.pages_open = Some(true),
         None => {}
     }
 }
@@ -280,14 +302,21 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
     if thumbs {
         ed.page_thumbs.refresh(ctx, &ed.board, sh.now, tw);
     }
+    // Ziehen zum Umsortieren: gezogene Seite merken, Zeilen-Rechtecke sammeln, beim Loslassen verschieben.
+    let drag_id = egui::Id::unique("pages-drag");
+    let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
+    let mut rows: Vec<egui::Rect> = Vec::with_capacity(n);
+    let mut released = false;
     egui::ScrollArea::vertical().max_height(max_h.max(100.0)).auto_shrink([false, true]).show(ui, |ui| {
         for i in 0..n {
             let on = i == cur;
-            let fr = egui::Frame::new().fill(if on { c(p.active) } else { egui::Color32::TRANSPARENT }).corner_radius(10).inner_margin(egui::Margin::same(4));
-            fr.show(ui, |ui| {
+            let lifted = dragging == Some(i);
+            let fill = if lifted { c(p.hover) } else if on { c(p.active) } else { egui::Color32::TRANSPARENT };
+            let fr = egui::Frame::new().fill(fill).corner_radius(10).inner_margin(egui::Margin::same(4));
+            let row = fr.show(ui, |ui| {
                 if thumbs {
                     let (w, h) = page_rect(&ed.board, i).map(|r| (r.width(), r.height())).unwrap_or((595.0, 842.0));
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(tw, tw * h / w), Sense::click());
+                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(tw, tw * h / w), Sense::click_and_drag());
                     ui.painter().rect_filled(rect, 3.0, c(0xFFFBFBF8));
                     if let Some(Some(t)) = ed.page_thumbs.tex.get(i) {
                         ui.painter().image(t.id(), rect, egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
@@ -297,12 +326,36 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
                     if resp.clicked() {
                         *act = Some(Act::Goto(i));
                     }
-                    if on {
+                    if resp.drag_started() {
+                        dragging = Some(i);
+                    }
+                    if resp.drag_stopped() {
+                        released = true;
+                    }
+                    let resp = resp.on_hover_text("Tippen: springen · Ziehen: Reihenfolge ändern");
+                    if on || resp.hovered() {
                         row_actions(ui, sh, i, n, btn, act);
                     }
                 } else {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
+                        // Griff zum Ziehen
+                        let (gr, g) = ui.allocate_exact_size(Vec2::new(18.0, btn), Sense::drag());
+                        for k in 0..3 {
+                            let y = gr.center().y + (k as f32 - 1.0) * 6.0;
+                            for x in [gr.center().x - 3.0, gr.center().x + 3.0] {
+                                ui.painter().circle_filled(Pos2::new(x, y), 1.6, c(p.dim));
+                            }
+                        }
+                        if g.hovered() {
+                            ctx.set_cursor_icon(egui::CursorIcon::Grab);
+                        }
+                        if g.drag_started() {
+                            dragging = Some(i);
+                        }
+                        if g.drag_stopped() {
+                            released = true;
+                        }
                         let t = egui::RichText::new(format!("Seite {}", i + 1)).size(15.0).color(c(p.text));
                         let w = ui.available_width() - 3.0 * btn - 8.0;
                         if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(w.max(60.0), btn))).clicked() {
@@ -312,12 +365,52 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
                     });
                 }
             });
+            rows.push(row.response.rect);
+        }
+        // Einfügemarke beim Ziehen
+        if let (Some(from), Some(pos)) = (dragging, ctx.pointer_interact_pos()) {
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            let to = drop_target(&rows, from, pos.y);
+            if to != from {
+                let r = rows[to];
+                let y = if to > from { r.bottom() + 1.0 } else { r.top() - 1.0 };
+                ui.painter().hline(r.x_range(), y, egui::Stroke::new(3.0, c(p.accent)));
+            }
         }
     });
-    ui.add_space(6.0);
-    if style::accent_btn(ui, "+ Seite", btn - 6.0).clicked() {
-        *act = Some(Act::Add);
+    if released {
+        if let (Some(from), Some(pos)) = (dragging, ctx.pointer_interact_pos().or(ctx.input(|i| i.pointer.latest_pos()))) {
+            let to = drop_target(&rows, from, pos.y);
+            if to != from {
+                *act = Some(Act::Move(from, to));
+            }
+        }
+        dragging = None;
     }
+    if !ctx.input(|i| i.pointer.any_down()) && !released {
+        dragging = None;
+    }
+    ui.data_mut(|d| match dragging {
+        Some(i) => {
+            d.insert_temp(drag_id, i);
+        }
+        None => d.remove::<usize>(drag_id),
+    });
+    ui.add_space(6.0);
+    ui.horizontal_wrapped(|ui| {
+        if style::accent_btn(ui, "+ Seite", btn - 6.0).on_hover_text("Neue Seite nach der aktuellen").clicked() {
+            *act = Some(Act::Add);
+        }
+        // Zu Seite springen
+        let gid = egui::Id::unique("pages-goto");
+        let mut g: usize = ui.data(|d| d.get_temp(gid)).unwrap_or(cur + 1);
+        ui.label("Gehe zu");
+        ui.add(egui::DragValue::new(&mut g).range(1..=n.max(1)));
+        ui.data_mut(|d| d.insert_temp(gid, g));
+        if style::plain_btn(ui, "Los", btn - 8.0).clicked() {
+            *act = Some(Act::Goto(g.clamp(1, n.max(1)) - 1));
+        }
+    });
 }
 
 fn row_actions(ui: &mut Ui, sh: &mut Shared, i: usize, n: usize, btn: f32, act: &mut Option<Act>) {
@@ -339,6 +432,17 @@ fn row_actions(ui: &mut Ui, sh: &mut Shared, i: usize, n: usize, btn: f32, act: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ziel_beim_ziehen() {
+        let rows: Vec<egui::Rect> = (0..4).map(|i| egui::Rect::from_min_size(Pos2::new(0.0, i as f32 * 100.0), Vec2::new(50.0, 90.0))).collect();
+        assert_eq!(drop_target(&rows, 0, 10.0), 0);
+        assert_eq!(drop_target(&rows, 0, 160.0), 1);
+        assert_eq!(drop_target(&rows, 0, 260.0), 2);
+        assert_eq!(drop_target(&rows, 0, 999.0), 3);
+        assert_eq!(drop_target(&rows, 3, 0.0), 0);
+        assert_eq!(drop_target(&rows, 3, 120.0), 1);
+    }
 
     #[test]
     fn seiten_geometrie_und_navigation() {

@@ -2,6 +2,7 @@
 
 use crate::platform::{FileRef, Platform};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -57,6 +58,9 @@ pub struct Settings {
     pub toolbar_pos: Option<BarPos>,
     /// Position der Optionsleiste; None = automatisch.
     pub options_pos: Option<BarPos>,
+    /// Vom Nutzer verschobene Kacheln: "<id>@<Formfaktor>" -> Anteil (0..1) der linken oberen Ecke
+    /// bezogen auf (Zeichenfläche - Kachelgröße).
+    pub tile_pos: BTreeMap<String, [f32; 2]>,
     /// Sichtbare Werkzeuge in Reihenfolge.
     pub tools: Vec<ToolId>,
     pub save_choice: SaveChoice,
@@ -103,6 +107,7 @@ impl Default for Settings {
             ui_scale: 100,
             toolbar_pos: None,
             options_pos: None,
+            tile_pos: BTreeMap::new(),
             tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             save_choice: SaveChoice::Ask,
             default_dir: None,
@@ -132,6 +137,10 @@ impl Settings {
             tools = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
         }
         self.tools = tools;
+        self.tile_pos.retain(|_, f| f.iter().all(|v| v.is_finite()));
+        for f in self.tile_pos.values_mut() {
+            *f = [f[0].clamp(0.0, 1.0), f[1].clamp(0.0, 1.0)];
+        }
         if self.update_repo.trim().is_empty() {
             self.update_repo = Settings::default().update_repo;
         }
@@ -227,6 +236,22 @@ mod tests {
         assert_eq!(Settings::parse(br#"{"tools": []}"#).unwrap().tools.len(), DEFAULT_TOOLS.len());
         assert_eq!(Settings::parse(b"{}").unwrap(), Settings::default());
         assert!(Settings::parse(b"{kaputt").is_err());
+    }
+
+    #[test]
+    fn tile_pos_roundtrip_und_altes_json() {
+        let alt = Settings::parse(br#"{"ui_scale": 100}"#).unwrap();
+        assert!(alt.tile_pos.is_empty());
+        let mut s = Settings::default();
+        s.tile_pos.insert("bar-tools@Expanded".into(), [0.25, 0.5]);
+        let bytes = serde_json::to_vec(&s).unwrap();
+        let neu = Settings::parse(&bytes).unwrap();
+        assert_eq!(neu.tile_pos.get("bar-tools@Expanded"), Some(&[0.25, 0.5]));
+        let k = Settings::parse(br#"{"tile_pos": {"a": [2.0, -1.0]}}"#).unwrap();
+        assert_eq!(k.tile_pos["a"], [1.0, 0.0]);
+        let mut s = neu;
+        s.reset();
+        assert!(s.tile_pos.is_empty());
     }
 
     #[test]

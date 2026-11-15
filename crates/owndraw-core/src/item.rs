@@ -233,6 +233,60 @@ pub const ARROW2: i32 = 4;
 pub const HEART: i32 = 5;
 /// Maschinenbau-Pfeil (gefülltes Dreieck, 15° gesamt), WP3.
 pub const ARROW_ENG: i32 = 6;
+/// Pfeil mit gefüllter Spitze.
+pub const ARROW_FILLED: i32 = 7;
+/// Doppelpfeil mit gefüllten Spitzen.
+pub const ARROW2_FILLED: i32 = 8;
+/// Gestrichelter Pfeil (offene Spitze).
+pub const ARROW_DASHED: i32 = 9;
+/// Gestrichelter Doppelpfeil (offene Spitzen).
+pub const ARROW2_DASHED: i32 = 10;
+
+/// Aufbau eines einfachen Pfeils: (Spitzen an beiden Enden?, gefüllt?, gestrichelt?).
+/// None für alles, was kein solcher Pfeil ist (auch ARROW_ENG, der eigene Geometrie hat).
+pub fn arrow_spec(kind: i32) -> Option<(bool, bool, bool)> {
+    match kind {
+        ARROW => Some((false, false, false)),
+        ARROW2 => Some((true, false, false)),
+        ARROW_FILLED => Some((false, true, false)),
+        ARROW2_FILLED => Some((true, true, false)),
+        ARROW_DASHED => Some((false, false, true)),
+        ARROW2_DASHED => Some((true, false, true)),
+        _ => None,
+    }
+}
+
+/// Wählbare Pfeilstile (Index = `Board::arrow_style`): Name und Zieltyp für (einfacher, doppelter) erkannter Pfeil.
+/// Index 0 = wie erkannt.
+pub const ARROW_STYLES: [(&str, i32, i32); 7] = [
+    ("Wie gezeichnet", ARROW, ARROW2),
+    ("Offene Spitze", ARROW, ARROW),
+    ("Gefüllte Spitze", ARROW_FILLED, ARROW_FILLED),
+    ("Maschinenbau 15°", ARROW_ENG, ARROW_ENG),
+    ("Doppelpfeil", ARROW2, ARROW2),
+    ("Doppelpfeil gefüllt", ARROW2_FILLED, ARROW2_FILLED),
+    ("Gestrichelt", ARROW_DASHED, ARROW2_DASHED),
+];
+
+/// Wandelt einen erkannten Pfeil (ARROW/ARROW2) in den gewählten Stil um; andere Typen bleiben.
+pub fn styled_arrow(kind: i32, style: i32) -> i32 {
+    if kind != ARROW && kind != ARROW2 {
+        return kind;
+    }
+    let Some(&(_, single, double)) = ARROW_STYLES.get(style.max(0) as usize) else { return kind };
+    if style == 0 {
+        return kind;
+    }
+    // Stile mit nur einer Spitzenart (Gefüllt/Offen/Maschinenbau) behalten einen gezeichneten Doppelpfeil als Doppelpfeil.
+    if kind == ARROW2 {
+        return match single {
+            ARROW => ARROW2,
+            ARROW_FILLED | ARROW_ENG => ARROW2_FILLED,
+            _ => double,
+        };
+    }
+    single
+}
 
 /// Spitzenlänge des Maschinenbau-Pfeils: max(10 × Linienbreite, 12).
 pub fn arrow_eng_len(width: f32) -> f32 {
@@ -254,6 +308,11 @@ pub fn arrow_eng_head(x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> [f32; 6
     let (bx, by) = (x1 - ux * len, y1 - uy * len);
     let (nx, ny) = (-uy * half, ux * half);
     [x1, y1, bx + nx, by + ny, bx - nx, by - ny]
+}
+
+/// Strich-/Lückenlänge gestrichelter Pfeile.
+pub fn arrow_dash(width: f32) -> (f32, f32) {
+    ((width * 4.0).max(6.0), (width * 3.0).max(4.0))
 }
 
 /// Mitte der Basis eines Maschinenbau-Pfeil-Dreiecks (Endpunkt der Linie).
@@ -492,7 +551,7 @@ impl Item {
                     for c in q.chunks_exact(2) {
                         r.union(&RectF::new(c[0], c[1], c[0], c[1]));
                     }
-                    let w = if g.kind == ARROW || g.kind == ARROW2 { w * 3.0 } else { w };
+                    let w = if arrow_spec(g.kind).is_some() { w * 3.0 } else { w };
                     RectF::new(r.left - w, r.top - w, r.right + w, r.bottom + w)
                 }
             }
@@ -638,6 +697,33 @@ impl Item {
         Some([tx - hd * (ux * cs - uy * sn), ty - hd * (uy * cs + ux * sn), tx - hd * (ux * cs + uy * sn), ty - hd * (uy * cs - ux * sn)])
     }
 
+    /// Widerhaken für Ende (Index 0) und – bei Doppelpfeilen – Anfang (Index 1).
+    fn arrow_heads(&self, q: &[f32], both: bool) -> [Option<[f32; 4]>; 2] {
+        let rel = if both { 0.4 } else { 0.5 };
+        let end = self.barbs(q[2], q[3], q[0], q[1], rel);
+        let start = if both { self.barbs(q[0], q[1], q[2], q[3], rel) } else { None };
+        [end, start]
+    }
+
+    /// Gefüllte Pfeilspitzen als Dreiecke [Spitze, Basis 1, Basis 2] (für Export, der nur Striche kennt).
+    pub fn filled_heads(&self) -> Vec<[f32; 6]> {
+        let Kind::Shape(g) = &self.kind else { return Vec::new() };
+        let q = &g.q;
+        if q.len() < 4 {
+            return Vec::new();
+        }
+        if g.kind == ARROW_ENG {
+            return vec![arrow_eng_head(q[0], q[1], q[2], q[3], self.width)];
+        }
+        match arrow_spec(g.kind) {
+            Some((both, true, _)) => {
+                let tips = [(q[2], q[3]), (q[0], q[1])];
+                self.arrow_heads(q, both).iter().zip(tips).filter_map(|(h, t)| h.map(|h| [t.0, t.1, h[0], h[1], h[2], h[3]])).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
     fn draw_shape(&self, g: &Shape, c: &mut Canvas, dark: bool) {
         let q = &g.q;
         if q.len() < 4 {
@@ -646,20 +732,43 @@ impl Item {
         let p = Paint::stroke(self.line_color(g.hl, dark), self.width, Cap::Round);
         match g.kind {
             LINE => c.draw_line(q[0], q[1], q[2], q[3], &p),
-            ARROW => {
-                c.draw_line(q[0], q[1], q[2], q[3], &p);
-                if let Some(h) = self.barbs(q[2], q[3], q[0], q[1], 0.5) {
-                    c.draw_line(q[2], q[3], h[0], h[1], &p);
-                    c.draw_line(q[2], q[3], h[2], h[3], &p);
+            ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED => {
+                let (both, filled, dashed) = arrow_spec(g.kind).unwrap_or_default();
+                let heads = self.arrow_heads(q, both);
+                // Schaft: bei gefüllten Spitzen bis zur Basis, damit die Spitze scharf bleibt
+                let (mut a, mut b) = ((q[0], q[1]), (q[2], q[3]));
+                if filled {
+                    if let Some(h) = heads[0] {
+                        b = ((h[0] + h[2]) / 2.0, (h[1] + h[3]) / 2.0);
+                    }
+                    if let Some(h) = heads[1] {
+                        a = ((h[0] + h[2]) / 2.0, (h[1] + h[3]) / 2.0);
+                    }
                 }
-            }
-            ARROW2 => {
-                c.draw_line(q[0], q[1], q[2], q[3], &p);
-                if let (Some(h1), Some(h2)) = (self.barbs(q[2], q[3], q[0], q[1], 0.4), self.barbs(q[0], q[1], q[2], q[3], 0.4)) {
-                    c.draw_line(q[2], q[3], h1[0], h1[1], &p);
-                    c.draw_line(q[2], q[3], h1[2], h1[3], &p);
-                    c.draw_line(q[0], q[1], h2[0], h2[1], &p);
-                    c.draw_line(q[0], q[1], h2[2], h2[3], &p);
+                if dashed {
+                    let mut pd = p.clone();
+                    pd.cap = Cap::Butt;
+                    pd.dash = Some(arrow_dash(self.width));
+                    c.draw_line(a.0, a.1, b.0, b.1, &pd);
+                } else {
+                    c.draw_line(a.0, a.1, b.0, b.1, &p);
+                }
+                let tips = [(q[2], q[3]), (q[0], q[1])];
+                for (h, t) in heads.iter().zip(tips) {
+                    let Some(h) = h else { continue };
+                    if filled {
+                        let mut pb = PathBuilder::new();
+                        pb.move_to(t.0, t.1);
+                        pb.line_to(h[0], h[1]);
+                        pb.line_to(h[2], h[3]);
+                        pb.close();
+                        if let Some(path) = pb.finish() {
+                            c.draw_path(&path, &Paint::fill(p.color));
+                        }
+                    } else {
+                        c.draw_line(t.0, t.1, h[0], h[1], &p);
+                        c.draw_line(t.0, t.1, h[2], h[3], &p);
+                    }
                 }
             }
             ARROW_ENG => {
@@ -752,7 +861,7 @@ impl Item {
             Kind::Shape(g) => {
                 let q = &g.q;
                 match g.kind {
-                    LINE | ARROW | ARROW2 => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
+                    LINE | ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
                     ARROW_ENG => {
                         let h = arrow_eng_head(q[0], q[1], q[2], q[3], self.width);
                         seg(x, y, q[0], q[1], q[2], q[3]) <= lim || poly_hit(&h, x, y, lim)
@@ -889,18 +998,55 @@ impl Item {
         let mut out = Vec::new();
         match g.kind {
             LINE => out.push(self.mk(hl, &[q[0], q[1], q[2], q[3]])),
-            ARROW => {
+            ARROW | ARROW2 => {
+                // unverändert zur Vorversion (Teil-Radierer)
+                let both = g.kind == ARROW2;
                 out.push(self.mk(hl, &[q[0], q[1], q[2], q[3]]));
-                if let Some(h) = self.barbs(q[2], q[3], q[0], q[1], 0.5) {
+                let heads = self.arrow_heads(q, both);
+                if both {
+                    if let [Some(h1), Some(h2)] = heads {
+                        out.push(self.mk(hl, &[h1[0], h1[1], q[2], q[3], h1[2], h1[3]]));
+                        out.push(self.mk(hl, &[h2[0], h2[1], q[0], q[1], h2[2], h2[3]]));
+                    }
+                } else if let Some(h) = heads[0] {
                     out.push(self.mk(hl, &[q[2], q[3], h[0], h[1]]));
                     out.push(self.mk(hl, &[q[2], q[3], h[2], h[3]]));
                 }
             }
-            ARROW2 => {
-                out.push(self.mk(hl, &[q[0], q[1], q[2], q[3]]));
-                if let (Some(h1), Some(h2)) = (self.barbs(q[2], q[3], q[0], q[1], 0.4), self.barbs(q[0], q[1], q[2], q[3], 0.4)) {
-                    out.push(self.mk(hl, &[h1[0], h1[1], q[2], q[3], h1[2], h1[3]]));
-                    out.push(self.mk(hl, &[h2[0], h2[1], q[0], q[1], h2[2], h2[3]]));
+            ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED => {
+                let (both, filled, dashed) = arrow_spec(g.kind).unwrap_or_default();
+                let heads = self.arrow_heads(q, both);
+                let (mut a, mut b) = ((q[0], q[1]), (q[2], q[3]));
+                if filled {
+                    if let Some(h) = heads[0] {
+                        b = ((h[0] + h[2]) / 2.0, (h[1] + h[3]) / 2.0);
+                    }
+                    if let Some(h) = heads[1] {
+                        a = ((h[0] + h[2]) / 2.0, (h[1] + h[3]) / 2.0);
+                    }
+                }
+                if dashed {
+                    let (on, off) = arrow_dash(self.width);
+                    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+                    let l = hypot(dx, dy);
+                    let mut t = 0.0;
+                    while l > 0.0 && t < l {
+                        let e = (t + on).min(l);
+                        out.push(self.mk(hl, &[a.0 + dx * t / l, a.1 + dy * t / l, a.0 + dx * e / l, a.1 + dy * e / l]));
+                        t += on + off;
+                    }
+                } else {
+                    out.push(self.mk(hl, &[a.0, a.1, b.0, b.1]));
+                }
+                let tips = [(q[2], q[3]), (q[0], q[1])];
+                // Spitzen zuletzt (xopp-Export füllt sie über filled_heads)
+                for (h, t) in heads.iter().zip(tips) {
+                    let Some(h) = h else { continue };
+                    if filled {
+                        out.push(self.mk(hl, &[t.0, t.1, h[0], h[1], h[2], h[3], t.0, t.1]));
+                    } else {
+                        out.push(self.mk(hl, &[h[0], h[1], t.0, t.1, h[2], h[3]]));
+                    }
                 }
             }
             ARROW_ENG => {
@@ -1126,6 +1272,91 @@ fn arr(a: &[f32]) -> Value {
     )
 }
 
+/// Lineare Formtypen (Linie, Pfeile): zwei Endpunkte q[0..2] und q[2..4].
+pub fn is_linear(kind: i32) -> bool {
+    matches!(kind, LINE | ARROW | ARROW2 | ARROW_ENG) || (7..=10).contains(&kind)
+}
+
+impl Item {
+    /// Skaliert achsenweise um den Pivot (px, py): sx entlang der um `ang` (Bogenmass) gedrehten x-Achse,
+    /// sy entlang der dazu senkrechten y-Achse. Kein Spiegeln (Faktoren > 0 erwartet). Linienbreite bleibt.
+    pub fn xf_axis(&mut self, sx: f32, sy: f32, px: f32, py: f32, ang: f32) {
+        let (cs, sn) = (ang.cos(), ang.sin());
+        let pt = |x: f32, y: f32| -> (f32, f32) {
+            let (dx, dy) = (x - px, y - py);
+            let (u, v) = ((dx * cs + dy * sn) * sx, (-dx * sn + dy * cs) * sy);
+            (px + u * cs - v * sn, py + u * sn + v * cs)
+        };
+        // Faktoren entlang der Achsen eines Objekts, dessen Box um `own` gedreht ist (Projektion; bei 0°/90° exakt).
+        let box_f = |own: f32| -> (f32, f32) {
+            let d = own - ang;
+            let (c, s) = (d.cos(), d.sin());
+            (((sx * c).powi(2) + (sy * s).powi(2)).sqrt(), ((sx * s).powi(2) + (sy * c).powi(2)).sqrt())
+        };
+        match &mut self.kind {
+            Kind::Stroke(st) => {
+                for c in st.p.chunks_exact_mut(3) {
+                    let (x, y) = pt(c[0], c[1]);
+                    c[0] = x;
+                    c[1] = y;
+                }
+            }
+            Kind::Shape(g) => {
+                if g.kind == ELLIPSE || g.kind == HEART {
+                    let q = &mut g.q;
+                    let (hx, hy) = ((q[2] - q[0]) / 2.0, (q[3] - q[1]) / 2.0);
+                    let (cx, cy) = pt((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
+                    let (fx, fy) = box_f(g.ang);
+                    let (hx, hy) = (hx * fx, hy * fy);
+                    q[0] = cx - hx;
+                    q[2] = cx + hx;
+                    q[1] = cy - hy;
+                    q[3] = cy + hy;
+                } else {
+                    for c in g.q.chunks_exact_mut(2) {
+                        let (x, y) = pt(c[0], c[1]);
+                        c[0] = x;
+                        c[1] = y;
+                    }
+                }
+            }
+            Kind::Note(n) => {
+                let (cx, cy) = pt(n.x + n.w / 2.0, n.y + n.h / 2.0);
+                let (fx, fy) = box_f(n.ang);
+                n.w *= fx;
+                n.mh *= fy;
+                if n.bg == 0 {
+                    // freier Text: Breite folgt der Schrift
+                    n.size *= (fx * fy).sqrt();
+                }
+                n.layout();
+                n.x = cx - n.w / 2.0;
+                n.y = cy - n.h / 2.0;
+            }
+            Kind::Img(m) => {
+                let (cx, cy) = pt(m.x + m.w / 2.0, m.y + m.h / 2.0);
+                let (fx, fy) = box_f(m.ang);
+                m.w *= fx;
+                m.h *= fy;
+                m.x = cx - m.w / 2.0;
+                m.y = cy - m.h / 2.0;
+            }
+        }
+        self.touch();
+    }
+
+    /// Setzt bei linearen Formen den Endpunkt `i` (0 = Anfang, 1 = Ende) auf (x, y).
+    pub fn set_end(&mut self, i: usize, x: f32, y: f32) {
+        if let Kind::Shape(g) = &mut self.kind {
+            if is_linear(g.kind) && g.q.len() >= 4 && i < 2 {
+                g.q[i * 2] = x;
+                g.q[i * 2 + 1] = y;
+            }
+        }
+        self.touch();
+    }
+}
+
 fn farr(v: &Value) -> Option<Vec<f32>> {
     v.as_array()?.iter().map(|x| x.as_f64().map(|f| f as f32)).collect()
 }
@@ -1196,6 +1427,22 @@ mod tests {
         it.xf(2.0, 50.0, 25.0, 10.0, 0.0);
         assert_eq!(it.width, 4.0);
         assert_eq!(it.to_strokes().len(), 1);
+    }
+
+    #[test]
+    fn xf_axis_ellipse_und_poly() {
+        let mut e = Item::shape(ELLIPSE, vec![0.0, 0.0, 100.0, 50.0], INK, 2.0);
+        e.xf_axis(2.0, 1.0, 0.0, 0.0, 0.0);
+        assert_eq!(e.as_shape().unwrap().q, vec![0.0, 0.0, 200.0, 50.0]);
+        assert_eq!(e.width, 2.0);
+        // um 90 Grad gedrehter Rahmen: sx wirkt auf die Hoehe
+        let mut r = Item::shape(ELLIPSE, vec![0.0, 0.0, 100.0, 50.0], INK, 2.0);
+        r.xf_axis(1.0, 2.0, 0.0, 0.0, 0.0);
+        assert_eq!(r.as_shape().unwrap().q, vec![0.0, 0.0, 100.0, 100.0]);
+        let mut p = Item::shape(POLY, vec![0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0], INK, 2.0);
+        p.xf_axis(3.0, 1.0, 0.0, 0.0, 0.0);
+        assert_eq!(p.bounds().width() > 29.0, true);
+        assert!(is_linear(ARROW) && is_linear(8) && !is_linear(ELLIPSE));
     }
 
     #[test]
@@ -1289,4 +1536,35 @@ mod extra_tests {
         assert_eq!(o["xa"]["style"], "dash");
         assert_eq!(o["page"], 1);
     }
+
+    #[test]
+    fn pfeilstile_umwandeln() {
+        assert_eq!(styled_arrow(ARROW, 0), ARROW);
+        assert_eq!(styled_arrow(ARROW2, 0), ARROW2);
+        assert_eq!(styled_arrow(ARROW, 2), ARROW_FILLED);
+        assert_eq!(styled_arrow(ARROW2, 2), ARROW2_FILLED);
+        assert_eq!(styled_arrow(ARROW, 3), ARROW_ENG);
+        assert_eq!(styled_arrow(ARROW, 4), ARROW2);
+        assert_eq!(styled_arrow(ARROW2, 6), ARROW2_DASHED);
+        assert_eq!(styled_arrow(LINE, 2), LINE);
+        assert_eq!(styled_arrow(ARROW, 99), ARROW);
+    }
+
+    #[test]
+    fn neue_pfeile_json_und_striche() {
+        for k in [ARROW_FILLED, ARROW2_FILLED, ARROW_DASHED, ARROW2_DASHED] {
+            let it = Item::shape(k, vec![0.0, 0.0, 100.0, 0.0], INK, 2.0);
+            let again = Item::from_json(&it.json()).unwrap();
+            assert_eq!(again.as_shape().unwrap().kind, k);
+            assert!(!it.to_strokes().is_empty());
+            assert!(it.hit(50.0, 0.0, 2.0));
+        }
+        let f = Item::shape(ARROW2_FILLED, vec![0.0, 0.0, 100.0, 0.0], INK, 2.0);
+        assert_eq!(f.filled_heads().len(), 2);
+        assert!(f.to_strokes().len() == 3);
+        let d = Item::shape(ARROW_DASHED, vec![0.0, 0.0, 100.0, 0.0], INK, 2.0);
+        assert!(d.to_strokes().len() > 4, "gestrichelter Schaft in Stücken");
+        assert!(d.filled_heads().is_empty());
+    }
+
 }

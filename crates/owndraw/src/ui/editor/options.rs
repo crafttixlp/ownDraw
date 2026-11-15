@@ -8,6 +8,7 @@ use crate::style::{self, c};
 use egui::{Align2, CornerRadius, Order, Pos2, Sense, Stroke, Ui, Vec2};
 use owndraw_core::board;
 use owndraw_core::icons as ic;
+use owndraw_core::item;
 
 pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     if !ed.st.opts_open {
@@ -75,6 +76,9 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             colors(ui, ed, sh);
             widths(ui, ed, sh, "Breite");
             recog(ui, ed, h);
+            if ed.board.recog != 2 {
+                arrow_styles(ui, ed, sh, "Erkannte Pfeile werden zu");
+            }
             if sh.env.touch || ed.board.finger_draw {
                 ui.add_space(4.0);
                 let mut f = ed.board.finger_draw;
@@ -109,6 +113,9 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
                 lbl.push_str(" (15°, gefüllt)");
             }
             ui.label(egui::RichText::new(lbl).size(12.0).color(c(style::pal().dim)));
+            if k == 3 {
+                arrow_styles(ui, ed, sh, "Pfeilstil");
+            }
             colors(ui, ed, sh);
             widths(ui, ed, sh, "Linienbreite");
         }
@@ -222,4 +229,57 @@ fn recog(ui: &mut Ui, ed: &mut Editor, h: f32) {
     });
     let hint = ["Am Ende des Strichs kurz halten, dann wird die Form geglättet.", "Jeder Strich wird, wenn möglich, zur Form.", "Striche bleiben, wie gezeichnet."][ed.board.recog.clamp(0, 2) as usize];
     ui.label(egui::RichText::new(hint).size(12.0).color(c(style::pal().dim)));
+}
+
+/// Auswahl des Pfeilstils mit kleiner Vorschau je Stil (Index = `Board::arrow_style`).
+fn arrow_styles(ui: &mut Ui, ed: &mut Editor, sh: &Shared, title: &str) {
+    style::caption(ui, title);
+    let p = style::pal();
+    let size = Vec2::new(sh.env.btn * 1.6, sh.env.btn);
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        for (i, (name, single, _)) in item::ARROW_STYLES.iter().enumerate() {
+            let on = ed.board.arrow_style == i as i32;
+            let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+            style::btn_bg(ui, rect, &resp, on);
+            let tint = c(if on { p.accent } else { p.text });
+            if i == 0 {
+                ui.painter().text(rect.center(), Align2::CENTER_CENTER, "Auto", egui::FontId::proportional(12.0), tint);
+            } else {
+                paint_arrow_preview(ui.painter(), rect.shrink2(Vec2::new(10.0, rect.height() * 0.3)), *single, i == 4 || i == 5, tint);
+            }
+            if resp.on_hover_text(*name).clicked() {
+                ed.board.arrow_style = i as i32;
+            }
+        }
+    });
+    let n = item::ARROW_STYLES.get(ed.board.arrow_style.max(0) as usize).map(|s| s.0).unwrap_or("");
+    ui.label(egui::RichText::new(n).size(12.0).color(c(p.dim)));
+}
+
+/// Kleine Pfeil-Vorschau von links nach rechts im Rechteck r.
+fn paint_arrow_preview(pt: &egui::Painter, r: egui::Rect, kind: i32, double: bool, col: egui::Color32) {
+    let (a, b) = (Pos2::new(r.left(), r.center().y), Pos2::new(r.right(), r.center().y));
+    let st = Stroke::new(1.8, col);
+    let (filled, dashed, eng) = (matches!(kind, item::ARROW_FILLED | item::ARROW2_FILLED), kind == item::ARROW_DASHED, kind == item::ARROW_ENG);
+    let head = |tip: Pos2, dir: f32| {
+        let (len, half) = if eng { (11.0, 11.0 * 7.5f32.to_radians().tan()) } else { (8.0, 5.0) };
+        let base = Pos2::new(tip.x - dir * len, tip.y);
+        let (p1, p2) = (Pos2::new(base.x, base.y - half), Pos2::new(base.x, base.y + half));
+        if filled || eng {
+            pt.add(egui::Shape::convex_polygon(vec![tip, p1, p2], col, Stroke::NONE));
+        } else {
+            pt.line_segment([tip, p1], st);
+            pt.line_segment([tip, p2], st);
+        }
+    };
+    if dashed {
+        pt.add(egui::Shape::dashed_line(&[a, b], st, 4.0, 3.0));
+    } else {
+        pt.line_segment([a, b], st);
+    }
+    head(b, 1.0);
+    if double {
+        head(a, -1.0);
+    }
 }

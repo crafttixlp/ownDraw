@@ -28,7 +28,7 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     // links: Zurück + Titel
     let r = tile(ed, ctx, sh, lay, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, Some(BarPos::Top), false, |ed, sh, ui, vert| {
         style::pill(26).show(ui, |ui| {
-            orient(ui, vert, |ui| {
+            orient(ui, vert, btn, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::splat(2.0);
                 let g = grip(ui, btn, !vert);
                 if icon_btn(ui, &mut sh.icons, ic::BACK, p.text, false, false, btn, "Zurück zum Start").clicked() {
@@ -65,7 +65,7 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     // rechts: Rückgängig, Wiederholen, Zoom, ⋯
     let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, Some(BarPos::Top), false, |ed, sh, ui, vert| {
         style::pill(26).show(ui, |ui| {
-            orient(ui, vert, |ui| {
+            orient(ui, vert, btn, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let g = grip(ui, btn, !vert);
                 let b = &mut ed.board;
@@ -78,9 +78,9 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     b.redo();
                 }
                 if !compact {
-                    let t = format!("{} %", (ed.board.sc * 100.0).round() as i32);
+                    let t = if vert { format!("{}%", (ed.board.sc * 100.0).round() as i32) } else { format!("{} %", (ed.board.sc * 100.0).round() as i32) };
                     let r = if vert {
-                        ui.add(egui::Button::new(egui::RichText::new(t).size(11.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(btn, 28.0)))
+                        ui.add(egui::Button::new(egui::RichText::new(t).size(11.0)).fill(Color32::TRANSPARENT).wrap_mode(egui::TextWrapMode::Extend).min_size(Vec2::new(btn, 28.0)))
                     } else {
                         ui.add(egui::Button::new(egui::RichText::new(t).size(13.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(60.0, btn - 6.0)))
                     };
@@ -147,9 +147,15 @@ fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
 }
 
 /// Waagerechte oder senkrechte Anordnung des Inhalts einer Kachel.
-fn orient<R>(ui: &mut Ui, vert: bool, f: impl FnOnce(&mut Ui) -> R) -> R {
+/// Senkrecht mit fester Breite `w` (sonst würde die Spalte die ganze verfügbare Breite füllen),
+/// Inhalt mittig.
+fn orient<R>(ui: &mut Ui, vert: bool, w: f32, f: impl FnOnce(&mut Ui) -> R) -> R {
     if vert {
-        ui.vertical_centered(f).inner
+        ui.allocate_ui_with_layout(Vec2::new(w, 0.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+            ui.set_width(w);
+            f(ui)
+        })
+        .inner
     } else {
         ui.horizontal(f).inner
     }
@@ -234,7 +240,9 @@ fn tile(
         (pos, pivot) = (r.min, Align2::LEFT_TOP);
     }
     let mut grip_resp = None;
-    let r = Editor::float(ctx, id, pos, pivot, canvas, Order::Middle, |ui| {
+    // eigene Area je Ausrichtung, damit keine Größe der anderen Ausrichtung hängen bleibt
+    let area_id = if vert { format!("{id}-v") } else { id.to_string() };
+    let r = Editor::float(ctx, &area_id, pos, pivot, canvas, Order::Middle, |ui| {
         grip_resp = Some(content(ed, sh, ui, vert).0);
     });
     ed.st.tile_sizes.insert(id.to_string(), r.size());
@@ -397,7 +405,7 @@ fn tool_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, to
         ed.st.tools_vert = vert;
         style::pill(26)
             .show(ui, |ui| {
-                orient(ui, vert, |ui| {
+                orient(ui, vert, btn, |ui| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
                     let g = grip(ui, btn, !vert);
                     for &t in tools {
@@ -505,7 +513,9 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                     g
                 };
                 if vert {
-                    egui::ScrollArea::vertical().max_height(maxh - 2.0 * PAD).auto_shrink([true, true]).show(ui, |ui| ui.vertical_centered(body).inner).inner
+                    // min_scrolled_height: nicht auf den Platz unter der aktuellen Lage schrumpfen (sonst bleibt
+                    // die am unteren Rand ausgerichtete Leiste abgeschnitten)
+                    egui::ScrollArea::vertical().max_height(maxh - 2.0 * PAD).min_scrolled_height(maxh - 2.0 * PAD).auto_shrink([true, true]).show(ui, |ui| orient(ui, true, btn.max(48.0), body)).inner
                 } else {
                     ui.set_max_width(maxw - 2.0 * PAD);
                     ui.horizontal_wrapped(body).inner

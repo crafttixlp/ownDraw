@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -18,6 +18,18 @@ use owndraw_core::item::{self, Item};
 use std::path::PathBuf;
 use std::rc::Rc;
 
+/// Leisten seitlich andocken (Demo `dock`; `docklate` erst nach 10 Frames, wie nach einem Ziehen).
+pub fn apply_dock(settings: &mut crate::settings::Settings) {
+    use crate::settings::{BarPos, Dock};
+    for ff in ["Expanded", "Medium", "Compact"] {
+        for (id, e, f) in [("bar-tools", BarPos::Left, [0.0, 0.3]), ("bar-tr", BarPos::Right, [0.0, 0.0]), ("bar-sel", BarPos::Right, [0.0, 1.0])] {
+            let key = format!("{id}@{ff}");
+            settings.tile_pos.insert(key.clone(), f);
+            settings.tile_dock.insert(key, Dock { edge: Some(e), vert: true });
+        }
+    }
+}
+
 pub struct Shot {
     path: PathBuf,
     frames: u32,
@@ -27,6 +39,10 @@ pub struct Shot {
 impl Shot {
     pub fn from_env() -> Option<Shot> {
         std::env::var("OWNDRAW_SCREENSHOT").ok().filter(|s| !s.is_empty()).map(|p| Shot { path: PathBuf::from(p), frames: 0, done: false })
+    }
+
+    pub fn frames(&self) -> u32 {
+        self.frames
     }
 
     /// Pro Frame aufrufen.
@@ -112,14 +128,7 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     }
     // Andocken: Werkzeugleiste links, Rückgängig-Leiste rechts, Auswahlleiste rechts (senkrecht)
     if has("dock") {
-        use crate::settings::{BarPos, Dock};
-        for ff in ["Expanded", "Medium", "Compact"] {
-            for (id, e, f) in [("bar-tools", BarPos::Left, [0.0, 0.3]), ("bar-tr", BarPos::Right, [0.0, 0.0]), ("bar-sel", BarPos::Right, [0.0, 1.0])] {
-                let key = format!("{id}@{ff}");
-                app.sh.settings.tile_pos.insert(key.clone(), f);
-                app.sh.settings.tile_dock.insert(key, Dock { edge: Some(e), vert: true });
-            }
-        }
+        apply_dock(&mut app.sh.settings);
     }
     let ms = owndraw_core::store::now_ms();
     if has("start") {

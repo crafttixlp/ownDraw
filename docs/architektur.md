@@ -21,9 +21,10 @@ owndraw (Desktop, egui/eframe)  ──►  owndraw-core (keine UI-Abhängigkeit)
   Ansicht über `sc`, `tx`, `ty` (Zoom/Verschiebung).
 - **Objekte:** `Vec<Rc<Item>>`; Änderungen per Copy-on-Write (`Rc::make_mut`). Undo-Schnappschüsse teilen
   unveränderte Objekte. Auswahl über Laufzeit-ids (`u64`, nicht gespeichert).
-- **Rendering:** `render(&mut Pixmap)` zeichnet in ein vormultipliziertes tiny-skia-Pixmap, das die Oberfläche als
-  Textur hochlädt. Hintergrund, Muster und ruhende Objekte liegen in einem Zwischenspeicher; gerade bewegte
-  Objekte (`lift`) und der aktuelle Strich werden obenauf gezeichnet.
+- **Rendering:** `render(&mut Pixmap) -> Frame` zeichnet in ein vormultipliziertes tiny-skia-Pixmap, das die
+  Oberfläche als Textur hochlädt. Hintergrund, Muster und ruhende Objekte liegen in einem Zwischenspeicher; gerade
+  bewegte Objekte (`lift`), der aktuelle Strich, Rahmen und Radierer werden obenauf gezeichnet. Details und Messwerte:
+  [performance.md](performance.md).
 - **Eingabe:** plattformneutral über `Motion` (Finger, Stylus, Radierer, Maus; Mehrfinger, Historie). Zeitgesteuerte
   Gesten (Halten für Formerkennung 0,45 s, Ende von Rad-/Pan-Gesten) über `tick(now)` und `next_deadline()`.
 - **Rückmeldungen** an die Oberfläche über `board.events`: `Changed`, `AskText`, `Notice`, `Haptic`.

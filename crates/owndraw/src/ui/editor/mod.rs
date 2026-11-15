@@ -158,6 +158,12 @@ pub struct Editor {
     img_dir: PathBuf,
     tex: Option<TextureHandle>,
     pix: Option<Pixmap>,
+    /// Textur gerade bilinear gefiltert (waehrend Zoom-Gesten skaliert gezeigt).
+    tex_linear: bool,
+    /// Zoom-Geste: Textur skaliert zeigen (siehe `Frame::scaled`).
+    scaled: Option<(f32, f32, f32)>,
+    /// Ursprung des Ring-Speichers der Textur.
+    org: (u32, u32),
     drawing: bool,
     panning: Option<(Pos2, PointerButton)>,
     /// Startpunkt des Verschiebens (mittlere Maustaste ohne Bewegung = Objekt auswählen).
@@ -206,6 +212,9 @@ impl Editor {
             autosave: Autosave::new(file),
             img_dir,
             tex: None,
+            tex_linear: false,
+            scaled: None,
+            org: (0, 0),
             pix: None,
             drawing: false,
             panning: None,
@@ -238,12 +247,18 @@ impl Editor {
         d
     }
 
-    fn snapshot_bytes(board: &Board, doc: &mut Document, fmt: SaveFormat) -> Vec<u8> {
+    /// Speicherauftrag: im UI-Thread nur Board-JSON und Vorschaubild (Objekte sind nicht threadfähig),
+    /// PNG-Kodierung und Serialisieren/Packen im Schreib-Thread.
+    fn snapshot_bytes(board: &Board, doc: &mut Document, fmt: SaveFormat) -> crate::autosave::Job {
         doc.board = board.to_json();
         doc.mode = board.board_mode.clone();
         doc.meta.modified = session::rfc3339_now();
-        doc.thumb = board.thumb().encode_png().ok();
-        session::serialize_as(doc, fmt).unwrap_or_default()
+        let thumb = board.thumb();
+        let mut d = doc.clone();
+        crate::autosave::Job(Box::new(move || {
+            d.thumb = thumb.encode_png().ok();
+            session::serialize_as(&d, fmt).unwrap_or_default()
+        }))
     }
 
     /// Speichert sofort, falls Änderungen anstehen (Zurück, Schließen, App pausiert).
@@ -546,23 +561,68 @@ impl Editor {
             clip::context_menu(self, &resp, sh);
         }
 
-        // Fläche zeichnen
+        // Fläche zeichnen: nur geänderte Bereiche zur GPU (Dirty-Rects), Zoom-Gesten skaliert die GPU
         if self.board.needs_redraw || self.tex.is_none() {
             let (w, h) = (((rect.width() * ppp).round() as u32).max(1), ((rect.height() * ppp).round() as u32).max(1));
             if self.pix.as_ref().map(|p| p.width() != w || p.height() != h).unwrap_or(true) {
                 self.pix = Pixmap::new(w, h);
+                self.board.force_full_frame();
+            }
+            if self.tex.is_none() {
+                self.board.force_full_frame();
             }
             if let Some(pm) = self.pix.as_mut() {
-                self.board.render(pm);
-                let img = egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pm.data());
+                let fr = self.board.render(pm);
+                self.scaled = fr.scaled;
+                self.org = fr.org;
+                let linear = fr.scaled.is_some();
+                let opts = if linear { egui::TextureOptions::LINEAR } else { egui::TextureOptions::NEAREST };
+                let full = fr.damage.len() == 1 && fr.damage[0] == board::IRect { x: 0, y: 0, w, h };
                 match self.tex.as_mut() {
-                    Some(t) => t.set(img, egui::TextureOptions::NEAREST),
-                    None => self.tex = Some(ctx.load_texture("board", img, egui::TextureOptions::NEAREST)),
+                    None => self.tex = Some(ctx.load_texture("board", egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pm.data()), opts)),
+                    Some(t) if full => t.set(egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pm.data()), opts),
+                    Some(t) => {
+                        // Teilbilder (Zielbild ist ein Ring-Speicher); beim Filterwechsel mindestens ein Pixel,
+                        // damit die Option ankommt
+                        let mut dmg = fr.damage.clone();
+                        if dmg.is_empty() && linear != self.tex_linear {
+                            dmg.push(board::IRect { x: 0, y: 0, w: 1, h: 1 });
+                        }
+                        for d in dmg {
+                            for (_, p) in board::torus_parts(d, fr.org, w, h) {
+                                let mut buf = Vec::with_capacity(p.w as usize * p.h as usize * 4);
+                                let row = w as usize * 4;
+                                for y in p.y as usize..(p.y + p.h) as usize {
+                                    let o = y * row + p.x as usize * 4;
+                                    buf.extend_from_slice(&pm.data()[o..o + p.w as usize * 4]);
+                                }
+                                t.set_partial([p.x as usize, p.y as usize], egui::ColorImage::from_rgba_premultiplied([p.w as usize, p.h as usize], &buf), opts);
+                            }
+                        }
+                    }
                 }
+                self.tex_linear = linear;
             }
         }
-        if let Some(t) = &self.tex {
-            ui.painter().image(t.id(), rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+        if let (Some(t), Some(pm)) = (&self.tex, &self.pix) {
+            // Textur ist ein Ring-Speicher: bis zu vier Stücke an ihre Stelle der Ansicht zeichnen
+            let (w, h) = (pm.width(), pm.height());
+            let (k, off) = match self.scaled {
+                Some((k, dx, dy)) => (k, egui::vec2(dx, dy)),
+                None => (1.0, egui::Vec2::ZERO),
+            };
+            let p = ui.painter().with_clip_rect(rect);
+            if self.scaled.is_some() {
+                let c = self.board.backdrop_color();
+                p.rect_filled(rect, 0.0, Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8));
+            }
+            let (sx, sy) = (rect.width() / w as f32, rect.height() / h as f32);
+            for (v, q) in board::torus_parts(board::IRect { x: 0, y: 0, w, h }, self.org, w, h) {
+                let min = rect.min + off + egui::vec2(v.x as f32 * sx, v.y as f32 * sy) * k;
+                let max = rect.min + off + egui::vec2((v.x + v.w) as f32 * sx, (v.y + v.h) as f32 * sy) * k;
+                let uv = Rect::from_min_max(Pos2::new(q.x as f32 / w as f32, q.y as f32 / h as f32), Pos2::new((q.x + q.w) as f32 / w as f32, (q.y + q.h) as f32 / h as f32));
+                p.image(t.id(), Rect::from_min_max(min, max), uv, Color32::WHITE);
+            }
         }
         if resp.hovered() || self.drawing {
             let space = ctx.input(|i| i.key_down(Key::Space)) && !ctx.egui_wants_keyboard_input();

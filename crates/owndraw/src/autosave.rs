@@ -76,6 +76,15 @@ pub fn write_path_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     res
 }
 
+/// Speicherauftrag: liefert die Dateibytes (läuft beim Hintergrund-Speichern im Schreib-Thread).
+pub struct Job(pub Box<dyn FnOnce() -> Vec<u8> + Send>);
+
+impl From<Vec<u8>> for Job {
+    fn from(v: Vec<u8>) -> Job {
+        Job(Box::new(move || v))
+    }
+}
+
 /// Verständlicher Fehlertext für die Anzeige.
 pub fn describe_error(e: &io::Error, name: &str) -> String {
     match e.kind() {
@@ -150,7 +159,8 @@ impl Autosave {
     }
 
     /// Pro Frame aufrufen: wertet ein beendetes Schreiben aus und startet ein neues, wenn die Wartezeit abgelaufen ist.
-    pub fn tick(&mut self, now: f64, doc_bytes: impl FnOnce() -> Vec<u8>, platform: &dyn Platform) {
+    /// `doc_bytes` liefert den Speicherauftrag; teure Teile (Serialisieren, Packen) laufen im Schreib-Thread.
+    pub fn tick<J: Into<Job>>(&mut self, now: f64, doc_bytes: impl FnOnce() -> J, platform: &dyn Platform) {
         self.poll(now);
         if self.inflight.is_none() {
             if let Some(t) = self.dirty_since {
@@ -162,7 +172,7 @@ impl Autosave {
     }
 
     /// Sofort und synchron speichern, falls Änderungen anstehen (Schließen, Zurück, App im Hintergrund, Beenden).
-    pub fn flush(&mut self, now: f64, doc_bytes: impl FnOnce() -> Vec<u8>, platform: &dyn Platform) {
+    pub fn flush<J: Into<Job>>(&mut self, now: f64, doc_bytes: impl FnOnce() -> J, platform: &dyn Platform) {
         self.wait_idle(now);
         if self.dirty_since.is_some() {
             self.write(now, doc_bytes, platform, true);
@@ -204,39 +214,43 @@ impl Autosave {
         }
     }
 
-    fn write(&mut self, now: f64, doc_bytes: impl FnOnce() -> Vec<u8>, platform: &dyn Platform, sync: bool) {
+    fn write<J: Into<Job>>(&mut self, now: f64, doc_bytes: impl FnOnce() -> J, platform: &dyn Platform, sync: bool) {
         let Some(t) = self.target.clone().filter(|_| !self.read_only) else {
             self.dirty_since = None;
             self.status = AutosaveStatus::Idle;
             return;
         };
-        let bytes = doc_bytes();
-        if bytes.is_empty() {
-            // Beim nächsten Versuch erneut, Fehler anzeigen.
-            self.status = AutosaveStatus::Error("Speichern fehlgeschlagen (Format)".into());
-            self.dirty_since = Some(now);
-            return;
-        }
-        self.status = AutosaveStatus::Saving;
-        self.dirty_since = None;
+        let job: Job = doc_bytes().into();
         match t {
             FileRef::Path(p) if !sync => {
+                self.status = AutosaveStatus::Saving;
+                self.dirty_since = None;
                 let (tx, rx) = channel();
                 self.inflight = Some(rx);
                 let spawned = std::thread::Builder::new().name("owndraw-autosave".into()).spawn(move || {
-                    let _ = tx.send(write_path_atomic(&p, &bytes));
+                    let bytes = (job.0)();
+                    let r = if bytes.is_empty() { Err(io::Error::other("Format")) } else { write_path_atomic(&p, &bytes) };
+                    let _ = tx.send(r);
                 });
                 if spawned.is_err() {
                     self.inflight = None;
                     self.finish(now, Err(io::Error::other("Schreib-Thread nicht startbar")));
                 }
             }
-            FileRef::Path(p) => {
-                let r = write_path_atomic(&p, &bytes);
-                self.finish(now, r);
-            }
-            uri => {
-                let r = platform.write_atomic(&uri, &bytes);
+            t => {
+                let bytes = (job.0)();
+                if bytes.is_empty() {
+                    // Beim nächsten Versuch erneut, Fehler anzeigen.
+                    self.status = AutosaveStatus::Error("Speichern fehlgeschlagen (Format)".into());
+                    self.dirty_since = Some(now);
+                    return;
+                }
+                self.status = AutosaveStatus::Saving;
+                self.dirty_since = None;
+                let r = match &t {
+                    FileRef::Path(p) => write_path_atomic(p, &bytes),
+                    uri => platform.write_atomic(uri, &bytes),
+                };
                 self.finish(now, r);
             }
         }
@@ -302,7 +316,7 @@ mod tests {
         assert_eq!(pf.read(&f).unwrap(), b"zwei");
         assert_eq!(a.status(), &AutosaveStatus::Saved(20.0));
         // flush ohne Änderung schreibt nicht
-        a.flush(21.0, || panic!("nicht aufrufen"), &pf);
+        a.flush(21.0, || -> Vec<u8> { panic!("nicht aufrufen") }, &pf);
         let _ = std::fs::remove_dir_all(d);
     }
 
@@ -339,7 +353,7 @@ mod tests {
         let pf = StubPlatform::new();
         let mut a = Autosave::new(Some(FileRef::Path("/tmp/x.owndraw".into())));
         a.mark_changed(0.0);
-        a.flush(1.0, Vec::new, &pf);
+        a.flush(1.0, Vec::<u8>::new, &pf);
         assert!(a.error().is_some());
         assert!(a.is_dirty());
     }

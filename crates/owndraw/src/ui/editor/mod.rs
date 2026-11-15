@@ -128,6 +128,10 @@ pub struct UiState {
     pub error_toast_shown: bool,
     /// Bearbeiten-Modus der Werkzeugleiste (WP9): `Some` solange aktiv.
     pub edit_tools: Option<toolbar::EditTools>,
+    /// Zuletzt gemessene Größe der verschiebbaren Kacheln.
+    pub tile_sizes: std::collections::HashMap<String, egui::Vec2>,
+    /// Laufendes Verschieben einer Kachel: (Schlüssel, linke obere Ecke).
+    pub tile_drag: Option<(String, Pos2)>,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).

@@ -15,14 +15,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::{Path as FsPath, PathBuf};
 
-struct BoardRow {
-    id: String,
-    owner_id: String,
-    owner_name: String,
-    name: String,
-    version: i64,
-    size: i64,
-    modified: i64,
+pub(crate) struct BoardRow {
+    pub id: String,
+    pub owner_id: String,
+    pub owner_name: String,
+    pub name: String,
+    pub version: i64,
+    pub size: i64,
+    pub modified: i64,
 }
 
 const BOARD_SELECT: &str = "SELECT b.id,b.owner_id,o.name,b.name,b.version,b.size,b.modified FROM boards b JOIN users o ON o.id=b.owner_id";
@@ -39,7 +39,7 @@ fn board_from_row(r: &rusqlite::Row) -> rusqlite::Result<BoardRow> {
     })
 }
 
-fn board_row(conn: &Connection, id: &str) -> rusqlite::Result<Option<BoardRow>> {
+pub(crate) fn board_row(conn: &Connection, id: &str) -> rusqlite::Result<Option<BoardRow>> {
     conn.query_row(&format!("{BOARD_SELECT} WHERE b.id=?1"), [id], board_from_row).optional()
 }
 
@@ -64,17 +64,17 @@ fn info(b: &BoardRow, role: &str) -> Value {
 }
 
 /// Board sehen (Rolle) oder 404 (auch bei fehlender Berechtigung, damit IDs nichts verraten).
-fn visible(conn: &Connection, id: &str, uid: &str) -> ApiResult<(BoardRow, String)> {
+pub(crate) fn visible(conn: &Connection, id: &str, uid: &str) -> ApiResult<(BoardRow, String)> {
     let b = board_row(conn, id)?.ok_or_else(|| ApiError::not_found("Board nicht gefunden."))?;
     let role = role_for(conn, &b, uid)?.ok_or_else(|| ApiError::not_found("Board nicht gefunden."))?;
     Ok((b, role))
 }
 
-fn board_path(dir: &FsPath, id: &str) -> PathBuf {
+pub(crate) fn board_path(dir: &FsPath, id: &str) -> PathBuf {
     dir.join(format!("{id}.owndraw"))
 }
 
-fn write_atomic(path: &FsPath, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &FsPath, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -104,7 +104,7 @@ fn board_name(h: &HeaderMap) -> String {
     }
 }
 
-fn license_msg_owner(own: bool) -> String {
+pub(crate) fn license_msg_owner(own: bool) -> String {
     if own {
         "Dafür ist eine gültige Lizenz nötig. Die Boards bleiben les- und herunterladbar.".into()
     } else {
@@ -191,6 +191,9 @@ fn parse_if_match(h: &HeaderMap) -> ApiResult<i64> {
 
 pub async fn put(State(s): State<AppState>, a: Auth, Path(id): Path<String>, headers: HeaderMap, body: Body) -> ApiResult<Json<Value>> {
     let want = parse_if_match(&headers)?;
+    if s.hub.is_active(&id) {
+        return Err(ApiError::conflict("Das Board wird gerade live bearbeitet; Änderungen laufen über die Live-Verbindung.").with_extra(json!({"live": true})));
+    }
     let uid = a.user.id;
     let bytes = read_limited(body, s.cfg.max_board_bytes).await?;
     validate_zip(&bytes)?;
@@ -258,9 +261,10 @@ pub async fn delete(State(s): State<AppState>, a: Auth, Path(id): Path<String>) 
         }
         c.execute("DELETE FROM boards WHERE id=?1", [&id])?;
         let _ = std::fs::remove_file(board_path(&dir, &id));
-        Ok(())
+        Ok(id)
     })
-    .await?;
+    .await
+    .map(|id| s.hub.kick(&id, None, "not_found", "Das Board wurde gelöscht."))?;
     Ok(Json(json!({})))
 }
 
@@ -323,9 +327,14 @@ pub async fn add_member(State(s): State<AppState>, a: Auth, Path(id): Path<Strin
                  ON CONFLICT(board_id,user_id) DO UPDATE SET role=excluded.role",
                 params![b.id, target.id, body.role],
             )?;
-            members_json(c, &b)
+            Ok((members_json(c, &b)?, b.id.clone(), target.id))
         })
-        .await?;
+        .await
+        .map(|(v, bid, tid)| {
+            // laufende Verbindung bekommt die neue Rolle beim Wiederverbinden
+            s.hub.kick(&bid, Some(&tid), "role_changed", "Deine Rolle für dieses Board wurde geändert.");
+            v
+        })?;
     Ok(Json(v))
 }
 
@@ -342,13 +351,18 @@ pub async fn remove_member(State(s): State<AppState>, a: Auth, Path((id, user_id
             if n == 0 {
                 return Err(ApiError::not_found("Dieses Mitglied gibt es nicht."));
             }
-            if role == "owner" {
-                members_json(c, &b)
+            let v = if role == "owner" {
+                members_json(c, &b)?
             } else {
                 // Wer sich selbst entfernt hat, sieht das Board nicht mehr.
-                Ok(json!([]))
-            }
+                json!([])
+            };
+            Ok((v, b.id.clone(), user_id))
         })
-        .await?;
+        .await
+        .map(|(v, bid, gone)| {
+            s.hub.kick(&bid, Some(&gone), "removed", "Du hast keinen Zugriff mehr auf dieses Board.");
+            v
+        })?;
     Ok(Json(v))
 }

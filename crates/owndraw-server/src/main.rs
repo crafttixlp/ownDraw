@@ -72,6 +72,7 @@ async fn run_server() -> i32 {
         eprintln!("Hinweis: {} enthält keine index.html (OWNDRAW_WEB prüfen); die Web-App wird nicht ausgeliefert.", web.display());
     }
     update::spawn_auto(state.clone());
+    let st2 = state.clone();
     let app = build_app(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
     let listener = match tokio::net::TcpListener::bind(&bind).await {
         Ok(l) => l,
@@ -81,7 +82,10 @@ async fn run_server() -> i32 {
         }
     };
     eprintln!("OwnDraw-Server {} lauscht auf {bind}", update::CURRENT);
-    if let Err(e) = axum::serve(listener, app).with_graceful_shutdown(shutdown()).await {
+    let r = axum::serve(listener, app).with_graceful_shutdown(shutdown()).await;
+    // offene Live-Sitzungen noch speichern
+    st2.hub.flush_all(&st2).await;
+    if let Err(e) = r {
         eprintln!("Serverfehler: {e}");
         return 1;
     }

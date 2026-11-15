@@ -309,8 +309,11 @@ async fn install_inner(state: &AppState) -> ApiResult<String> {
     let _ = tokio::fs::remove_file(&sig_path).await;
     log(state, format!("Version {version} installiert, Server startet neu")).await;
 
-    tokio::spawn(async {
+    let st = state.clone();
+    tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(2)).await;
+        // offene Live-Sitzungen noch speichern
+        st.hub.flush_all(&st).await;
         std::process::exit(0);
     });
     Ok(version.to_string())

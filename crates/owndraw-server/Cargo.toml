@@ -15,8 +15,10 @@ path = "src/main.rs"
 
 [dependencies]
 argon2 = "0.6.0"
-axum = "0.8.9"
+owndraw-core = { path = "../owndraw-core" }
+axum = { version = "0.8.9", features = ["ws"] }
 flate2 = "1.1.11"
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 getrandom = "0.4.3"
 hex = "0.4.3"
 minisign-verify = "0.3.0"
@@ -35,4 +37,5 @@ uuid = { version = "1.29.2", features = ["v4"] }
 [dev-dependencies]
 http-body-util = "0.1.5"
 tempfile = "3.27.0"
+tokio-tungstenite = "0.29"
 tower = "0.5.3"

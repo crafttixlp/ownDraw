@@ -14,11 +14,13 @@ pub struct AppState {
     pub limiter: Arc<RateLimiter>,
     /// Verhindert parallele Installationen eines Updates.
     pub installing: Arc<AtomicBool>,
+    /// Offene Live-Sitzungen (`collab.rs`).
+    pub hub: Arc<crate::collab::Hub>,
 }
 
 impl AppState {
     pub fn new(db: Db, cfg: Config) -> Self {
-        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)) }
+        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)), hub: Arc::default() }
     }
 }
 

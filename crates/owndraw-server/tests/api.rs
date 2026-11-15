@@ -571,11 +571,11 @@ async fn statisches_admin_und_platzhalter() {
     assert_eq!(r.status, StatusCode::OK);
     assert!(r.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap().starts_with("text/html"));
     assert!(String::from_utf8_lossy(&r.bytes).contains("OwnDraw"));
-    // unbekannter API-Pfad: JSON-404; Kollaboration: 501
+    // unbekannter API-Pfad: JSON-404; Kollaboration ohne Anmeldung: 401
     let r = app.get("/api/gibtsnicht", None).await;
     assert_eq!((r.status, r.code().as_str()), (StatusCode::NOT_FOUND, "not_found"));
     let r = app.get("/api/collab/abc", None).await;
-    assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     // ungültiges JSON
     let r = app.send(Method::POST, "/api/auth/login", None, &[], Body::from("{kaputt"), true).await;
     assert_eq!((r.status, r.code().as_str()), (StatusCode::BAD_REQUEST, "invalid"));

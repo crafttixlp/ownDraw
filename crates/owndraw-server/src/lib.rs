@@ -3,6 +3,7 @@
 pub mod admin;
 pub mod auth;
 pub mod boards;
+pub mod collab;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -14,7 +15,7 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE};
 use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{any, get, patch, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use error::ApiError;
 use serde_json::json;
@@ -61,11 +62,6 @@ async fn health() -> Json<serde_json::Value> {
 
 async fn api_not_found() -> ApiError {
     ApiError::not_found("Diesen Pfad gibt es nicht.")
-}
-
-/// Platzhalter: `/api/collab/{board_id}` (WebSocket) kommt in Phase 4.
-async fn collab_todo() -> ApiError {
-    ApiError::not_implemented("Die Zusammenarbeit in Echtzeit ist noch nicht verfügbar.")
 }
 
 async fn admin_page() -> Response {
@@ -116,7 +112,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/update", get(update::get_state).patch(update::patch_state))
         .route("/admin/update/check", post(update::post_check))
         .route("/admin/update/install", post(update::post_install))
-        .route("/collab/{board_id}", any(collab_todo))
+        .route("/boards/{id}/images/{name}", get(collab::get_image).put(collab::put_image))
+        .route("/collab/{board_id}", get(collab::ws))
         .fallback(api_not_found)
         .layer(middleware::from_fn(auth::csrf))
         .with_state(state.clone());

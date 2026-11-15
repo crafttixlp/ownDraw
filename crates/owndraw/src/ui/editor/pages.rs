@@ -22,6 +22,8 @@ pub struct PageThumbs {
     pub dirty: bool,
     last: f64,
     tex: Vec<Option<TextureHandle>>,
+    /// Inhalts-Schlüssel je Seite (nur geänderte Seiten werden neu gezeichnet).
+    keys: Vec<u64>,
 }
 
 pub fn is_pages(b: &Board) -> bool {
@@ -132,10 +134,16 @@ impl PageThumbs {
         self.last = now;
         self.dirty = false;
         self.tex.resize(n, None);
+        self.keys.resize(n, 0);
         let ppp = ctx.pixels_per_point();
         for i in 0..n.min(80) {
             let Some(r) = page_rect(b, i) else { continue };
             let k = width_pt * ppp / r.width();
+            let key = b.content_key(&r) ^ (k.to_bits() as u64).rotate_left(17);
+            if self.tex[i].is_some() && self.keys[i] == key {
+                continue;
+            }
+            self.keys[i] = key;
             if let Some(pm) = b.render_composite(&r, k, true) {
                 let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
                 match self.tex[i].as_mut() {

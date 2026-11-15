@@ -621,7 +621,9 @@ impl Item {
                     c.rotate(m.ang.to_degrees(), m.x + m.w / 2.0, m.y + m.h / 2.0);
                 }
                 match load_image(&m.file) {
-                    Some(pm) => c.draw_pixmap(pm.as_ref().as_ref(), m.x, m.y, m.x + m.w, m.y + m.h),
+                    Some(pm) => {
+                        c.draw_image(&pm, m.x, m.y, m.x + m.w, m.y + m.h);
+                    }
                     None => {
                         c.draw_rect(m.x, m.y, m.x + m.w, m.y + m.h, &Paint::fill(0xFFC9CBD2));
                         let p = Paint::stroke(0xFF7A7D88, (m.w.abs().min(m.h.abs()) / 60.0).max(1.0), Cap::Butt);
@@ -650,6 +652,34 @@ impl Item {
             c.draw_circle(p[0], p[1], self.width * k / 2.0, &pt);
             return;
         }
+        // Schneller Weg: Kapseln mit Abstandsfeld-Kantenglaettung (Canvas::fill_capsules)
+        let segs = self.capsule_segs(s, c.res_scale());
+        if c.fill_capsules(&segs, pt.color) {
+            return;
+        }
+        for (w, path) in self.stroke_runs(s) {
+            match path {
+                Some(path) if w < 0.0 => {
+                    pt.style = Style::Fill;
+                    c.draw_path(&path, &pt);
+                }
+                Some(path) => {
+                    pt.style = Style::Stroke;
+                    pt.stroke_width = w;
+                    c.draw_path(&path, &pt);
+                }
+                None => {
+                    pt.style = Style::Fill;
+                    c.draw_circle(p[0], p[1], w / 2.0, &pt);
+                }
+            }
+        }
+    }
+
+    /// Mittellinien des Strichs mit Breite. Druckstriche werden in Abschnitte nahezu gleicher Breite
+    /// zusammengefasst (statt einer Linie je Segment). `None` = entarteter Abschnitt (als Punkt zeichnen).
+    fn stroke_runs(&self, s: &Stroke) -> Vec<(f32, Option<Path>)> {
+        let (n, p) = (s.n(), &s.p);
         if s.hl || !s.var {
             let mut cache = self.path.borrow_mut();
             if cache.is_none() {
@@ -668,21 +698,83 @@ impl Item {
                 }
                 *cache = pb.finish();
             }
-            match cache.as_ref() {
-                // entartet (alle Punkte gleich): als Punkt zeichnen
-                Some(path) if path.bounds().width() > 0.0 || path.bounds().height() > 0.0 => c.draw_path(path, &pt),
-                _ => {
-                    pt.style = Style::Fill;
-                    c.draw_circle(p[0], p[1], self.width / 2.0, &pt);
+            let path = cache.as_ref().filter(|path| path.bounds().width() > 0.0 || path.bounds().height() > 0.0).cloned();
+            return vec![(self.width, path)];
+        }
+        let wid = |i: usize| self.width * (0.35 + 1.3 * (p[i * 3 - 1] + p[i * 3 + 2]) * 0.5);
+        let mut out = Vec::new();
+        let mut i = 1;
+        while i < n {
+            let w0 = wid(i);
+            let tol = (w0 * 0.04).max(0.02);
+            let (mut sum, mut cnt) = (0.0, 0);
+            let mut pb = PathBuilder::new();
+            pb.move_to(p[i * 3 - 3], p[i * 3 - 2]);
+            let mut moved = false;
+            while i < n {
+                let w = wid(i);
+                if cnt > 0 && (w - w0).abs() > tol {
+                    break;
                 }
+                let (x, y) = (p[i * 3], p[i * 3 + 1]);
+                moved |= x != p[i * 3 - 3] || y != p[i * 3 - 2];
+                pb.line_to(x, y);
+                sum += w;
+                cnt += 1;
+                i += 1;
             }
-        } else {
-            for i in 1..n {
-                let pr = (p[i * 3 - 1] + p[i * 3 + 2]) * 0.5;
-                pt.stroke_width = self.width * (0.35 + 1.3 * pr);
-                c.draw_line(p[i * 3 - 3], p[i * 3 - 2], p[i * 3], p[i * 3 + 1], &pt);
+            let w = sum / cnt as f32;
+            if moved {
+                out.push((w, pb.finish()));
+            } else {
+                // nur Punkte an derselben Stelle: Kreis am Abschnittsende
+                let k = (i - 1) * 3;
+                let mut pb = PathBuilder::new();
+                pb.push_circle(p[k], p[k + 1], w / 2.0);
+                out.push((-1.0, pb.finish()));
             }
         }
+        out
+    }
+
+    /// Segmente (x0, y0, x1, y1, Radius) des Strichs in Weltkoordinaten. Druckstriche: ein Segment je
+    /// Punktpaar mit mittlerem Druck; sonst die geglaettete Mittellinie (Quadratik-Kurven, abgeflacht fuer
+    /// den Aufloesungsfaktor res) mit halber Breite.
+    fn capsule_segs(&self, s: &Stroke, res: f32) -> Vec<[f32; 5]> {
+        let (n, p) = (s.n(), &s.p);
+        let mut v = Vec::with_capacity(n * 2);
+        if s.var && !s.hl {
+            for i in 1..n {
+                let r = self.width * (0.35 + 1.3 * (p[i * 3 - 1] + p[i * 3 + 2]) * 0.5) * 0.5;
+                v.push([p[i * 3 - 3], p[i * 3 - 2], p[i * 3], p[i * 3 + 1], r]);
+            }
+            return v;
+        }
+        let r = self.width * 0.5;
+        if s.sharp {
+            for i in 1..n {
+                v.push([p[i * 3 - 3], p[i * 3 - 2], p[i * 3], p[i * 3 + 1], r]);
+            }
+            return v;
+        }
+        // wie der Pfad: move_to(p0), quad_to(p[i-1], Mitte(p[i-1], p[i])), line_to(p[n-1])
+        let (mut x, mut y) = (p[0], p[1]);
+        for i in 1..n {
+            let (cx, cy) = (p[i * 3 - 3], p[i * 3 - 2]);
+            let (ex, ey) = ((cx + p[i * 3]) / 2.0, (cy + p[i * 3 + 1]) / 2.0);
+            let dd = hypot(x - 2.0 * cx + ex, y - 2.0 * cy + ey) * res;
+            let k = ((dd / 1.2).sqrt().ceil() as usize).clamp(1, 32);
+            for j in 1..=k {
+                let t = j as f32 / k as f32;
+                let u = 1.0 - t;
+                let (nx, ny) = (u * u * x + 2.0 * u * t * cx + t * t * ex, u * u * y + 2.0 * u * t * cy + t * t * ey);
+                v.push([x, y, nx, ny, r]);
+                x = nx;
+                y = ny;
+            }
+        }
+        v.push([x, y, p[n * 3 - 3], p[n * 3 - 2], r]);
+        v
     }
 
     /// Die zwei Widerhaken einer Pfeilspitze an (tx, ty), Schaft kommt von (fx, fy).

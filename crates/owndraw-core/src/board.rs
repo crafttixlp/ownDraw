@@ -39,6 +39,210 @@ pub enum Event {
     Haptic,
 }
 
+/// Rechteck in Geraete-Pixeln.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct IRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl IRect {
+    pub fn is_empty(&self) -> bool {
+        self.w == 0 || self.h == 0
+    }
+    pub fn area(&self) -> u64 {
+        self.w as u64 * self.h as u64
+    }
+    pub fn union(self, o: IRect) -> IRect {
+        if self.is_empty() {
+            return o;
+        }
+        if o.is_empty() {
+            return self;
+        }
+        let (x, y) = (self.x.min(o.x), self.y.min(o.y));
+        let (r, b) = ((self.x + self.w).max(o.x + o.w), (self.y + self.h).max(o.y + o.h));
+        IRect { x, y, w: r - x, h: b - y }
+    }
+    /// Rechteck aus Gleitkomma-Kanten (Geraete-Pixel), nach aussen gerundet und auf w × h beschnitten.
+    fn cover(l: f32, t: f32, r: f32, b: f32, w: u32, h: u32) -> IRect {
+        if !(l.is_finite() && t.is_finite() && r.is_finite() && b.is_finite()) {
+            return IRect { x: 0, y: 0, w, h };
+        }
+        let x0 = l.floor().clamp(0.0, w as f32) as u32;
+        let y0 = t.floor().clamp(0.0, h as f32) as u32;
+        let x1 = r.ceil().clamp(0.0, w as f32) as u32;
+        let y1 = b.ceil().clamp(0.0, h as f32) as u32;
+        if x1 <= x0 || y1 <= y0 {
+            return IRect::default();
+        }
+        IRect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+}
+
+/// Kleine Menge von Rechtecken (z. B. zwei Streifen beim Verschieben), die nur zusammengelegt werden, wenn
+/// dabei wenig unveraenderte Flaeche hinzukommt.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Damage(Vec<IRect>);
+
+impl Damage {
+    pub fn rects(&self) -> &[IRect] {
+        &self.0
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn area(&self) -> u64 {
+        self.0.iter().map(|r| r.area()).sum()
+    }
+    pub fn add(&mut self, r: IRect) {
+        if r.is_empty() {
+            return;
+        }
+        let mut r = r;
+        loop {
+            let hit = self.0.iter().position(|e| {
+                let u = e.union(r);
+                u.area() * 10 <= (e.area() + r.area()) * 13
+            });
+            match hit {
+                Some(i) => r = self.0.swap_remove(i).union(r),
+                None => break,
+            }
+        }
+        self.0.push(r);
+        if self.0.len() > 6 {
+            let b = self.0.iter().fold(IRect::default(), |a, e| a.union(*e));
+            self.0 = vec![b];
+        }
+    }
+    fn shift(&mut self, dx: i32, dy: i32, w: u32, h: u32) {
+        let v = std::mem::take(&mut self.0);
+        for r in v {
+            self.add(shift_rect(r, dx, dy, w, h));
+        }
+    }
+}
+
+/// Ergebnis von [`Board::render`]: was die Oberflaeche zur GPU laden und wie sie die Textur zeigen soll.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Frame {
+    /// Geaenderte Bereiche des Zielbilds in Ansichts-Koordinaten (leer = unveraendert); nur diese muessen neu
+    /// hochgeladen werden (Lage in der Textur: [`torus_parts`] mit `org`).
+    pub damage: Vec<IRect>,
+    /// Waehrend Zoom-Gesten: die Textur (= Zwischenspeicher) um k skaliert an (dx, dy) zeigen, logische Pixel,
+    /// Rest mit [`Board::backdrop_color`] fuellen. Kein Neuzeichnen auf der CPU.
+    pub scaled: Option<(f32, f32, f32)>,
+    /// Ursprung des Ring-Speichers (Zielbild = Textur), siehe [`torus_parts`].
+    pub org: (u32, u32),
+}
+
+/// Alles ausser den Objekten und der Verschiebung, was den Zwischenspeicher bestimmt.
+#[derive(Clone, Debug, PartialEq)]
+struct CacheSig {
+    size: (u32, u32, u32),
+    sc: u32,
+    dark: bool,
+    bg: i32,
+    layers: Vec<(i32, bool, u32)>,
+    pages: Vec<(u32, u32, PageBg)>,
+}
+
+/// Zerlegt ein Rechteck der Ansicht in die (hoechstens vier) Stuecke im Ring-Speicher der Groesse w × h mit
+/// Ursprung org: Ansichts-Pixel (x, y) liegt bei ((x + org.0) mod w, (y + org.1) mod h). Ergebnis: (Ansicht, Speicher).
+/// Beim Verschieben wandert nur der Ursprung; Zwischenspeicher und Textur muessen nicht umkopiert werden.
+pub fn torus_parts(r: IRect, org: (u32, u32), w: u32, h: u32) -> Vec<(IRect, IRect)> {
+    let split = |v: u32, n: u32, o: u32, size: u32| -> Vec<(u32, u32, u32)> {
+        let p = (v + o) % size;
+        if p + n <= size {
+            vec![(v, p, n)]
+        } else {
+            let a = size - p;
+            vec![(v, p, a), (v + a, 0, n - a)]
+        }
+    };
+    let mut out = Vec::with_capacity(4);
+    if r.is_empty() || w == 0 || h == 0 {
+        return out;
+    }
+    for (vy, py, nh) in split(r.y, r.h, org.1, h) {
+        for &(vx, px, nw) in &split(r.x, r.w, org.0, w) {
+            out.push((IRect { x: vx, y: vy, w: nw, h: nh }, IRect { x: px, y: py, w: nw, h: nh }));
+        }
+    }
+    out
+}
+
+/// Kopiert src (Groesse von r) in den Ring-Speicher dst an die Ansichtsstelle r.
+fn blit(dst: &mut Pixmap, src: &Pixmap, r: IRect, org: (u32, u32)) {
+    let (dw, dh, sw) = (dst.width(), dst.height(), src.width() as usize);
+    let d = dst.data_mut();
+    let s = src.data();
+    for (v, p) in torus_parts(r, org, dw, dh) {
+        let n = v.w as usize * 4;
+        for row in 0..v.h as usize {
+            let so = ((v.y - r.y) as usize + row) * sw * 4 + (v.x - r.x) as usize * 4;
+            let o = ((p.y as usize + row) * dw as usize + p.x as usize) * 4;
+            d[o..o + n].copy_from_slice(&s[so..so + n]);
+        }
+    }
+}
+
+/// Kopiert den Ansichtsbereich r zwischen zwei Ring-Speichern gleicher Groesse und gleichen Ursprungs.
+fn copy_rect(dst: &mut Pixmap, src: &Pixmap, r: IRect, org: (u32, u32)) {
+    let (w, h) = (src.width(), src.height());
+    let (s, d) = (src.data(), dst.data_mut());
+    for (_, p) in torus_parts(r, org, w, h) {
+        for row in p.y as usize..(p.y + p.h) as usize {
+            let o = (row * w as usize + p.x as usize) * 4;
+            d[o..o + p.w as usize * 4].copy_from_slice(&s[o..o + p.w as usize * 4]);
+        }
+    }
+}
+
+/// Schneidet den Ansichtsbereich r aus dem Ring-Speicher src aus.
+fn crop(src: &Pixmap, r: IRect, org: (u32, u32)) -> Option<Pixmap> {
+    let mut out = Pixmap::new(r.w, r.h)?;
+    let (w, h) = (src.width(), src.height());
+    let s = src.data();
+    let ow = r.w as usize * 4;
+    let d = out.data_mut();
+    for (v, p) in torus_parts(r, org, w, h) {
+        let n = v.w as usize * 4;
+        for row in 0..v.h as usize {
+            let o = ((p.y as usize + row) * w as usize + p.x as usize) * 4;
+            let doff = ((v.y - r.y) as usize + row) * ow + (v.x - r.x) as usize * 4;
+            d[doff..doff + n].copy_from_slice(&s[o..o + n]);
+        }
+    }
+    Some(out)
+}
+
+fn intersects(a: IRect, b: IRect) -> bool {
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+}
+
+/// Verschiebt ein Ansichtsrechteck und beschneidet es auf w × h.
+fn shift_rect(r: IRect, dx: i32, dy: i32, w: u32, h: u32) -> IRect {
+    if r.is_empty() {
+        return r;
+    }
+    IRect::cover((r.x as i32 + dx) as f32, (r.y as i32 + dy) as f32, (r.x as i32 + r.w as i32 + dx) as f32, (r.y as i32 + r.h as i32 + dy) as f32, w, h)
+}
+
+/// Zeichenhuelle eines Objekts in Weltkoordinaten (Huelle plus Schatten/Kantenglaettung).
+fn paint_bounds(it: &Item) -> RectF {
+    let mut b = it.bounds();
+    let pad = match &it.kind {
+        Kind::Note(n) => n.size * 0.35,
+        _ => it.width * 0.5,
+    };
+    b.inset(-pad, -pad);
+    b
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolType {
     Finger,
@@ -145,7 +349,19 @@ pub struct Board {
 
     cache: Option<Pixmap>,
     dirty: bool,
-    heavy: bool,
+    /// Zwischenspeicher sicher komplett neu zeichnen (Groesse, Laden).
+    full_dirty: bool,
+    /// Objekte (ohne angehobene) und Zustand, mit denen der Zwischenspeicher gezeichnet wurde (fuer Teil-Updates).
+    cache_items: Vec<Rc<Item>>,
+    cache_sig: Option<CacheSig>,
+    /// Seit dem letzten Bild geaenderter Bereich des Zwischenspeichers.
+    cache_dmg: Damage,
+    /// Zielbild des letzten render() (Adresse, Groesse) und dort gezeichnete Ueberlagerungen.
+    shown: Option<(usize, u32, u32)>,
+    last_ov: IRect,
+    /// Ursprung des Ring-Speichers von Zwischenspeicher und Zielbild.
+    org: (u32, u32),
+    /// Ansicht des Zwischenspeichers (Zoom, Verschiebung); kann waehrend Gesten von sc/tx/ty abweichen.
     csc: f32,
     ctx: f32,
     cty: f32,
@@ -248,7 +464,13 @@ impl Board {
             px_scale: 1.0,
             cache: None,
             dirty: true,
-            heavy: false,
+            full_dirty: true,
+            cache_items: Vec::new(),
+            cache_sig: None,
+            cache_dmg: Damage::default(),
+            shown: None,
+            last_ov: IRect::default(),
+            org: (0, 0),
             csc: 1.0,
             ctx: 0.0,
             cty: 0.0,
@@ -331,6 +553,7 @@ impl Board {
             self.height = h;
             self.px_scale = px_scale;
             self.cache = None;
+            self.full_dirty = true;
             self.refresh();
         }
     }
@@ -574,9 +797,35 @@ impl Board {
             }
             c.scale(k, k);
             c.translate(-b.left, -b.top);
-            self.draw_scene(&mut c, None, false, with_bg, 1.0 / k);
+            // nur Objekte im Bereich (Seitenvorschau: nicht alle Objekte aller Seiten)
+            let mut v = *b;
+            v.inset(-4.0 / k, -4.0 / k);
+            self.draw_scene(&mut c, Some(&v), false, with_bg, 1.0 / k);
         }
         Some(bm)
+    }
+
+    /// Schluessel fuer den Inhalt im Weltrechteck r (aendert sich, wenn sich dort ein Objekt, die Ebenen oder die
+    /// Darstellung aendern). Fuer Vorschaubilder, die nur bei Aenderung neu gezeichnet werden.
+    pub fn content_key(&self, r: &RectF) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (self.dark, self.bg, r.left.to_bits(), r.top.to_bits(), r.right.to_bits(), r.bottom.to_bits()).hash(&mut h);
+        for l in &self.layers {
+            (l.id, l.visible, l.opacity.to_bits()).hash(&mut h);
+        }
+        if let Some(p) = self.pages() {
+            for g in &p.pages {
+                (g.w.to_bits(), g.h.to_bits(), g.bg as u8).hash(&mut h);
+            }
+        }
+        for it in &self.items {
+            let b = paint_bounds(it);
+            if RectF::intersects(r, &b) {
+                (Rc::as_ptr(it) as usize, it.layer, it.color, b.left.to_bits(), b.top.to_bits(), b.right.to_bits(), b.bottom.to_bits()).hash(&mut h);
+            }
+        }
+        h.finish()
     }
 
     /// Zeichnet alle sichtbaren Ebenen hinten nach vorne (Deckkraft per Ebene), vis = Sichtbereich (Welt) oder None.
@@ -589,7 +838,7 @@ impl Board {
                 continue;
             }
             if let Some(v) = vis {
-                if !RectF::intersects(v, &it.bounds()) {
+                if !RectF::intersects(v, &paint_bounds(it)) {
                     continue;
                 }
             }
@@ -749,21 +998,36 @@ impl Board {
                 top = false;
             }
         }
-        let clip = if top && !self.dirty { self.pages_path() } else { None };
-        if let (true, false, Some(cache)) = (top, self.dirty, self.cache.as_mut()) {
-            let (ps, tx, ty, sc, dark) = (self.px_scale, self.tx, self.ty, self.sc, self.dark);
-            let mut c = Canvas::new(cache);
-            c.scale(ps, ps);
-            c.translate(tx, ty);
-            c.scale(sc, sc);
-            if let Some(p) = &clip {
-                c.clip_path(p);
+        let ok = top && !self.dirty && self.cache.is_some() && self.csc == self.sc && self.cache_sig.is_some();
+        let clip = if ok { self.pages_path() } else { None };
+        let rc = Rc::new(it);
+        if ok {
+            let (ps, tx, ty, sc, dark, org) = (self.px_scale, self.ctx, self.cty, self.csc, self.dark, self.org);
+            let cache = self.cache.as_mut().unwrap();
+            let (cw, ch) = (cache.width(), cache.height());
+            let b = paint_bounds(&rc);
+            let k = sc * ps;
+            let d = IRect::cover((b.left * sc + tx) * ps - 2.0, (b.top * sc + ty) * ps - 2.0, b.right * k + tx * ps + 2.0, b.bottom * k + ty * ps + 2.0, cw, ch);
+            if let Some(mut tmp) = crop(cache, d, org) {
+                {
+                    let mut c = Canvas::new(&mut tmp);
+                    c.translate(-(d.x as f32), -(d.y as f32));
+                    c.scale(ps, ps);
+                    c.translate(tx, ty);
+                    c.scale(sc, sc);
+                    if let Some(p) = &clip {
+                        c.clip_path(p);
+                    }
+                    rc.draw(&mut c, dark);
+                }
+                blit(cache, &tmp, d, org);
             }
-            it.draw(&mut c, dark);
+            self.cache_dmg.add(d);
+            self.cache_items.push(rc.clone());
         } else {
             self.dirty = true;
         }
-        self.items.push(Rc::new(it));
+        self.items.push(rc);
     }
 
     pub fn add_note(&mut self, wx: f32, wy: f32, text: &str, note: bool) {
@@ -1075,9 +1339,6 @@ impl Board {
         }
         if self.wheel_until.is_none() {
             self.prep_gesture();
-            if self.cache.is_none() || self.dirty {
-                self.render_cache();
-            }
         }
         let ns = (self.sc * f).clamp(0.05, 12.0);
         let k = ns / self.sc;
@@ -1093,9 +1354,6 @@ impl Board {
     pub fn pan_by(&mut self, dx: f32, dy: f32) {
         if self.wheel_until.is_none() {
             self.prep_gesture();
-            if self.cache.is_none() || self.dirty {
-                self.render_cache();
-            }
         }
         self.tx += dx;
         self.ty += dy;
@@ -1174,6 +1432,7 @@ impl Board {
             .and_then(Value::as_array)
             .map(|a| a.iter().filter_map(Item::from_json).map(Rc::new).collect())
             .unwrap_or_default();
+        self.full_dirty = true;
         self.refresh();
     }
 
@@ -1665,9 +1924,10 @@ impl Board {
         }
     }
 
+    /// Vor Zoom/Verschieben: Zwischenspeicher auf aktuellen Stand bringen (wird dann verschoben bzw. skaliert gezeigt).
     fn prep_gesture(&mut self) {
-        if self.heavy && (self.dirty || self.cache.is_none()) && self.width > 0.0 {
-            self.render_cache();
+        if self.width > 0.0 && self.mode != 2 && self.mode != 3 && self.wheel_until.is_none() {
+            self.update_cache();
         }
     }
 
@@ -2371,30 +2631,204 @@ impl Board {
 
     // ---------- Zeichnen ----------
 
-    fn render_cache(&mut self) {
+    fn sig(&self) -> CacheSig {
         let ps = self.px_scale;
         let (dw, dh) = (((self.width * ps).round() as u32).max(1), ((self.height * ps).round() as u32).max(1));
+        CacheSig {
+            size: (dw, dh, ps.to_bits()),
+            sc: self.sc.to_bits(),
+            dark: self.dark,
+            bg: self.bg,
+            layers: self.layers.iter().map(|l| (l.id, l.visible, l.opacity.to_bits())).collect(),
+            pages: self.pages().map(|p| p.pages.iter().map(|g| (g.w.to_bits(), g.h.to_bits(), g.bg)).collect()).unwrap_or_default(),
+        }
+    }
+
+    fn cache_size(&self) -> (u32, u32) {
+        let ps = self.px_scale;
+        (((self.width * ps).round() as u32).max(1), ((self.height * ps).round() as u32).max(1))
+    }
+
+    /// Zeichnet den Zwischenspeicher komplett neu (Ansicht = sc/tx/ty).
+    fn render_cache(&mut self) {
+        let (dw, dh) = self.cache_size();
         let ok = matches!(&self.cache, Some(c) if c.width() == dw && c.height() == dh);
         if !ok {
             self.cache = Pixmap::new(dw, dh);
         }
+        self.csc = self.sc;
+        self.ctx = self.tx;
+        self.cty = self.ty;
+        self.org = (0, 0);
         let Some(mut cache) = self.cache.take() else { return };
+        self.draw_cache_area(&mut cache, 0, 0);
+        self.cache = Some(cache);
+        self.cache_items = self.items.iter().filter(|it| !it.lift).cloned().collect();
+        self.cache_sig = Some(self.sig());
+        self.cache_dmg = Damage(vec![IRect { x: 0, y: 0, w: dw, h: dh }]);
+        self.dirty = false;
+        self.full_dirty = false;
+    }
+
+    /// Zeichnet Hintergrund und ruhende Objekte in pm, dessen linke obere Ecke am Geraete-Pixel (x, y) des
+    /// Zwischenspeichers liegt (Ansicht des Zwischenspeichers: csc/ctx/cty).
+    fn draw_cache_area(&mut self, pm: &mut Pixmap, x: u32, y: u32) {
+        let ps = self.px_scale;
+        // pattern()/backdrop() lesen die Ansicht aus sc/tx/ty
+        let view = (self.sc, self.tx, self.ty);
+        (self.sc, self.tx, self.ty) = (self.csc, self.ctx, self.cty);
         {
-            let mut c = Canvas::new(&mut cache);
+            let (w, h) = (pm.width() as f32, pm.height() as f32);
+            // grosse Flaechen: aufzeichnen und in Streifen parallel zeichnen
+            let par = pm.width() as u64 * pm.height() as u64 >= 250_000;
+            let mut c = Canvas::new(pm);
+            if par {
+                c.start_recording();
+            }
+            c.translate(-(x as f32), -(y as f32));
             c.scale(ps, ps);
             self.backdrop(&mut c);
             c.translate(self.tx, self.ty);
             c.scale(self.sc, self.sc);
-            let vis = RectF::new(-self.tx / self.sc, -self.ty / self.sc, (self.width - self.tx) / self.sc, (self.height - self.ty) / self.sc);
+            let (l, t) = ((x as f32 / ps - self.tx) / self.sc, (y as f32 / ps - self.ty) / self.sc);
+            let vis = RectF::new(l, t, l + w / ps / self.sc, t + h / ps / self.sc);
             self.draw_scene(&mut c, Some(&vis), true, true, self.dp / self.sc);
+            if par {
+                let (rec, keep) = c.take_recording();
+                drop(c);
+                rec.replay_parallel(pm);
+                drop(keep);
+            }
         }
-        let wt: usize = self.items.iter().map(|it| it.weight()).sum();
-        self.heavy = wt > 30000;
-        self.csc = self.sc;
-        self.ctx = self.tx;
-        self.cty = self.ty;
-        self.dirty = false;
+        (self.sc, self.tx, self.ty) = view;
+    }
+
+    /// Zeichnet den Bereich r des Zwischenspeichers neu.
+    fn redraw_cache_rect(&mut self, r: IRect) {
+        if r.is_empty() {
+            return;
+        }
+        let Some(mut cache) = self.cache.take() else { return };
+        if let Some(mut tmp) = Pixmap::new(r.w, r.h) {
+            self.draw_cache_area(&mut tmp, r.x, r.y);
+            blit(&mut cache, &tmp, r, self.org);
+        }
         self.cache = Some(cache);
+        self.cache_dmg.add(r);
+    }
+
+    /// Weltrechteck → Geraete-Pixel im Zwischenspeicher (mit 2 px Rand fuer die Kantenglaettung).
+    fn cache_rect(&self, b: &RectF) -> IRect {
+        let (ps, sc) = (self.px_scale, self.csc);
+        let (dw, dh) = self.cache_size();
+        IRect::cover(
+            (b.left * sc + self.ctx) * ps - 2.0,
+            (b.top * sc + self.cty) * ps - 2.0,
+            (b.right * sc + self.ctx) * ps + 2.0,
+            (b.bottom * sc + self.cty) * ps + 2.0,
+            dw,
+            dh,
+        )
+    }
+
+    /// Vergleicht die Objekte mit dem Stand des Zwischenspeichers (Zeiger-Identitaet; Aenderungen erzeugen
+    /// per Copy-on-Write neue Objekte). Ergebnis: Bereich (Geraete-Pixel), der neu gezeichnet werden muss,
+    /// oder None, wenn ein komplettes Neuzeichnen guenstiger ist.
+    fn item_diff(&self) -> Option<IRect> {
+        let old: HashMap<*const Item, usize> = self.cache_items.iter().enumerate().map(|(i, it)| (Rc::as_ptr(it), i)).collect();
+        let mut seen = vec![false; self.cache_items.len()];
+        let mut last: isize = -1;
+        let mut dmg = IRect::default();
+        let limit = {
+            let (w, h) = self.cache_size();
+            w as u64 * h as u64 / 2
+        };
+        for it in self.items.iter().filter(|it| !it.lift) {
+            match old.get(&Rc::as_ptr(it)) {
+                Some(&i) if !seen[i] && i as isize > last => {
+                    seen[i] = true;
+                    last = i as isize;
+                    continue;
+                }
+                Some(&i) => seen[i] = true,
+                None => {}
+            }
+            dmg = dmg.union(self.cache_rect(&paint_bounds(it)));
+            if dmg.area() > limit {
+                return None;
+            }
+        }
+        for (i, it) in self.cache_items.iter().enumerate() {
+            if !seen[i] {
+                dmg = dmg.union(self.cache_rect(&paint_bounds(it)));
+                if dmg.area() > limit {
+                    return None;
+                }
+            }
+        }
+        Some(dmg)
+    }
+
+    /// Verschiebt den Inhalt um (dx, dy) Geraete-Pixel: nur der Ursprung des Ring-Speichers wandert, gezeichnet
+    /// werden nur die frei gewordenen Streifen.
+    fn scroll_cache(&mut self, dx: i32, dy: i32) {
+        let Some(cache) = self.cache.as_ref() else { return };
+        let (w, h) = (cache.width() as i32, cache.height() as i32);
+        self.org = ((self.org.0 as i32 - dx).rem_euclid(w) as u32, (self.org.1 as i32 - dy).rem_euclid(h) as u32);
+        let ps = self.px_scale;
+        self.ctx += dx as f32 / ps;
+        self.cty += dy as f32 / ps;
+        let (wu, hu) = (w as u32, h as u32);
+        // was im Zielbild schon stand, wandert mit
+        self.last_ov = shift_rect(self.last_ov, dx, dy, wu, hu);
+        self.cache_dmg.shift(dx, dy, wu, hu);
+        if dy > 0 {
+            self.redraw_cache_rect(IRect { x: 0, y: 0, w: wu, h: dy as u32 });
+        } else if dy < 0 {
+            self.redraw_cache_rect(IRect { x: 0, y: (h + dy) as u32, w: wu, h: (-dy) as u32 });
+        }
+        let (y0, y1) = if dy > 0 { (dy, h) } else { (0, h + dy) };
+        if dx > 0 {
+            self.redraw_cache_rect(IRect { x: 0, y: y0 as u32, w: dx as u32, h: (y1 - y0) as u32 });
+        } else if dx < 0 {
+            self.redraw_cache_rect(IRect { x: (w + dx) as u32, y: y0 as u32, w: (-dx) as u32, h: (y1 - y0) as u32 });
+        }
+    }
+
+    /// Bringt den Zwischenspeicher auf den aktuellen Stand: verschiebt ihn bei gleichem Zoom, zeichnet geaenderte
+    /// Objekte nur in ihrem Bereich neu und nur, wenn noetig, alles.
+    fn update_cache(&mut self) {
+        let (dw, dh) = self.cache_size();
+        let size_ok = matches!(&self.cache, Some(c) if c.width() == dw && c.height() == dh);
+        if !size_ok || self.full_dirty || self.cache_sig.as_ref() != Some(&self.sig()) || self.csc != self.sc {
+            self.render_cache();
+            return;
+        }
+        let ps = self.px_scale;
+        let (sx, sy) = (((self.tx - self.ctx) * ps).round(), ((self.ty - self.cty) * ps).round());
+        if sx != 0.0 || sy != 0.0 {
+            if sx.abs() >= dw as f32 * 0.7 || sy.abs() >= dh as f32 * 0.7 {
+                self.render_cache();
+                return;
+            }
+            self.scroll_cache(sx as i32, sy as i32);
+        }
+        let gest = self.mode == 2 || self.mode == 3 || self.wheel_until.is_some();
+        if !gest {
+            // in Ruhe auf das Pixelraster des Zwischenspeichers einrasten (< 0,5 Geraete-Pixel)
+            self.tx = self.ctx;
+            self.ty = self.cty;
+        }
+        if self.dirty {
+            match self.item_diff() {
+                Some(r) => {
+                    self.redraw_cache_rect(r);
+                    self.cache_items = self.items.iter().filter(|it| !it.lift).cloned().collect();
+                    self.dirty = false;
+                }
+                None => self.render_cache(),
+            }
+        }
     }
 
     fn pattern(&self, c: &mut Canvas) {
@@ -2410,15 +2844,17 @@ impl Board {
             step /= 2.0;
         }
         let (w, hh) = (self.width, self.height);
-        let ox = ((self.tx % step) + step) % step;
-        let oy = ((self.ty % step) + step) % step;
+        // eine Reihe vor dem Rand beginnen: auch angeschnittene Punkte/Linien am Rand zeichnen
+        // (sonst fehlen sie in Streifen, die beim Verschieben einzeln gezeichnet werden)
+        let ox = ((self.tx % step) + step) % step - step;
+        let oy = ((self.ty % step) + step) % step - step;
         let col = if self.dark { 0xFF343741 } else { 0xFFD3D6DD };
         if self.bg == 0 {
             let mut dots = Vec::new();
             let mut y = oy;
-            while y < hh {
+            while y < hh + step {
                 let mut x = ox;
-                while x < w {
+                while x < w + step {
                     dots.push(x);
                     dots.push(y);
                     x += step;
@@ -2429,14 +2865,14 @@ impl Board {
         } else {
             let mut pb = PathBuilder::new();
             let mut y = oy;
-            while y < hh {
+            while y < hh + step {
                 pb.move_to(0.0, y);
                 pb.line_to(w, y);
                 y += step;
             }
             if self.bg == 1 {
                 let mut x = ox;
-                while x < w {
+                while x < w + step {
                     pb.move_to(x, 0.0);
                     pb.line_to(x, hh);
                     x += step;
@@ -2521,66 +2957,182 @@ impl Board {
         }
     }
 
-    /// Zeichnet die Ansicht in target (Groesse = logische Groesse × px_scale).
-    pub fn render(&mut self, target: &mut Pixmap) {
+    /// Farbe hinter dem Inhalt (fuer Flaechen ausserhalb der skalierten Textur, siehe [`Frame::scaled`]).
+    pub fn backdrop_color(&self) -> u32 {
+        self.base_color()
+    }
+
+    /// Erzwingt beim naechsten render() ein vollstaendiges Bild (z. B. neue Textur in der Oberflaeche).
+    pub fn force_full_frame(&mut self) {
+        self.shown = None;
+        self.invalidate();
+    }
+
+    /// Huelle der Ueberlagerungen (angehobene Auswahl, aktueller Strich, Rahmen, Radierer) in Geraete-Pixeln.
+    fn overlay_rect(&mut self, gest: bool, w: u32, h: u32) -> IRect {
+        let (ps, sc, tx, ty, dp) = (self.px_scale, self.sc, self.tx, self.ty, self.dp);
+        let mut out = IRect::default();
+        let world = |b: &RectF| IRect::cover((b.left * sc + tx) * ps - 2.0, (b.top * sc + ty) * ps - 2.0, (b.right * sc + tx) * ps + 2.0, (b.bottom * sc + ty) * ps + 2.0, w, h);
+        let screen = |l: f32, t: f32, r: f32, b: f32| IRect::cover(l * ps - 2.0, t * ps - 2.0, r * ps + 2.0, b * ps + 2.0, w, h);
+        if self.lifted && !gest {
+            for it in self.sel_items() {
+                out = out.union(world(&paint_bounds(it)));
+            }
+        }
+        for it in [self.snap.as_ref().or(self.cur.as_ref()), self.prev.as_ref()].into_iter().flatten() {
+            out = out.union(world(&paint_bounds(it)));
+        }
+        if self.tool == SELECT && self.mode == 1 && self.drag == 3 && self.sel_mode == 0 && self.lasso.len() > 2 && self.moved {
+            let mut r = RectF::new(self.lasso[0], self.lasso[1], self.lasso[0], self.lasso[1]);
+            for xy in self.lasso.chunks_exact(2) {
+                r.union(&RectF::new(xy[0], xy[1], xy[0], xy[1]));
+            }
+            r.inset(-3.0 * dp / sc, -3.0 * dp / sc);
+            out = out.union(world(&r));
+        }
+        if let Some(m) = self.marq {
+            let mut r = RectF::new(m.left.min(m.right), m.top.min(m.bottom), m.left.max(m.right), m.top.max(m.bottom));
+            r.inset(-3.0 * dp / sc, -3.0 * dp / sc);
+            out = out.union(world(&r));
+        }
+        if self.tool == SELECT && !self.sel.is_empty() && !(self.mode == 1 && self.drag == 3 && self.moved) {
+            self.ensure_frame();
+            let pad = 6.0 * dp / sc;
+            let (hw, hh) = (self.sel_w / 2.0 + pad, self.sel_h / 2.0 + pad);
+            let mut pts = vec![self.ls(-hw, -hh), self.ls(hw, -hh), self.ls(hw, hh), self.ls(-hw, hh), self.ls(0.0, -hh - 32.0 * dp / sc)];
+            if let Some(q) = self.lin_ends() {
+                pts.push((q[0] * sc + tx, q[1] * sc + ty));
+                pts.push((q[2] * sc + tx, q[3] * sc + ty));
+            }
+            let (mut l, mut t, mut r, mut b) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for (x, y) in pts {
+                l = l.min(x);
+                t = t.min(y);
+                r = r.max(x);
+                b = b.max(y);
+            }
+            let m = 18.0 * dp;
+            out = out.union(screen(l - m, t - m, r + m, b + m));
+            if self.mode == 1 && self.drag == 4 {
+                let (rx, ry) = self.ls(0.0, -hh - 32.0 * dp / sc);
+                out = out.union(screen(rx, ry - 20.0 * dp, rx + 160.0 * dp, ry + 20.0 * dp));
+            }
+        }
+        if self.ex >= 0.0 {
+            let r = self.erase_screen_r() + 3.0 * dp;
+            out = out.union(screen(self.ex - r, self.ey - r, self.ex + r, self.ey + r));
+        }
+        out
+    }
+
+    /// Zeichnet die Ansicht in target (Groesse = logische Groesse × px_scale). Liefert den geaenderten Bereich
+    /// (Dirty-Rect) bzw. waehrend Zoom-Gesten die Skalierung der Textur.
+    pub fn render(&mut self, target: &mut Pixmap) -> Frame {
         self.needs_redraw = false;
+        let (tw, th) = (target.width(), target.height());
+        let full = IRect { x: 0, y: 0, w: tw, h: th };
         if self.width <= 0.0 || self.height <= 0.0 {
-            return;
+            return Frame { org: self.org, ..Frame::default() };
         }
         let gest = self.mode == 2 || self.mode == 3 || self.wheel_until.is_some();
-        let ps = self.px_scale;
-        let scaled_cache = if gest && (self.heavy || self.wheel_until.is_some()) && !self.dirty { self.cache.as_ref() } else { None };
-        if let Some(cache) = scaled_cache {
-            let mut c = Canvas::new(target);
-            c.scale(ps, ps);
-            self.backdrop(&mut c);
+        let key = (target.data().as_ptr() as usize, tw, th);
+        let same_target = self.shown == Some(key);
+        let size_ok = self.cache_size() == (tw, th);
+
+        // Zoom-Geste: vorhandene Textur auf der GPU skalieren
+        if let (true, Some(cache), true) = (gest && size_ok && same_target && !self.dirty, self.cache.as_ref(), self.sc != self.csc && self.cache_sig.is_some()) {
+            let mut fr = Frame::default();
+            let mut d = std::mem::take(&mut self.cache_dmg);
+            d.add(self.last_ov);
+            self.last_ov = IRect::default();
+            for r in d.rects() {
+                copy_rect(target, cache, *r, self.org);
+            }
+            fr.damage = d.0;
             let k = self.sc / self.csc;
-            let (l, t) = (self.tx - self.ctx * k, self.ty - self.cty * k);
-            c.draw_pixmap(cache.as_ref(), l, t, l + self.width * k, t + self.height * k);
-        } else if gest {
-            let mut c = Canvas::new(target);
-            c.scale(ps, ps);
-            self.backdrop(&mut c);
-            let vis = RectF::new(-self.tx / self.sc, -self.ty / self.sc, (self.width - self.tx) / self.sc, (self.height - self.ty) / self.sc);
-            c.translate(self.tx, self.ty);
-            c.scale(self.sc, self.sc);
-            self.draw_scene(&mut c, Some(&vis), false, true, self.dp / self.sc);
-        } else {
-            if self.dirty || self.cache.is_none() {
-                self.render_cache();
-            }
-            match self.cache.as_ref() {
-                Some(cache) if cache.width() == target.width() && cache.height() == target.height() => {
-                    target.data_mut().copy_from_slice(cache.data());
-                }
-                Some(cache) => {
-                    let mut c = Canvas::new(target);
-                    c.draw_color(self.base_color());
-                    c.draw_pixmap(cache.as_ref(), 0.0, 0.0, cache.width() as f32, cache.height() as f32);
-                }
-                None => {}
-            }
+            fr.scaled = Some((k, self.tx - self.ctx * k, self.ty - self.cty * k));
+            fr.org = self.org;
+            return fr;
         }
 
-        let mut c = Canvas::new(target);
-        c.scale(ps, ps);
+        if !gest || self.sc == self.csc {
+            self.update_cache();
+        }
+        let cache_ok = size_ok && self.cache.is_some() && self.csc == self.sc;
+        if !cache_ok {
+            // Ausweichweg (z. B. Zoom-Geste ohne gueltigen Zwischenspeicher): alles direkt zeichnen
+            {
+                let ps = self.px_scale;
+                let mut c = Canvas::new(target);
+                c.scale(ps, ps);
+                self.backdrop(&mut c);
+                let vis = RectF::new(-self.tx / self.sc, -self.ty / self.sc, (self.width - self.tx) / self.sc, (self.height - self.ty) / self.sc);
+                c.translate(self.tx, self.ty);
+                c.scale(self.sc, self.sc);
+                self.draw_scene(&mut c, Some(&vis), false, true, self.dp / self.sc);
+            }
+            self.shown = None;
+            return Frame { damage: vec![full], scaled: None, org: (0, 0) };
+        }
+
+        let org = self.org;
+        let ov = self.overlay_rect(gest, tw, th);
+        let mut dmg = std::mem::take(&mut self.cache_dmg);
+        if same_target {
+            dmg.add(self.last_ov);
+            dmg.add(ov);
+        } else {
+            dmg = Damage(vec![full]);
+        }
+        self.last_ov = ov;
+        self.shown = Some(key);
+        if dmg.is_empty() {
+            return Frame { org, ..Frame::default() };
+        }
+        // grosser Anteil: alles kopieren, dann nur die Ueberlagerungen
+        if dmg.area() * 10 >= full.area() * 6 {
+            target.data_mut().copy_from_slice(self.cache.as_ref().unwrap().data());
+            dmg = Damage(vec![full]);
+            if ov.is_empty() {
+                return Frame { damage: dmg.0, scaled: None, org };
+            }
+        }
+        // je Bereich: Zwischenspeicher-Ausschnitt + Ueberlagerungen (falls sie hineinreichen)
+        let only_ov = dmg.0 == [full];
+        let parts: Vec<IRect> = if only_ov { vec![ov] } else { dmg.0.clone() };
+        for r in parts {
+            let Some(mut tmp) = crop(self.cache.as_ref().unwrap(), r, org) else { continue };
+            if !ov.is_empty() && intersects(ov, r) {
+                let ps = self.px_scale;
+                let mut c = Canvas::new(&mut tmp);
+                c.translate(-(r.x as f32), -(r.y as f32));
+                c.scale(ps, ps);
+                self.draw_overlays(&mut c, gest);
+            }
+            blit(target, &tmp, r, org);
+        }
+        Frame { damage: dmg.0, scaled: None, org }
+    }
+
+    /// Ueberlagerungen ueber dem Zwischenspeicher; c steht auf logischen Bildschirm-Pixeln.
+    fn draw_overlays(&mut self, c: &mut Canvas, gest: bool) {
         c.save();
         c.translate(self.tx, self.ty);
         c.scale(self.sc, self.sc);
         c.save();
-        self.clip_pages(&mut c);
+        self.clip_pages(c);
         if self.lifted && !gest {
             for it in self.sel_items() {
-                it.draw(&mut c, self.dark);
+                it.draw(c, self.dark);
             }
         }
         if let Some(s) = &self.snap {
-            s.draw(&mut c, self.dark);
+            s.draw(c, self.dark);
         } else if let Some(s) = &self.cur {
-            s.draw(&mut c, self.dark);
+            s.draw(c, self.dark);
         }
         if let Some(p) = &self.prev {
-            p.draw(&mut c, self.dark);
+            p.draw(c, self.dark);
         }
         c.restore();
         let dp = self.dp;
@@ -2605,7 +3157,7 @@ impl Board {
         c.restore();
 
         if self.tool == SELECT && !self.sel.is_empty() && !(self.mode == 1 && self.drag == 3 && self.moved) {
-            self.draw_frame(&mut c);
+            self.draw_frame(c);
         }
 
         if self.ex >= 0.0 {
@@ -2949,5 +3501,131 @@ mod tests {
         assert!((595.0 * b.sc - (800.0 - 32.0)).abs() < 0.01);
         assert!((b.tx + 595.0 / 2.0 * b.sc - 400.0).abs() < 0.01);
         let _ = b.thumb();
+    }
+
+    /// Vergleicht das schrittweise aufgebaute Bild (Teil-Updates, Verschieben, Dirty-Rects) mit einem frisch
+    /// komplett gezeichneten. Erlaubt minimale Rundungsabweichungen der Kantenglaettung.
+    fn assert_frame_eq(b: &mut Board, inc: &mut Pixmap, tag: &str) {
+        let f = b.render(inc);
+        // Ring-Speicher in normale Lage bringen
+        let full = IRect { x: 0, y: 0, w: inc.width(), h: inc.height() };
+        let lin = crop(inc, full, f.org).unwrap();
+        inc.data_mut().copy_from_slice(lin.data());
+        let mut fresh = Pixmap::new(inc.width(), inc.height()).unwrap();
+        b.full_dirty = true;
+        b.dirty = true;
+        b.render(&mut fresh);
+        let (mut bad, mut worst) = (0usize, 0i32);
+        for (a, c) in inc.data().iter().zip(fresh.data()) {
+            let d = (*a as i32 - *c as i32).abs();
+            worst = worst.max(d);
+            if d > 3 {
+                bad += 1;
+            }
+        }
+        assert!(bad < 40 && worst < 64, "{tag}: {bad} Abweichungen, max {worst}");
+        // fortan schrittweise auf dem frischen Bild weiter
+        inc.data_mut().copy_from_slice(fresh.data());
+    }
+
+    fn check_incremental(mut b: Board) {
+        let mut pm = Pixmap::new(800, 600).unwrap();
+        b.render(&mut pm);
+        let stroke = |b: &mut Board, pm: &mut Pixmap, k: f32| {
+            let pts: Vec<(f32, f32)> = (0..40).map(|i| (100.0 + k * 37.0 % 500.0 + i as f32 * 6.0, 120.0 + (i as f32 * 0.4 + k).sin() * 50.0 + k * 13.0 % 300.0)).collect();
+            b.on_touch(&Motion::single(Action::Down, pts[0].0, pts[0].1, 0.5, ToolType::Stylus));
+            for p in &pts[1..] {
+                b.on_touch(&Motion::single(Action::Move, p.0, p.1, 0.3 + (p.0 * 0.01).sin().abs() * 0.5, ToolType::Stylus));
+                b.render(pm);
+            }
+            let l = pts[pts.len() - 1];
+            b.on_touch(&Motion::single(Action::Up, l.0, l.1, 0.5, ToolType::Stylus));
+        };
+        for k in 0..6 {
+            stroke(&mut b, &mut pm, k as f32);
+        }
+        b.tool = MARKER;
+        stroke(&mut b, &mut pm, 9.0);
+        b.tool = PEN;
+        assert_frame_eq(&mut b, &mut pm, "Striche");
+        // Radieren (ganze Objekte)
+        b.on_touch(&Motion::single(Action::Down, 150.0, 140.0, 0.5, ToolType::Eraser));
+        for i in 0..30 {
+            b.on_touch(&Motion::single(Action::Move, 150.0 + i as f32 * 8.0, 140.0 + i as f32 * 3.0, 0.5, ToolType::Eraser));
+            b.render(&mut pm);
+        }
+        b.on_touch(&Motion::single(Action::Up, 390.0, 230.0, 0.5, ToolType::Eraser));
+        assert_frame_eq(&mut b, &mut pm, "Radieren");
+        b.undo();
+        b.render(&mut pm);
+        b.redo();
+        b.render(&mut pm);
+        b.undo();
+        assert_frame_eq(&mut b, &mut pm, "Rueckgaengig");
+        // Verschieben mit dem Finger (krumme Schritte), dann in Ruhe
+        b.on_touch(&Motion::single(Action::Down, 400.0, 300.0, 0.5, ToolType::Finger));
+        for i in 1..25 {
+            b.on_touch(&Motion::single(Action::Move, 400.0 - i as f32 * 7.3, 300.0 + i as f32 * 4.7, 0.5, ToolType::Finger));
+            b.render(&mut pm);
+        }
+        b.on_touch(&Motion::single(Action::Up, 400.0 - 25.0 * 7.3, 300.0 + 25.0 * 4.7, 0.5, ToolType::Finger));
+        assert_frame_eq(&mut b, &mut pm, "Verschieben");
+        // Mausrad-Verschieben und -Zoom
+        for i in 0..8 {
+            b.tick(1.0 + i as f64 * 0.02);
+            b.pan_by(13.4, -9.1);
+            b.render(&mut pm);
+        }
+        b.tick(5.0);
+        assert_frame_eq(&mut b, &mut pm, "Rad-Verschieben");
+        for i in 0..8 {
+            b.tick(6.0 + i as f64 * 0.02);
+            b.zoom_at(400.0, 300.0, 1.07);
+            b.render(&mut pm);
+        }
+        b.tick(9.0);
+        assert_frame_eq(&mut b, &mut pm, "Zoom");
+        // Ring-Speicher mit Versatz: verschieben, dann zeichnen/radieren/auswaehlen
+        for i in 0..5 {
+            b.tick(10.0 + i as f64 * 0.02);
+            b.pan_by(-31.4, 17.9);
+            b.render(&mut pm);
+        }
+        b.tick(12.0);
+        b.render(&mut pm);
+        stroke(&mut b, &mut pm, 3.0);
+        b.on_touch(&Motion::single(Action::Down, 200.0, 200.0, 0.5, ToolType::Eraser));
+        for i in 0..20 {
+            b.on_touch(&Motion::single(Action::Move, 200.0 + i as f32 * 9.0, 200.0 + i as f32 * 5.0, 0.5, ToolType::Eraser));
+            b.render(&mut pm);
+        }
+        b.on_touch(&Motion::single(Action::Up, 380.0, 300.0, 0.5, ToolType::Eraser));
+        b.render(&mut pm);
+        // Auswahl ziehen
+        b.set_tool(SELECT);
+        drag(&mut b, &[(50.0, 50.0), (750.0, 50.0), (750.0, 550.0), (50.0, 550.0), (50.0, 60.0)], ToolType::Stylus);
+        if let Some(r) = b.sel_bounds() {
+            let (cx, cy) = (r.center_x() * b.sc + b.tx, r.center_y() * b.sc + b.ty);
+            b.on_touch(&Motion::single(Action::Down, cx, cy, 0.5, ToolType::Stylus));
+            for i in 1..15 {
+                b.on_touch(&Motion::single(Action::Move, cx + i as f32 * 5.0, cy + i as f32 * 2.0, 0.5, ToolType::Stylus));
+                b.render(&mut pm);
+            }
+            b.on_touch(&Motion::single(Action::Up, cx + 75.0, cy + 30.0, 0.5, ToolType::Stylus));
+        }
+        assert_frame_eq(&mut b, &mut pm, "Auswahl ziehen");
+        b.delete_sel();
+        assert_frame_eq(&mut b, &mut pm, "Loeschen");
+    }
+
+    #[test]
+    fn incremental_render_matches_full() {
+        check_incremental(board());
+        let mut b = paged(3, PageBg::Lined);
+        b.show_page(0);
+        check_incremental(b);
+        let mut b = board();
+        b.set_size(800.0 / 1.5, 600.0 / 1.5, 1.5);
+        check_incremental(b);
     }
 }

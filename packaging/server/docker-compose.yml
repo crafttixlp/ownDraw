@@ -1,0 +1,40 @@
+# OwnDraw-Server + Caddy (Auto-HTTPS). Start im Ordner packaging/server/:
+#   cp .env.example .env     # Admin-E-Mail/-Passwort eintragen
+#   docker compose up -d --build
+# Vorher im Repo-Wurzelordner ./build-web.sh ausführen (erzeugt dist/web/).
+
+services:
+  owndraw:
+    build:
+      context: ../..
+      dockerfile: packaging/server/Dockerfile
+    image: owndraw-server:local
+    restart: unless-stopped
+    environment:
+      OWNDRAW_ADMIN_EMAIL: ${OWNDRAW_ADMIN_EMAIL:-}
+      OWNDRAW_ADMIN_PASSWORD: ${OWNDRAW_ADMIN_PASSWORD:-}
+      OWNDRAW_MAX_BOARD_MB: ${OWNDRAW_MAX_BOARD_MB:-50}
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - owndraw
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      OWNDRAW_DOMAIN: ${OWNDRAW_DOMAIN:-owndraw.thepepelex.at}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

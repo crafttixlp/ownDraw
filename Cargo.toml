@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-android"]
+members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-android", "crates/owndraw-server"]
 # owndraw-android ist nur für das Android-Ziel sinnvoll (siehe docs/android.md).
-default-members = ["crates/owndraw-core", "crates/owndraw"]
+default-members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-server"]
 
 [workspace.package]
 version = "4.5.1"

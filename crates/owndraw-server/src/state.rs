@@ -1,0 +1,64 @@
+//! Gemeinsamer Anwendungszustand.
+
+use crate::config::Config;
+use crate::db::Db;
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Db,
+    pub cfg: Arc<Config>,
+    pub limiter: Arc<RateLimiter>,
+    /// Verhindert parallele Installationen eines Updates.
+    pub installing: Arc<AtomicBool>,
+}
+
+impl AppState {
+    pub fn new(db: Db, cfg: Config) -> Self {
+        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)) }
+    }
+}
+
+/// Einfacher Rate-Limiter im Speicher (Schlüssel → Zeitpunkte der letzten Versuche).
+#[derive(Default)]
+pub struct RateLimiter {
+    hits: Mutex<HashMap<String, VecDeque<Instant>>>,
+}
+
+impl RateLimiter {
+    /// Zählt einen Versuch; `false`, wenn das Limit im Fenster überschritten ist.
+    pub fn hit(&self, key: &str, limit: u32, window: Duration) -> bool {
+        let mut map = self.hits.lock().unwrap_or_else(|p| p.into_inner());
+        let now = Instant::now();
+        if map.len() > 10_000 {
+            map.retain(|_, q| q.back().is_some_and(|t| now.duration_since(*t) < window));
+        }
+        let q = map.entry(key.to_string()).or_default();
+        while q.front().is_some_and(|t| now.duration_since(*t) >= window) {
+            q.pop_front();
+        }
+        if q.len() as u32 >= limit {
+            return false;
+        }
+        q.push_back(now);
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limiter_sperrt_nach_limit() {
+        let l = RateLimiter::default();
+        let w = Duration::from_secs(60);
+        assert!(l.hit("a", 2, w));
+        assert!(l.hit("a", 2, w));
+        assert!(!l.hit("a", 2, w));
+        assert!(l.hit("b", 2, w));
+    }
+}

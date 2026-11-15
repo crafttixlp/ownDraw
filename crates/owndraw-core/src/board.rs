@@ -120,6 +120,8 @@ pub struct Board {
     pub tool: i32,
     pub color: u32,
     pub shape_kind: i32,
+    /// Gewählter Pfeilstil (Index in `item::ARROW_STYLES`); erkannte Pfeile werden darin umgewandelt.
+    pub arrow_style: i32,
     /// Formerkennung: 0 = Stift am Ende kurz halten, 1 = immer, 2 = aus.
     pub recog: i32,
     /// Hintergrund: 0 Punkte, 1 Raster, 2 Linien, 3 leer.
@@ -228,6 +230,7 @@ impl Board {
             tool: PEN,
             color: INK,
             shape_kind: 0,
+            arrow_style: 0,
             recog: 0,
             bg: 0,
             dark: false,
@@ -1099,7 +1102,7 @@ impl Board {
         }
         let Some(cur) = self.cur.as_ref() else { return };
         if let Some(s) = recognizer::run(cur, self.sc) {
-            self.snap = Some(s);
+            self.snap = Some(self.style_arrow(s));
             self.events.push(Event::Haptic);
             self.invalidate();
         }
@@ -1749,6 +1752,14 @@ impl Board {
         self.lwy = wy;
     }
 
+    /// Wendet den gewählten Pfeilstil auf eine erkannte Form an.
+    fn style_arrow(&self, mut it: Item) -> Item {
+        if let Kind::Shape(g) = &mut it.kind {
+            g.kind = item::styled_arrow(g.kind, self.arrow_style);
+        }
+        it
+    }
+
     fn make_shape(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Item {
         let w = self.pen_w * self.dp / self.sc;
         if self.shape_kind == 0 {
@@ -1758,7 +1769,7 @@ impl Board {
                 1 => item::ELLIPSE,
                 2 => item::LINE,
                 4 => item::ARROW_ENG,
-                _ => item::ARROW,
+                _ => item::styled_arrow(item::ARROW, self.arrow_style),
             };
             Item::shape(k, vec![x0, y0, x1, y1], self.color, w)
         }
@@ -2146,7 +2157,7 @@ impl Board {
         } else if let Some(cur) = self.cur.take() {
             let mut it = self.snap.take();
             if it.is_none() && self.recog == 1 {
-                it = recognizer::run(&cur, self.sc);
+                it = recognizer::run(&cur, self.sc).map(|s| self.style_arrow(s));
             }
             self.add_top(it.unwrap_or(cur));
         } else if self.tool == SHAPE {

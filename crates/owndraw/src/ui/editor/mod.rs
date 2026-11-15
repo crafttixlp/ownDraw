@@ -191,6 +191,7 @@ impl Editor {
             board.pen_w = 3.0;
         }
         board.shape_kind = geti("shape", 0).clamp(0, 4) as i32;
+        board.arrow_style = geti("arrow", 0).clamp(0, owndraw_core::item::ARROW_STYLES.len() as i64 - 1) as i32;
         // Auf Touch-Geräten zeichnet der Finger standardmäßig (Schalter im Werkzeug-Popover).
         board.finger_draw = x.get("finger").and_then(|v| v.as_bool()).unwrap_or_else(|| sh.platform.is_touch());
         Editor {
@@ -626,7 +627,8 @@ impl Editor {
     /// Werkzeug-Vorgaben (Modus, Breite, …) in den Einstellungen merken.
     fn sync_tool_prefs(&self, s: &mut Settings) {
         let b = &self.board;
-        let vals: [(&str, serde_json::Value); 6] = [
+        let vals: [(&str, serde_json::Value); 7] = [
+            ("arrow", b.arrow_style.into()),
             ("recog", b.recog.into()),
             ("selmode", b.sel_mode.into()),
             ("erasemode", b.erase_mode.into()),

@@ -15,7 +15,7 @@
 
 use crate::doc::{DocError, Document, Result};
 use crate::geom::RectF;
-use crate::item::{arrow_eng_head, Item, Kind, ARROW_ENG};
+use crate::item::{Item, Kind};
 use crate::layer::Layer;
 use crate::pages::{BoardMode, Page, PageBg, PageFormat, PageSetup};
 use serde_json::{json, Map, Value};
@@ -556,13 +556,16 @@ fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
     let xa = xattrs(o.raw);
     match &it.kind {
         Kind::Stroke(s) => emit_stroke(out, it, &s.p, s.hl, s.var, ox, oy, &xa, None),
-        Kind::Shape(g) => {
+        Kind::Shape(_) => {
             let parts = it.to_strokes();
+            // Gefüllte Pfeilspitzen sind die letzten Teile; als gefülltes Dreieck schreiben.
+            let heads = it.filled_heads();
+            let first_head = parts.len().saturating_sub(heads.len());
             for (i, part) in parts.iter().enumerate() {
                 let Kind::Stroke(s) = &part.kind else { continue };
-                if g.kind == ARROW_ENG && i == 1 && g.q.len() >= 4 {
-                    // Spitze als gefülltes Dreieck (Linienbreite 0 → scharfe Spitze)
-                    let h = arrow_eng_head(g.q[0], g.q[1], g.q[2], g.q[3], it.width);
+                if i >= first_head {
+                    // Linienbreite 0 → scharfe Spitze
+                    let h = heads[i - first_head];
                     let p: Vec<f32> = [0, 1, 2, 0].iter().flat_map(|&k| [h[k * 2], h[k * 2 + 1], 0.5]).collect();
                     let mut tri = part.clone();
                     tri.width = 0.01;

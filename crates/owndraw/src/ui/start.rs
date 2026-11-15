@@ -70,6 +70,13 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     }
                 });
             });
+            if crate::platform::WEB {
+                // Gastmodus-Hinweis (dezent)
+                ui.add_space(8.0);
+                egui::Frame::new().fill(c(p.accent_soft)).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::symmetric(12, 7)).show(ui, |ui| {
+                    ui.label(egui::RichText::new("Gastmodus – Boards werden nicht gespeichert, bitte herunterladen (im Board: ⋯ → Herunterladen).").size(13.0).color(c(p.text)));
+                });
+            }
             ui.add_space(14.0);
             // Aktionen
             let btn_w = if compact { (ui.available_width() - 8.0) / 2.0 } else { 140.0 };

@@ -6,7 +6,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Seek, Write};
 use std::path::{Path, PathBuf};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
+// Im Browser panikt `std::time::SystemTime::now`; `web-time` nimmt `Date.now()`.
+#[cfg(target_arch = "wasm32")]
+use web_time::{SystemTime, UNIX_EPOCH};
 use zip::write::SimpleFileOptions;
 
 const MAX_TOTAL: u64 = 200 * 1024 * 1024;
@@ -44,6 +48,15 @@ pub fn random_hex(n: usize) -> String {
         let mut h = RandomState::new().build_hasher();
         h.write_i64(now_ms());
         h.write_usize(s.len());
+        // Im Browser hat `RandomState` feste Schlüssel: Zufall aus `Math.random()` und ein Zähler dazu.
+        #[cfg(target_arch = "wasm32")]
+        {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static CTR: AtomicU64 = AtomicU64::new(0);
+            h.write_u64(CTR.fetch_add(1, Ordering::Relaxed));
+            h.write_u64((js_sys::Math::random() * 9007199254740992.0) as u64);
+            h.write_u64((js_sys::Math::random() * 9007199254740992.0) as u64);
+        }
         s.push_str(&format!("{:016x}", h.finish()));
     }
     s.truncate(n);

@@ -6,6 +6,18 @@
 
 #[cfg(target_os = "android")]
 pub mod android;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
+
+/// Läuft im Browser (Gastmodus: kein Dateisystem, keine Updates, Speichern = Download).
+pub const WEB: bool = cfg!(target_arch = "wasm32");
+
+/// Merkt, ob es Änderungen gibt, die noch nicht heruntergeladen wurden (Browser: Warnung beim Verlassen der
+/// Seite). Außerhalb des Browsers ohne Wirkung.
+pub fn note_unsaved(_unsaved: bool) {
+    #[cfg(target_arch = "wasm32")]
+    web::set_unsaved(_unsaved);
+}
 
 use std::io;
 use std::path::PathBuf;
@@ -184,5 +196,5 @@ pub trait Platform {
     fn is_touch(&self) -> bool;
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 pub mod desktop;

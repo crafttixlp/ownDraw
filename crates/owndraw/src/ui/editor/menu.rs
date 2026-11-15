@@ -90,7 +90,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         ed.export(sh, 2);
         close = true;
     }
-    if style::menu_row(ui, "Website-Vorschau", false, h) {
+    if !crate::platform::WEB && style::menu_row(ui, "Website-Vorschau", false, h) {
         ed.preview(sh);
         close = true;
     }
@@ -102,11 +102,16 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
 
     ui.add_space(4.0);
     style::caption(ui, "Datei");
+    if crate::platform::WEB && style::menu_row(ui, "Herunterladen (.owndraw)", false, h) {
+        let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
+        sh.reqs.push(Req::PickSave { purpose: PickPurpose::SaveCopy, name, kind: FileKind::Owndraw });
+        close = true;
+    }
     if style::menu_row(ui, "Umbenennen …", false, h) {
         sh.dialog = Some(crate::ui::dialogs::Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: ed.name().to_string(), focus: true });
         close = true;
     }
-    if style::menu_row(ui, "Kopie speichern unter …", false, h) {
+    if !crate::platform::WEB && style::menu_row(ui, "Kopie speichern unter …", false, h) {
         let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
         sh.reqs.push(Req::PickSave { purpose: PickPurpose::SaveCopy, name, kind: FileKind::Owndraw });
         close = true;

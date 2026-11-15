@@ -1,8 +1,10 @@
-//! OwnDraw-App (egui/eframe) als Bibliothek: Desktop-Start über `run_desktop`, Android über ein eigenes Crate.
+//! OwnDraw-App (egui/eframe) als Bibliothek: Desktop-Start über `run_desktop`, Android und Browser (`run_web`)
+//! über eigene Crates (`owndraw-android`, `owndraw-web`).
 
 mod app;
 mod autosave;
 mod demo;
+mod kv;
 #[allow(dead_code)]
 mod layout;
 #[allow(dead_code)]
@@ -13,6 +15,8 @@ mod session;
 mod settings;
 mod style;
 mod ui;
+/// Update-Dienst (GitHub-Releases, Signaturprüfung); im Browser aus.
+#[cfg(not(target_arch = "wasm32"))]
 mod update;
 
 /// JNI-Einsprungpunkte für das Crate `owndraw-android` (Java → Rust).
@@ -37,7 +41,7 @@ pub fn data_dir() -> PathBuf {
     home.join(".local/share/OwnDraw")
 }
 
-#[cfg_attr(target_os = "android", allow(dead_code))]
+#[cfg_attr(any(target_os = "android", target_arch = "wasm32"), allow(dead_code))]
 fn icon() -> Option<egui::IconData> {
     let pm = owndraw_core::tiny_skia::Pixmap::decode_png(include_bytes!("../../../assets/owndraw.png")).ok()?;
     let (w, h) = (pm.width(), pm.height());
@@ -50,7 +54,7 @@ fn icon() -> Option<egui::IconData> {
 }
 
 /// Fenstergröße aus `OWNDRAW_WINDOW=BxH` (für Tests und Screenshots), sonst 1280 × 820.
-#[cfg_attr(target_os = "android", allow(dead_code))]
+#[cfg_attr(any(target_os = "android", target_arch = "wasm32"), allow(dead_code))]
 fn window_size() -> [f32; 2] {
     std::env::var("OWNDRAW_WINDOW")
         .ok()
@@ -61,7 +65,7 @@ fn window_size() -> [f32; 2] {
         .unwrap_or([1280.0, 820.0])
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 pub fn run_desktop() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--version" || a == "-V") {
@@ -119,4 +123,25 @@ pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
             Ok(Box::new(app::App::new(platform, settings, None)))
         }),
     )
+}
+
+/// Browser-Start (aus `start` im Crate `owndraw-web`): gleiche App, Plattform = [`platform::web::WebPlatform`]
+/// (Gastmodus: Öffnen per Upload, Speichern als Download, Boards vorläufig in IndexedDB).
+#[cfg(target_arch = "wasm32")]
+pub async fn run_web(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
+    let store = platform::web::Store::load().await;
+    platform::web::install_page_hooks();
+    let runner = eframe::WebRunner::new();
+    runner
+        .start(
+            canvas,
+            eframe::WebOptions::default(),
+            Box::new(move |cc| {
+                let platform: Box<dyn platform::Platform> = Box::new(platform::web::WebPlatform::new(cc.egui_ctx.clone(), store));
+                let settings = app::load_settings(&*platform);
+                style::apply(&cc.egui_ctx, &settings);
+                Ok(Box::new(app::App::new(platform, settings, None)))
+            }),
+        )
+        .await
 }

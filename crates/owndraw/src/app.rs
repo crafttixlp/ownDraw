@@ -143,6 +143,7 @@ impl App {
     }
 
     /// Migration der alten Ablage (siehe `lib.rs`): übernommene Dateien in die Zuletzt-Liste, Hinweis anzeigen.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub fn add_migrated(&mut self, files: Vec<PathBuf>) {
         let n = files.len();
         for p in files {
@@ -171,6 +172,12 @@ impl App {
             (Some(e), Screen::Editor) => format!("OwnDraw – {}", e.name()),
             _ => "OwnDraw".to_string(),
         };
+        // Browser: Seitentitel (das Web-Backend kennt ViewportCommand::Title nicht)
+        #[cfg(target_arch = "wasm32")]
+        if let Some(d) = web_sys::window().and_then(|w| w.document()) {
+            d.set_title(&t);
+            return;
+        }
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(t));
     }
 
@@ -254,6 +261,11 @@ impl App {
                         None => self.sh.toast_for("Kein Speicherort für den Import verfügbar", 4.0),
                     }
                 }
+                // Browser: das Board landet neben den anderen im Browser-Speicher.
+                FileRef::Uri(u) if crate::platform::WEB && u.starts_with("mem:") => match self.sh.platform.create_in(&self.default_dir(), &name, FileKind::Owndraw) {
+                    Ok(t) => self.finish_import(ctx, doc, t),
+                    Err(e) => self.sh.toast_for(&format!("Kein Speicherort für den Import verfügbar: {e}"), 4.0),
+                },
                 FileRef::Uri(_) => {
                     // Ohne Ordnerzugriff: Speicherort erfragen.
                     let tag = self.tag(PickPurpose::NewDoc, None);
@@ -283,7 +295,8 @@ impl App {
 
     fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool) {
         let fname = format!("{}.owndraw", safe_file_name(&params.name));
-        if custom {
+        // Im Browser gibt es keinen Speicherort zum Wählen (Speichern unter = Download).
+        if custom && !crate::platform::WEB {
             let tag = self.tag(PickPurpose::NewDoc, Some(params));
             self.sh.platform.pick_save(&fname, FileKind::Owndraw, tag);
             return;
@@ -372,7 +385,7 @@ impl App {
                         self.title(ctx);
                     }
                 }
-                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask)),
+                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask && !crate::platform::WEB)),
                 Req::OpenFile(f) => self.open_ref(ctx, f),
                 Req::RemoveRecent(f) => {
                     self.recent.remove(&f);
@@ -455,7 +468,8 @@ impl eframe::App for App {
             self.applied = Some(self.sh.settings.clone());
         }
         self.sh.env = Env::new(ctx.content_rect().width(), self.sh.platform.is_touch());
-        // Update-Dienst: optionaler Start-Hinweis (nur Hinweis, installiert nie von selbst)
+        // Update-Dienst: optionaler Start-Hinweis (nur Hinweis, installiert nie von selbst; im Browser aus)
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(n) = crate::update::frame_hook(&self.sh.settings, &*self.sh.platform, &ctx) {
             self.sh.toast_for(&n, 6.0);
         }

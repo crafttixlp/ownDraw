@@ -47,6 +47,7 @@ static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Schreibt atomar: temporäre Datei im Zielordner, fsync, umbenennen (gleiche Logik wie `desktop.rs`, aber ohne
 /// `Platform`, damit sie in einem Hintergrund-Thread laufen kann). Nach einem Abbruch (SIGKILL, Stromausfall)
 /// ist die Zieldatei entweder komplett alt oder komplett neu.
+#[cfg_attr(target_arch = "wasm32", allow(clippy::drop_non_drop))]
 pub fn write_path_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     let dir = match path.parent() {
         Some(d) if !d.as_os_str().is_empty() => d,

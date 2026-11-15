@@ -22,6 +22,14 @@ pub enum BarPos {
     Right,
 }
 
+/// Andock-Zustand einer verschobenen Kachel: `edge` = angedockt an diesen Rand der
+/// Zeichenfläche (None = frei schwebend), `vert` = Symbole senkrecht angeordnet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dock {
+    pub edge: Option<BarPos>,
+    pub vert: bool,
+}
+
 /// Wo neue Boards gespeichert werden.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SaveChoice {
@@ -61,6 +69,8 @@ pub struct Settings {
     /// Vom Nutzer verschobene Kacheln: "<id>@<Formfaktor>" -> Anteil (0..1) der linken oberen Ecke
     /// bezogen auf (Zeichenfläche - Kachelgröße).
     pub tile_pos: BTreeMap<String, [f32; 2]>,
+    /// Andock-Zustand der Kacheln (gleiche Schlüssel wie `tile_pos`); fehlt = Vorgabe.
+    pub tile_dock: BTreeMap<String, Dock>,
     /// Sichtbare Werkzeuge in Reihenfolge.
     pub tools: Vec<ToolId>,
     pub save_choice: SaveChoice,
@@ -80,7 +90,9 @@ pub struct Settings {
 }
 
 /// Alle Werkzeuge, die die Leiste kann (Reihenfolge = Vorgabe beim Anzeigen ausgeblendeter Werkzeuge im Bearbeiten-Modus).
-pub const ALL_TOOLS: [&str; 7] = ["pen", "marker", "eraser", "select", "shape", "text", "image"];
+pub const ALL_TOOLS: [&str; 7] = [
+    "pen", "marker", "eraser", "select", "shape", "text", "image",
+];
 
 /// Auswahl der Akzentfarben (ARGB) in den Einstellungen.
 pub const ACCENTS: [(&str, u32); 8] = [
@@ -97,7 +109,9 @@ pub const ACCENTS: [(&str, u32); 8] = [
 /// Dateiname der Einstellungen im Konfigurationsordner.
 pub const FILE_NAME: &str = "settings.json";
 
-pub const DEFAULT_TOOLS: [&str; 7] = ["pen", "marker", "eraser", "select", "shape", "text", "image"];
+pub const DEFAULT_TOOLS: [&str; 7] = [
+    "pen", "marker", "eraser", "select", "shape", "text", "image",
+];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -108,6 +122,7 @@ impl Default for Settings {
             toolbar_pos: None,
             options_pos: None,
             tile_pos: BTreeMap::new(),
+            tile_dock: BTreeMap::new(),
             tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             save_choice: SaveChoice::Ask,
             default_dir: None,
@@ -141,6 +156,12 @@ impl Settings {
         for f in self.tile_pos.values_mut() {
             *f = [f[0].clamp(0.0, 1.0), f[1].clamp(0.0, 1.0)];
         }
+        // Seitlich angedockt = immer senkrecht, oben/unten = waagerecht
+        for d in self.tile_dock.values_mut() {
+            if let Some(e) = d.edge {
+                d.vert = matches!(e, BarPos::Left | BarPos::Right);
+            }
+        }
         if self.update_repo.trim().is_empty() {
             self.update_repo = Settings::default().update_repo;
         }
@@ -157,7 +178,9 @@ impl Settings {
     /// die Datei wird als `settings.json.bak` gesichert.
     pub fn load(platform: &dyn Platform) -> Settings {
         let path = FileRef::Path(platform.config_dir().join(FILE_NAME));
-        let Ok(bytes) = platform.read(&path) else { return Settings::default() };
+        let Ok(bytes) = platform.read(&path) else {
+            return Settings::default();
+        };
         match Settings::parse(&bytes) {
             Ok(s) => s,
             Err(_) => {
@@ -186,7 +209,11 @@ pub type ToolEntry = (ToolId, bool);
 
 /// Vollständige Liste für den Bearbeiten-Modus: sichtbare in Reihenfolge, danach die ausgeblendeten.
 pub fn edit_list(visible: &[ToolId]) -> Vec<ToolEntry> {
-    let mut v: Vec<ToolEntry> = visible.iter().filter(|t| ALL_TOOLS.contains(&t.as_str())).map(|t| (t.clone(), true)).collect();
+    let mut v: Vec<ToolEntry> = visible
+        .iter()
+        .filter(|t| ALL_TOOLS.contains(&t.as_str()))
+        .map(|t| (t.clone(), true))
+        .collect();
     for id in ALL_TOOLS {
         if !v.iter().any(|(t, _)| t == id) {
             v.push((id.to_string(), false));
@@ -197,7 +224,10 @@ pub fn edit_list(visible: &[ToolId]) -> Vec<ToolEntry> {
 
 /// Sichtbare Kennungen aus der Bearbeiten-Liste.
 pub fn tools_from_edit(list: &[ToolEntry]) -> Vec<ToolId> {
-    list.iter().filter(|(_, on)| *on).map(|(t, _)| t.clone()).collect()
+    list.iter()
+        .filter(|(_, on)| *on)
+        .map(|(t, _)| t.clone())
+        .collect()
 }
 
 /// Verschiebt den Eintrag `from` an die Stelle `to` (Index in der Liste vor dem Entfernen).
@@ -212,7 +242,9 @@ pub fn reorder<T>(v: &mut Vec<T>, from: usize, to: usize) {
 
 /// Schaltet die Sichtbarkeit von Eintrag `i` um. Das letzte sichtbare Werkzeug bleibt sichtbar (Rückgabe false).
 pub fn toggle_visible(list: &mut [ToolEntry], i: usize) -> bool {
-    let Some(on) = list.get(i).map(|e| e.1) else { return false };
+    let Some(on) = list.get(i).map(|e| e.1) else {
+        return false;
+    };
     if on && list.iter().filter(|e| e.1).count() <= 1 {
         return false;
     }
@@ -227,13 +259,22 @@ mod tests {
 
     #[test]
     fn parse_tolerant_und_begrenzt() {
-        let s = Settings::parse(br#"{"ui_scale": 999, "unbekannt": 1, "tools": ["x","pen","pen","note"], "accent": 5}"#).unwrap();
+        let s = Settings::parse(
+            br#"{"ui_scale": 999, "unbekannt": 1, "tools": ["x","pen","pen","note"], "accent": 5}"#,
+        )
+        .unwrap();
         assert_eq!(s.ui_scale, 200);
         assert_eq!(s.tools, vec!["pen", "text"]);
         assert_eq!(s.accent >> 24, 0xFF);
         assert_eq!(Settings::parse(br#"{"ui_scale": 1}"#).unwrap().ui_scale, 75);
-        assert_eq!(Settings::parse(br#"{"ui_scale": 103}"#).unwrap().ui_scale, 105);
-        assert_eq!(Settings::parse(br#"{"tools": []}"#).unwrap().tools.len(), DEFAULT_TOOLS.len());
+        assert_eq!(
+            Settings::parse(br#"{"ui_scale": 103}"#).unwrap().ui_scale,
+            105
+        );
+        assert_eq!(
+            Settings::parse(br#"{"tools": []}"#).unwrap().tools.len(),
+            DEFAULT_TOOLS.len()
+        );
         assert_eq!(Settings::parse(b"{}").unwrap(), Settings::default());
         assert!(Settings::parse(b"{kaputt").is_err());
     }
@@ -252,11 +293,26 @@ mod tests {
         let mut s = neu;
         s.reset();
         assert!(s.tile_pos.is_empty());
+        assert!(
+            Settings::parse(
+                br#"{"tile_dock": {"bar-tools@Expanded": {"edge": "Left", "vert": false}}}"#
+            )
+            .unwrap()
+            .tile_dock["bar-tools@Expanded"]
+                == Dock {
+                    edge: Some(BarPos::Left),
+                    vert: true
+                }
+        );
     }
 
     #[test]
     fn reset_setzt_vorgaben() {
-        let mut s = Settings { ui_scale: 150, theme: Theme::Dark, ..Settings::default() };
+        let mut s = Settings {
+            ui_scale: 150,
+            theme: Theme::Dark,
+            ..Settings::default()
+        };
         s.reset();
         assert_eq!(s, Settings::default());
     }
@@ -295,7 +351,17 @@ mod tests {
         // fehlt: Vorgaben
         assert_eq!(Settings::load(&p), Settings::default());
         // Round-Trip
-        let mut s = Settings { theme: Theme::Dark, accent: ACCENTS[3].1, ui_scale: 130, toolbar_pos: Some(BarPos::Right), save_choice: SaveChoice::AlwaysDefault, default_dir: Some("/tmp/x".into()), xopp_autosave_direct: true, tools: vec!["eraser".into(), "pen".into()], ..Settings::default() };
+        let mut s = Settings {
+            theme: Theme::Dark,
+            accent: ACCENTS[3].1,
+            ui_scale: 130,
+            toolbar_pos: Some(BarPos::Right),
+            save_choice: SaveChoice::AlwaysDefault,
+            default_dir: Some("/tmp/x".into()),
+            xopp_autosave_direct: true,
+            tools: vec!["eraser".into(), "pen".into()],
+            ..Settings::default()
+        };
         s.extra.insert("w".into(), serde_json::json!(5.0));
         s.save(&p).unwrap();
         let neu = Settings::load(&StubPlatform::new());
@@ -304,7 +370,10 @@ mod tests {
         let file = p.config_dir().join(FILE_NAME);
         std::fs::write(&file, b"{nicht json").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
-        assert_eq!(std::fs::read(p.config_dir().join("settings.json.bak")).unwrap(), b"{nicht json");
+        assert_eq!(
+            std::fs::read(p.config_dir().join("settings.json.bak")).unwrap(),
+            b"{nicht json"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -13,7 +13,10 @@ const MAX_TOTAL: u64 = 200 * 1024 * 1024;
 const MAX_SMALL: u64 = 32 * 1024 * 1024;
 
 pub fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Zahl in Basis 36 (wie Long.toString(v, 36)).
@@ -114,11 +117,21 @@ impl Store {
         while mx.div_ceil(ss) > 2048 {
             ss *= 2;
         }
-        let img = if ss > 1 { img.resize_exact(w.div_ceil(ss), h.div_ceil(ss), image::imageops::FilterType::Triangle) } else { img };
+        let img = if ss > 1 {
+            img.resize_exact(
+                w.div_ceil(ss),
+                h.div_ceil(ss),
+                image::imageops::FilterType::Triangle,
+            )
+        } else {
+            img
+        };
         let rgba = img.into_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
         let mut png = Vec::new();
-        image::DynamicImage::ImageRgba8(rgba).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).ok()?;
+        image::DynamicImage::ImageRgba8(rgba)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .ok()?;
         let name = self.save_image_png(&png)?;
         Some((name, w, h))
     }
@@ -135,7 +148,11 @@ impl Store {
             .filter_map(|o| {
                 Some(Entry {
                     id: o.get("id")?.as_str()?.to_string(),
-                    name: o.get("name").and_then(Value::as_str).unwrap_or("Board").to_string(),
+                    name: o
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Board")
+                        .to_string(),
                     t: o.get("t").and_then(Value::as_i64).unwrap_or(0),
                 })
             })
@@ -145,13 +162,20 @@ impl Store {
     }
 
     fn put_index(&self, a: &[Value]) {
-        let _ = write_atomic(&self.dir.join("index.json"), Value::Array(a.to_vec()).to_string().as_bytes());
+        let _ = write_atomic(
+            &self.dir.join("index.json"),
+            Value::Array(a.to_vec()).to_string().as_bytes(),
+        );
     }
 
     pub fn name(&self, id: &str) -> String {
         for o in self.index() {
             if o.get("id").and_then(Value::as_str) == Some(id) {
-                return o.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+                return o
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
             }
         }
         "Board".into()
@@ -178,7 +202,11 @@ impl Store {
     }
 
     pub fn create(&self, name: &str) -> String {
-        let ids: HashSet<String> = self.index().iter().filter_map(|o| o.get("id")?.as_str().map(String::from)).collect();
+        let ids: HashSet<String> = self
+            .index()
+            .iter()
+            .filter_map(|o| o.get("id")?.as_str().map(String::from))
+            .collect();
         let mut id = base36(now_ms());
         while ids.contains(&id) {
             id.push('x');
@@ -211,7 +239,11 @@ impl Store {
     pub fn delete(&self, id: &str) {
         let _ = fs::remove_file(self.dir.join(format!("{id}.json")));
         let _ = fs::remove_file(self.thumb(id));
-        let b: Vec<Value> = self.index().into_iter().filter(|o| o.get("id").and_then(Value::as_str) != Some(id)).collect();
+        let b: Vec<Value> = self
+            .index()
+            .into_iter()
+            .filter(|o| o.get("id").and_then(Value::as_str) != Some(id))
+            .collect();
         self.put_index(&b);
     }
 
@@ -248,7 +280,13 @@ pub fn index_in(boards_dir: &Path) -> Vec<Value> {
 }
 
 fn safe_name(n: &str) -> bool {
-    !n.is_empty() && n.chars().count() < 200 && !n.contains('/') && !n.contains('\\') && !n.contains("..") && !n.contains('\0') && !n.starts_with('.')
+    !n.is_empty()
+        && n.chars().count() < 200
+        && !n.contains('/')
+        && !n.contains('\\')
+        && !n.contains("..")
+        && !n.contains('\0')
+        && !n.starts_with('.')
 }
 
 fn image_files(board: &Value) -> Vec<String> {
@@ -266,7 +304,13 @@ fn image_files(board: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub fn export_board_files<W: Write + Seek>(boards_dir: &Path, img_dir: &Path, id: &str, name: &str, os: W) -> bool {
+pub fn export_board_files<W: Write + Seek>(
+    boards_dir: &Path,
+    img_dir: &Path,
+    id: &str,
+    name: &str,
+    os: W,
+) -> bool {
     (|| -> Option<()> {
         if !safe_name(id) {
             return None;
@@ -312,7 +356,11 @@ fn read_limited<R: Read>(r: R, max: u64) -> Option<Vec<u8>> {
     }
 }
 
-pub fn import_board_files<R: Read + Seek>(boards_dir: &Path, img_dir: &Path, r: R) -> Option<String> {
+pub fn import_board_files<R: Read + Seek>(
+    boards_dir: &Path,
+    img_dir: &Path,
+    r: R,
+) -> Option<String> {
     let _ = fs::create_dir_all(boards_dir);
     let _ = fs::create_dir_all(img_dir);
     let stage = boards_dir.join(format!(".import_{}", random_hex(12)));
@@ -328,9 +376,19 @@ pub fn import_board_files<R: Read + Seek>(boards_dir: &Path, img_dir: &Path, r: 
     res
 }
 
-fn import_inner<R: Read + Seek>(boards_dir: &Path, img_dir: &Path, r: R, stage: &Path, created: &mut Vec<PathBuf>) -> Option<String> {
+fn import_inner<R: Read + Seek>(
+    boards_dir: &Path,
+    img_dir: &Path,
+    r: R,
+    stage: &Path,
+    created: &mut Vec<PathBuf>,
+) -> Option<String> {
     let mut z = zip::ZipArchive::new(r).ok()?;
-    let (mut meta_b, mut board_b, mut thumb_b): (Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>) = (None, None, None);
+    let (mut meta_b, mut board_b, mut thumb_b): (
+        Option<Vec<u8>>,
+        Option<Vec<u8>>,
+        Option<Vec<u8>>,
+    ) = (None, None, None);
     let mut staged: Vec<String> = Vec::new();
     let mut total: u64 = 0;
     for i in 0..z.len() {
@@ -370,7 +428,12 @@ fn import_inner<R: Read + Seek>(boards_dir: &Path, img_dir: &Path, r: R, stage: 
     let mut name = "Importiertes Board".to_string();
     if let Some(mb) = meta_b {
         if let Ok(m) = serde_json::from_slice::<Value>(&mb) {
-            let mn = m.get("name").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            let mn = m
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if !mn.is_empty() {
                 name = mn.chars().take(80).collect();
             }
@@ -423,8 +486,14 @@ fn import_inner<R: Read + Seek>(boards_dir: &Path, img_dir: &Path, r: R, stage: 
 
     // Name eindeutig machen
     let mut idx = index_in(boards_dir);
-    let names: HashSet<String> = idx.iter().filter_map(|o| o.get("name")?.as_str().map(String::from)).collect();
-    let ids: HashSet<String> = idx.iter().filter_map(|o| o.get("id")?.as_str().map(String::from)).collect();
+    let names: HashSet<String> = idx
+        .iter()
+        .filter_map(|o| o.get("name")?.as_str().map(String::from))
+        .collect();
+    let ids: HashSet<String> = idx
+        .iter()
+        .filter_map(|o| o.get("id")?.as_str().map(String::from))
+        .collect();
     let mut final_name = name.clone();
     let mut k = 2;
     while names.contains(&final_name) {
@@ -445,7 +514,11 @@ fn import_inner<R: Read + Seek>(boards_dir: &Path, img_dir: &Path, r: R, stage: 
         created.push(tf);
     }
     idx.push(json!({"id": id, "name": final_name, "t": now_ms()}));
-    write_atomic(&boards_dir.join("index.json"), Value::Array(idx).to_string().as_bytes()).ok()?;
+    write_atomic(
+        &boards_dir.join("index.json"),
+        Value::Array(idx).to_string().as_bytes(),
+    )
+    .ok()?;
     Some(id)
 }
 
@@ -486,7 +559,10 @@ mod tests {
         // anderes Bild gleichen Namens -> Umbenennung
         fs::write(s.img_dir().join("bild.png"), b"ANDERS").unwrap();
         let id3 = s.import_board(Cursor::new(buf.get_ref().clone())).unwrap();
-        let f = s.load(&id3).unwrap()["items"][0]["f"].as_str().unwrap().to_string();
+        let f = s.load(&id3).unwrap()["items"][0]["f"]
+            .as_str()
+            .unwrap()
+            .to_string();
         assert_ne!(f, "bild.png");
         assert_eq!(fs::read(s.img_dir().join(&f)).unwrap(), b"PNGDATA");
         assert_eq!(s.entries().len(), 3);
@@ -505,9 +581,11 @@ mod tests {
         let mut buf = Cursor::new(Vec::new());
         {
             let mut z = zip::ZipWriter::new(&mut buf);
-            z.start_file("img/../boese", SimpleFileOptions::default()).unwrap();
+            z.start_file("img/../boese", SimpleFileOptions::default())
+                .unwrap();
             z.write_all(b"x").unwrap();
-            z.start_file("board.json", SimpleFileOptions::default()).unwrap();
+            z.start_file("board.json", SimpleFileOptions::default())
+                .unwrap();
             z.write_all(b"{\"items\":[]}").unwrap();
             z.finish().unwrap();
         }

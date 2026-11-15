@@ -32,7 +32,11 @@ pub const PAGE_LINE: f32 = 24.0;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Changed,
-    AskText { wx: f32, wy: f32, note: bool },
+    AskText {
+        wx: f32,
+        wy: f32,
+        note: bool,
+    },
     /// Text/Notiz direkt auf dem Blatt bearbeiten (erneutes Tippen auf eine ausgewaehlte Notiz).
     EditNote(u64),
     /// Kurzer Hinweis (Toast).
@@ -65,8 +69,16 @@ impl IRect {
             return self;
         }
         let (x, y) = (self.x.min(o.x), self.y.min(o.y));
-        let (r, b) = ((self.x + self.w).max(o.x + o.w), (self.y + self.h).max(o.y + o.h));
-        IRect { x, y, w: r - x, h: b - y }
+        let (r, b) = (
+            (self.x + self.w).max(o.x + o.w),
+            (self.y + self.h).max(o.y + o.h),
+        );
+        IRect {
+            x,
+            y,
+            w: r - x,
+            h: b - y,
+        }
     }
     /// Rechteck aus Gleitkomma-Kanten (Geraete-Pixel), nach aussen gerundet und auf w × h beschnitten.
     fn cover(l: f32, t: f32, r: f32, b: f32, w: u32, h: u32) -> IRect {
@@ -80,7 +92,12 @@ impl IRect {
         if x1 <= x0 || y1 <= y0 {
             return IRect::default();
         }
-        IRect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+        IRect {
+            x: x0,
+            y: y0,
+            w: x1 - x0,
+            h: y1 - y0,
+        }
     }
 }
 
@@ -171,7 +188,20 @@ pub fn torus_parts(r: IRect, org: (u32, u32), w: u32, h: u32) -> Vec<(IRect, IRe
     }
     for (vy, py, nh) in split(r.y, r.h, org.1, h) {
         for &(vx, px, nw) in &split(r.x, r.w, org.0, w) {
-            out.push((IRect { x: vx, y: vy, w: nw, h: nh }, IRect { x: px, y: py, w: nw, h: nh }));
+            out.push((
+                IRect {
+                    x: vx,
+                    y: vy,
+                    w: nw,
+                    h: nh,
+                },
+                IRect {
+                    x: px,
+                    y: py,
+                    w: nw,
+                    h: nh,
+                },
+            ));
         }
     }
     out
@@ -231,7 +261,14 @@ fn shift_rect(r: IRect, dx: i32, dy: i32, w: u32, h: u32) -> IRect {
     if r.is_empty() {
         return r;
     }
-    IRect::cover((r.x as i32 + dx) as f32, (r.y as i32 + dy) as f32, (r.x as i32 + r.w as i32 + dx) as f32, (r.y as i32 + r.h as i32 + dy) as f32, w, h)
+    IRect::cover(
+        (r.x as i32 + dx) as f32,
+        (r.y as i32 + dy) as f32,
+        (r.x as i32 + r.w as i32 + dx) as f32,
+        (r.y as i32 + r.h as i32 + dy) as f32,
+        w,
+        h,
+    )
 }
 
 /// Zeichenhuelle eines Objekts in Weltkoordinaten (Huelle plus Schatten/Kantenglaettung).
@@ -287,7 +324,18 @@ pub struct Motion {
 
 impl Motion {
     pub fn single(action: Action, x: f32, y: f32, pressure: f32, tool: ToolType) -> Motion {
-        Motion { action, pointers: vec![Pointer { id: 0, x, y, pressure, tool }], history: Vec::new(), stylus_button: false }
+        Motion {
+            action,
+            pointers: vec![Pointer {
+                id: 0,
+                x,
+                y,
+                pressure,
+                tool,
+            }],
+            history: Vec::new(),
+            stylus_button: false,
+        }
     }
     fn find(&self, id: i64) -> Option<usize> {
         self.pointers.iter().position(|p| p.id == id)
@@ -584,8 +632,16 @@ impl Board {
     }
     /// Die ausgewaehlten Objekte in Auswahl-Reihenfolge.
     pub fn sel_items(&self) -> Vec<&Item> {
-        let pos: HashMap<u64, usize> = self.items.iter().enumerate().map(|(i, it)| (it.id, i)).collect();
-        self.sel.iter().filter_map(|id| pos.get(id).map(|i| &*self.items[*i])).collect()
+        let pos: HashMap<u64, usize> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, it)| (it.id, i))
+            .collect();
+        self.sel
+            .iter()
+            .filter_map(|id| pos.get(id).map(|i| &*self.items[*i]))
+            .collect()
     }
     /// Wendet f auf alle ausgewaehlten Objekte an (Kopie bei Bedarf, Undo-Schnappschuesse bleiben unveraendert).
     fn sel_mut(&mut self, mut f: impl FnMut(&mut Item)) {
@@ -637,7 +693,11 @@ impl Board {
         self.checkpoint();
         let id = self.layers[idx].id;
         let orphan_safe = idx != 0;
-        let keep: Vec<bool> = self.items.iter().map(|it| !(it.layer == id || (!orphan_safe && self.layer_idx(it.layer) == 0))).collect();
+        let keep: Vec<bool> = self
+            .items
+            .iter()
+            .map(|it| !(it.layer == id || (!orphan_safe && self.layer_idx(it.layer) == 0)))
+            .collect();
         let mut k = keep.iter();
         self.items.retain(|_| *k.next().unwrap_or(&true));
         self.layers.remove(idx);
@@ -705,7 +765,12 @@ impl Board {
     }
 
     pub fn layers_changed(&mut self) {
-        let unusable: HashSet<u64> = self.sel_items().iter().filter(|it| !self.usable(it)).map(|it| it.id).collect();
+        let unusable: HashSet<u64> = self
+            .sel_items()
+            .iter()
+            .filter(|it| !self.usable(it))
+            .map(|it| it.id)
+            .collect();
         if !unusable.is_empty() {
             self.sel.retain(|id| !unusable.contains(id));
             self.frame_ok = false;
@@ -742,12 +807,23 @@ impl Board {
             return false;
         }
         let w = if self.width > 0.0 { self.width } else { 1000.0 };
-        let h = if self.height > 0.0 { self.height } else { 1000.0 };
+        let h = if self.height > 0.0 {
+            self.height
+        } else {
+            1000.0
+        };
         let (vw, vh) = (w / self.sc, h / self.sc);
         let s = (1.0 / self.sc).min((0.6 * vw / pw as f32).min(0.6 * vh / ph as f32));
         let (iw, ih) = (pw as f32 * s, ph as f32 * s);
         let (cx, cy) = self.paste_center(at);
-        let it = Item::new(Kind::Img(item::Img { x: cx - iw / 2.0, y: cy - ih / 2.0, w: iw, h: ih, ang: 0.0, file: file.to_string() }));
+        let it = Item::new(Kind::Img(item::Img {
+            x: cx - iw / 2.0,
+            y: cy - ih / 2.0,
+            w: iw,
+            h: ih,
+            ang: 0.0,
+            file: file.to_string(),
+        }));
         let id = it.id;
         self.add_top(it);
         self.set_tool(SELECT);
@@ -779,7 +855,10 @@ impl Board {
 
     /// Nur die Objekte einer Ebene (ohne Hintergrund) im Ausschnitt b, Massstab k.
     pub fn render_layer(&self, l: &Layer, b: &RectF, k: f32) -> Option<Pixmap> {
-        let mut bm = Pixmap::new(((b.width() * k).round() as u32).max(1), ((b.height() * k).round() as u32).max(1))?;
+        let mut bm = Pixmap::new(
+            ((b.width() * k).round() as u32).max(1),
+            ((b.height() * k).round() as u32).max(1),
+        )?;
         {
             let mut c = Canvas::new(&mut bm);
             c.scale(k, k);
@@ -797,7 +876,10 @@ impl Board {
     }
 
     pub fn render_composite(&self, b: &RectF, k: f32, with_bg: bool) -> Option<Pixmap> {
-        let mut bm = Pixmap::new(((b.width() * k).round() as u32).max(1), ((b.height() * k).round() as u32).max(1))?;
+        let mut bm = Pixmap::new(
+            ((b.width() * k).round() as u32).max(1),
+            ((b.height() * k).round() as u32).max(1),
+        )?;
         {
             let mut c = Canvas::new(&mut bm);
             if with_bg {
@@ -818,7 +900,15 @@ impl Board {
     pub fn content_key(&self, r: &RectF) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.dark, self.bg, r.left.to_bits(), r.top.to_bits(), r.right.to_bits(), r.bottom.to_bits()).hash(&mut h);
+        (
+            self.dark,
+            self.bg,
+            r.left.to_bits(),
+            r.top.to_bits(),
+            r.right.to_bits(),
+            r.bottom.to_bits(),
+        )
+            .hash(&mut h);
         for l in &self.layers {
             (l.id, l.visible, l.opacity.to_bits()).hash(&mut h);
         }
@@ -830,7 +920,16 @@ impl Board {
         for it in &self.items {
             let b = paint_bounds(it);
             if RectF::intersects(r, &b) {
-                (Rc::as_ptr(it) as usize, it.layer, it.color, b.left.to_bits(), b.top.to_bits(), b.right.to_bits(), b.bottom.to_bits()).hash(&mut h);
+                (
+                    Rc::as_ptr(it) as usize,
+                    it.layer,
+                    it.color,
+                    b.left.to_bits(),
+                    b.top.to_bits(),
+                    b.right.to_bits(),
+                    b.bottom.to_bits(),
+                )
+                    .hash(&mut h);
             }
         }
         h.finish()
@@ -911,9 +1010,30 @@ impl Board {
         self.refresh();
     }
 
+    /// Gemeinsame Farbe der Auswahl (ohne Bilder); None ohne einfärbbare Auswahl oder bei
+    /// gemischten Farben (dann `Some(None)`).
+    pub fn sel_color(&self) -> Option<Option<u32>> {
+        let mut it = self
+            .sel_items()
+            .into_iter()
+            .filter(|it| !it.is_img())
+            .map(|it| it.color);
+        let first = it.next()?;
+        Some(if it.all(|c| c == first) {
+            Some(first)
+        } else {
+            None
+        })
+    }
+
     /// Strichstärke der Auswahl (ohne Bilder/Notizen) in Weltkoordinaten; None ohne passende Auswahl.
     pub fn sel_width(&self) -> Option<f32> {
-        let w: Vec<f32> = self.sel_items().iter().filter(|it| !it.is_img() && it.as_note().is_none()).map(|it| it.width).collect();
+        let w: Vec<f32> = self
+            .sel_items()
+            .iter()
+            .filter(|it| !it.is_img() && it.as_note().is_none())
+            .map(|it| it.width)
+            .collect();
         if w.is_empty() {
             return None;
         }
@@ -953,7 +1073,12 @@ impl Board {
     }
 
     fn snapshot(&self) -> Snap {
-        Snap { items: self.items.clone(), layers: self.layers.clone(), active: self.active, mode: self.board_mode.clone() }
+        Snap {
+            items: self.items.clone(),
+            layers: self.layers.clone(),
+            active: self.active,
+            mode: self.board_mode.clone(),
+        }
     }
 
     pub fn can_undo(&self) -> bool {
@@ -970,7 +1095,11 @@ impl Board {
     }
 
     fn step(&mut self, back: bool) {
-        let from_empty = if back { self.undo.is_empty() } else { self.redo.is_empty() };
+        let from_empty = if back {
+            self.undo.is_empty()
+        } else {
+            self.redo.is_empty()
+        };
         if from_empty || self.mode != 0 {
             return;
         }
@@ -984,8 +1113,17 @@ impl Board {
         };
         self.items = sn.items;
         // Struktur aus dem Schnappschuss, Eigenschaften (Name, Sichtbarkeit ...) bleiben aktuell
-        let nl: Vec<Layer> =
-            sn.layers.iter().map(|o| self.layers.iter().find(|l| l.id == o.id).cloned().unwrap_or_else(|| o.clone())).collect();
+        let nl: Vec<Layer> = sn
+            .layers
+            .iter()
+            .map(|o| {
+                self.layers
+                    .iter()
+                    .find(|l| l.id == o.id)
+                    .cloned()
+                    .unwrap_or_else(|| o.clone())
+            })
+            .collect();
         self.layers = nl;
         self.active = sn.active.min(self.layers.len() - 1);
         self.board_mode = sn.mode;
@@ -1007,16 +1145,34 @@ impl Board {
                 top = false;
             }
         }
-        let ok = top && !self.dirty && self.cache.is_some() && self.csc == self.sc && self.cache_sig.is_some();
+        let ok = top
+            && !self.dirty
+            && self.cache.is_some()
+            && self.csc == self.sc
+            && self.cache_sig.is_some();
         let clip = if ok { self.pages_path() } else { None };
         let rc = Rc::new(it);
         if ok {
-            let (ps, tx, ty, sc, dark, org) = (self.px_scale, self.ctx, self.cty, self.csc, self.dark, self.org);
+            let (ps, tx, ty, sc, dark, org) = (
+                self.px_scale,
+                self.ctx,
+                self.cty,
+                self.csc,
+                self.dark,
+                self.org,
+            );
             let cache = self.cache.as_mut().unwrap();
             let (cw, ch) = (cache.width(), cache.height());
             let b = paint_bounds(&rc);
             let k = sc * ps;
-            let d = IRect::cover((b.left * sc + tx) * ps - 2.0, (b.top * sc + ty) * ps - 2.0, b.right * k + tx * ps + 2.0, b.bottom * k + ty * ps + 2.0, cw, ch);
+            let d = IRect::cover(
+                (b.left * sc + tx) * ps - 2.0,
+                (b.top * sc + ty) * ps - 2.0,
+                b.right * k + tx * ps + 2.0,
+                b.bottom * k + ty * ps + 2.0,
+                cw,
+                ch,
+            );
             if let Some(mut tmp) = crop(cache, d, org) {
                 {
                     let mut c = Canvas::new(&mut tmp);
@@ -1072,7 +1228,10 @@ impl Board {
         if self.sel.len() != 1 {
             return None;
         }
-        self.sel_items().into_iter().next().filter(|it| it.as_note().is_some())
+        self.sel_items()
+            .into_iter()
+            .next()
+            .filter(|it| it.as_note().is_some())
     }
 
     pub fn edit_note(&mut self, id: u64, text: &str) {
@@ -1115,9 +1274,20 @@ impl Board {
         let (wx, wy) = self.screen_to_world(x, y);
         let r = (if notes_only { 6.0 } else { 10.0 }) * self.dp / self.sc;
         // Mittelklick: auch innerhalb ungefuellter Formen/Striche treffen (kleinster umschliessender Rahmen)
-        let hit = self.top_at(wx, wy, r).or_else(|| if notes_only { None } else { self.bounds_at(wx, wy) });
+        let hit = self.top_at(wx, wy, r).or_else(|| {
+            if notes_only {
+                None
+            } else {
+                self.bounds_at(wx, wy)
+            }
+        });
         let Some(id) = hit else { return false };
-        if notes_only && !self.items.iter().any(|it| it.id == id && it.as_note().is_some()) {
+        if notes_only
+            && !self
+                .items
+                .iter()
+                .any(|it| it.id == id && it.as_note().is_some())
+        {
             return false;
         }
         if self.tool != SELECT {
@@ -1148,7 +1318,11 @@ impl Board {
 
     /// Schriftgroesse der ausgewaehlten Texte/Notizen (Welt), None ohne Notiz in der Auswahl.
     pub fn sel_note_size(&self) -> Option<f32> {
-        let v: Vec<f32> = self.sel_items().iter().filter_map(|it| it.as_note().map(|n| n.size)).collect();
+        let v: Vec<f32> = self
+            .sel_items()
+            .iter()
+            .filter_map(|it| it.as_note().map(|n| n.size))
+            .collect();
         if v.is_empty() {
             return None;
         }
@@ -1224,7 +1398,13 @@ impl Board {
         ((if self.width > 0.0 { self.width } else { 1000.0 }) / 2.0 - self.tx) / self.sc
     }
     fn view_cy(&self) -> f32 {
-        ((if self.height > 0.0 { self.height } else { 1000.0 }) / 2.0 - self.ty) / self.sc
+        ((if self.height > 0.0 {
+            self.height
+        } else {
+            1000.0
+        }) / 2.0
+            - self.ty)
+            / self.sc
     }
 
     /// Weltpunkt zu einem Punkt in Board-Bildschirmkoordinaten (Pixel relativ zur Zeichenflaeche).
@@ -1256,7 +1436,11 @@ impl Board {
         let b = self.sel_bounds()?;
         let k = scale.min(max_px as f32 / b.width().max(b.height()).max(1.0));
         let mut tmp = Board::new(1.0);
-        tmp.items = self.sel_items().iter().map(|it| Rc::new((*it).clone())).collect();
+        tmp.items = self
+            .sel_items()
+            .iter()
+            .map(|it| Rc::new((*it).clone()))
+            .collect();
         tmp.layers = self.layers.clone();
         tmp.dark = self.dark;
         tmp.render_composite(&b, k, false)
@@ -1303,7 +1487,11 @@ impl Board {
         let n = copies.len();
         let (cx, cy) = (self.view_cx(), self.view_cy());
         CLIP.with(|c| *c.borrow_mut() = (copies, cx, cy, 0));
-        self.notice(&if n == 1 { "Kopiert".to_string() } else { format!("{n} Objekte kopiert") });
+        self.notice(&if n == 1 {
+            "Kopiert".to_string()
+        } else {
+            format!("{n} Objekte kopiert")
+        });
         self.changed();
     }
 
@@ -1384,7 +1572,8 @@ impl Board {
         }
         self.checkpoint();
         let set = self.sel_set();
-        let (mv, rest): (Vec<Rc<Item>>, Vec<Rc<Item>>) = self.items.drain(..).partition(|it| set.contains(&it.id));
+        let (mv, rest): (Vec<Rc<Item>>, Vec<Rc<Item>>) =
+            self.items.drain(..).partition(|it| set.contains(&it.id));
         if front {
             self.items = rest;
             self.items.extend(mv);
@@ -1393,7 +1582,11 @@ impl Board {
             self.items.extend(rest);
         }
         self.refresh();
-        self.notice(if front { "Ganz nach vorne" } else { "Ganz nach hinten" });
+        self.notice(if front {
+            "Ganz nach vorne"
+        } else {
+            "Ganz nach hinten"
+        });
         self.changed();
     }
 
@@ -1423,7 +1616,10 @@ impl Board {
             let rs = ps.rects();
             if let Some(pw) = rs.iter().map(|r| r.width()).reduce(f32::max) {
                 let m = 16.0 * self.dp;
-                let (cx, cy) = ((w / 2.0 - self.tx) / self.sc, (hh / 2.0 - self.ty) / self.sc);
+                let (cx, cy) = (
+                    (w / 2.0 - self.tx) / self.sc,
+                    (hh / 2.0 - self.ty) / self.sc,
+                );
                 let cur = ps.nearest_page(cx, cy).unwrap_or(0);
                 self.sc = ((w - 2.0 * m) / pw.max(1.0)).clamp(0.05, 12.0);
                 self.tx = w / 2.0 - pw / 2.0 * self.sc;
@@ -1436,7 +1632,9 @@ impl Board {
         match self.content_bounds() {
             Some(b) if w > 0.0 => {
                 let m = 48.0 * self.dp;
-                self.sc = ((w - 2.0 * m) / b.width().max(1.0)).min((hh - 2.0 * m) / b.height().max(1.0)).clamp(0.05, 2.0);
+                self.sc = ((w - 2.0 * m) / b.width().max(1.0))
+                    .min((hh - 2.0 * m) / b.height().max(1.0))
+                    .clamp(0.05, 2.0);
                 self.tx = w / 2.0 - b.center_x() * self.sc;
                 self.ty = hh / 2.0 - b.center_y() * self.sc;
             }
@@ -1536,7 +1734,16 @@ impl Board {
         if !(self.sc > 0.04 && self.sc < 13.0) {
             self.sc = 1.0;
         }
-        self.layers = o.get("layers").and_then(Value::as_array).map(|a| a.iter().filter(|v| v.is_object()).map(Layer::from_json).collect()).unwrap_or_default();
+        self.layers = o
+            .get("layers")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter(|v| v.is_object())
+                    .map(Layer::from_json)
+                    .collect()
+            })
+            .unwrap_or_default();
         if self.layers.is_empty() {
             self.layers.push(Layer::new(1, "01-ebene"));
         }
@@ -1573,7 +1780,12 @@ impl Board {
                 // Seitenmodus: oberer Teil der ersten Seite
                 BoardMode::Pages(ps) => ps.rect(0).map(|r| {
                     let w = r.width() + 40.0;
-                    RectF::new(r.left - 20.0, r.top - 20.0, r.left - 20.0 + w, r.top - 20.0 + w * 300.0 / 480.0)
+                    RectF::new(
+                        r.left - 20.0,
+                        r.top - 20.0,
+                        r.left - 20.0 + w,
+                        r.top - 20.0 + w * 300.0 / 480.0,
+                    )
                 }),
                 BoardMode::Infinite => self.export_bounds().map(|mut b| {
                     b.inset(-20.0, -20.0);
@@ -1584,7 +1796,13 @@ impl Board {
                 None => c.draw_color(self.base_color()),
                 Some(b) => {
                     let k = (480.0 / b.width()).min(300.0 / b.height()).min(2.0);
-                    self.render_all(&mut c, &b, k, (480.0 - b.width() * k) / 2.0, (300.0 - b.height() * k) / 2.0);
+                    self.render_all(
+                        &mut c,
+                        &b,
+                        k,
+                        (480.0 - b.width() * k) / 2.0,
+                        (300.0 - b.height() * k) / 2.0,
+                    );
                 }
             }
         }
@@ -1596,7 +1814,10 @@ impl Board {
         let mut b = self.export_bounds()?;
         b.inset(-40.0, -40.0);
         let k = (max_edge / b.width().max(b.height())).min(max_k);
-        let mut bm = Pixmap::new(((b.width() * k) as u32).max(1), ((b.height() * k) as u32).max(1))?;
+        let mut bm = Pixmap::new(
+            ((b.width() * k) as u32).max(1),
+            ((b.height() * k) as u32).max(1),
+        )?;
         {
             let mut c = Canvas::new(&mut bm);
             self.render_all(&mut c, &b, k, 0.0, 0.0);
@@ -1617,7 +1838,10 @@ impl Board {
         let mut b = self.export_bounds()?;
         b.inset(-40.0, -40.0);
         let k = (2400.0 / b.width().max(b.height())).min(1.0);
-        let (pw, ph) = (((b.width() * k) as u32).max(1), ((b.height() * k) as u32).max(1));
+        let (pw, ph) = (
+            ((b.width() * k) as u32).max(1),
+            ((b.height() * k) as u32).max(1),
+        );
         let mut bm = Pixmap::new(pw * 2, ph * 2)?;
         {
             let mut c = Canvas::new(&mut bm);
@@ -1658,13 +1882,17 @@ impl Board {
 
     /// Seitenmodus: liegt der Weltpunkt ausserhalb aller Seiten?
     fn outside_pages(&self, wx: f32, wy: f32) -> bool {
-        self.pages().map(|ps| ps.page_at(wx, wy).is_none()).unwrap_or(false)
+        self.pages()
+            .map(|ps| ps.page_at(wx, wy).is_none())
+            .unwrap_or(false)
     }
 
     /// Ersetzt die Seiten durch `new`; `order[neuer Index]` = alter Index (None = neue, leere Seite).
     /// Objekte entfallender Seiten werden geloescht, die uebrigen mit ihrer Seite verschoben. Mit Undo-Schritt.
     fn relayout_pages(&mut self, new: PageSetup, order: &[Option<usize>]) {
-        let BoardMode::Pages(old) = &self.board_mode else { return };
+        let BoardMode::Pages(old) = &self.board_mode else {
+            return;
+        };
         let shifts = old.shifts(&new, order);
         let assign: Vec<Option<usize>> = self.items.iter().map(|it| old.page_of(it)).collect();
         self.checkpoint();
@@ -1693,7 +1921,17 @@ impl Board {
         let mut new = self.pages()?.clone();
         let n = new.pages.len();
         let at = new.insert_page(after);
-        let order: Vec<Option<usize>> = (0..=n).map(|i| if i < at { Some(i) } else if i == at { None } else { Some(i - 1) }).collect();
+        let order: Vec<Option<usize>> = (0..=n)
+            .map(|i| {
+                if i < at {
+                    Some(i)
+                } else if i == at {
+                    None
+                } else {
+                    Some(i - 1)
+                }
+            })
+            .collect();
         self.relayout_pages(new, &order);
         Some(at)
     }
@@ -1751,7 +1989,9 @@ impl Board {
 
     /// Ansicht so verschieben, dass Seite i oben (mit kleinem Rand) und waagrecht mittig steht. Zoom bleibt.
     pub fn show_page(&mut self, i: usize) {
-        let Some(r) = self.pages().and_then(|p| p.rect(i)) else { return };
+        let Some(r) = self.pages().and_then(|p| p.rect(i)) else {
+            return;
+        };
         self.tx = self.width / 2.0 - r.center_x() * self.sc;
         self.ty = 16.0 * self.dp - r.top * self.sc;
         self.refresh();
@@ -1803,7 +2043,9 @@ impl Board {
             }
         }
         // ohne Seiten: leerer Clip (nichts sichtbar)
-        Some(pb.finish().unwrap_or_else(|| PathBuilder::from_rect(tiny_skia::Rect::from_ltrb(0.0, 0.0, 0.0001, 0.0001).unwrap())))
+        Some(pb.finish().unwrap_or_else(|| {
+            PathBuilder::from_rect(tiny_skia::Rect::from_ltrb(0.0, 0.0, 0.0001, 0.0001).unwrap())
+        }))
     }
 
     /// Seitenmodus: schneidet alles Folgende auf die Seiten zu (aktuelle Transformation = Welt).
@@ -1815,7 +2057,14 @@ impl Board {
 
     /// Inhalt in Weltkoordinaten. Seitenmodus: Seitenblaetter (wenn `sheets`) und auf die Seiten geschnittene Objekte.
     /// `px` = Welteinheiten je Pixel (fuer Mindest-Linienbreiten und Schatten).
-    fn draw_scene(&self, c: &mut Canvas, vis: Option<&RectF>, skip_lift: bool, sheets: bool, px: f32) {
+    fn draw_scene(
+        &self,
+        c: &mut Canvas,
+        vis: Option<&RectF>,
+        skip_lift: bool,
+        sheets: bool,
+        px: f32,
+    ) {
         if self.pages().is_none() {
             self.draw_layered(c, vis, skip_lift);
             return;
@@ -1841,8 +2090,20 @@ impl Board {
                     continue;
                 }
             }
-            c.draw_rect(r.left + sh * 0.5, r.top + sh, r.right + sh * 0.5, r.bottom + sh, &Paint::fill(0x30000000));
-            c.draw_rect(r.left, r.top, r.right, r.bottom, &Paint::fill(self.page_color()));
+            c.draw_rect(
+                r.left + sh * 0.5,
+                r.top + sh,
+                r.right + sh * 0.5,
+                r.bottom + sh,
+                &Paint::fill(0x30000000),
+            );
+            c.draw_rect(
+                r.left,
+                r.top,
+                r.right,
+                r.bottom,
+                &Paint::fill(self.page_color()),
+            );
             self.draw_page_bg(c, p.bg, &r, px);
         }
     }
@@ -1893,7 +2154,10 @@ impl Board {
                     }
                     y += STEP;
                 }
-                c.draw_points(&dots, &Paint::stroke(col, (1.6f32).max(2.0 * px), Cap::Round));
+                c.draw_points(
+                    &dots,
+                    &Paint::stroke(col, (1.6f32).max(2.0 * px), Cap::Round),
+                );
                 return;
             }
         }
@@ -1908,7 +2172,10 @@ impl Board {
         let rects = ps.rects();
         crate::export::pdf_pages(rects.len(), |i| {
             let r = rects.get(i)?;
-            let mut bm = Pixmap::new(((r.width() * K).round() as u32).max(1), ((r.height() * K).round() as u32).max(1))?;
+            let mut bm = Pixmap::new(
+                ((r.width() * K).round() as u32).max(1),
+                ((r.height() * K).round() as u32).max(1),
+            )?;
             {
                 let mut c = Canvas::new(&mut bm);
                 c.draw_color(self.page_color());
@@ -1935,7 +2202,12 @@ impl Board {
         match e.action {
             Action::Down => {
                 let st = Self::is_stylus(e.pointers[0].tool);
-                if st || self.finger_draw || self.tool == SELECT || self.tool == NOTE || self.tool == TEXT {
+                if st
+                    || self.finger_draw
+                    || self.tool == SELECT
+                    || self.tool == NOTE
+                    || self.tool == TEXT
+                {
                     self.begin(e, 0, st);
                 } else {
                     self.start_pan(e, 0);
@@ -2017,7 +2289,8 @@ impl Board {
                         self.lx = e.pointers[r].x;
                         self.ly = e.pointers[r].y;
                     }
-                } else if self.mode == 2 && e.pointers[ai].id == self.pan_id && r < e.pointers.len() {
+                } else if self.mode == 2 && e.pointers[ai].id == self.pan_id && r < e.pointers.len()
+                {
                     self.pan_id = e.pointers[r].id;
                     self.lx = e.pointers[r].x;
                     self.ly = e.pointers[r].y;
@@ -2100,7 +2373,12 @@ impl Board {
             self.ey = y;
             self.erase_step(self.sx, self.sy);
         } else if self.tool == PEN || self.tool == MARKER {
-            let w = (if self.tool == MARKER { self.pen_w * 4.0 + 8.0 } else { self.pen_w }) * self.dp / self.sc;
+            // Strichstärke in Weltkoordinaten (Punkt), unabhängig von der Zoomstufe
+            let w = (if self.tool == MARKER {
+                self.pen_w * 4.0 + 8.0
+            } else {
+                self.pen_w
+            }) * self.dp;
             let mut cur = Item::stroke(self.color, w, self.tool == MARKER, st && self.tool == PEN);
             self.last_pr = if st { p.pressure } else { 0.5 };
             cur.add_point(self.sx, self.sy, self.last_pr);
@@ -2115,7 +2393,11 @@ impl Board {
     fn arm_hold(&mut self, x: f32, y: f32) {
         self.hold_x = x;
         self.hold_y = y;
-        self.hold_at = if self.recog == 0 { Some(self.now + 0.45) } else { None };
+        self.hold_at = if self.recog == 0 {
+            Some(self.now + 0.45)
+        } else {
+            None
+        };
     }
 
     fn mv(&mut self, x: f32, y: f32, pr: f32) {
@@ -2147,7 +2429,11 @@ impl Board {
             if hypot(wx - px, wy - py) * self.sc < 0.7 {
                 return;
             }
-            self.last_pr = if self.stylus_act { self.last_pr * 0.6 + pr * 0.4 } else { 0.5 };
+            self.last_pr = if self.stylus_act {
+                self.last_pr * 0.6 + pr * 0.4
+            } else {
+                0.5
+            };
             let lp = self.last_pr;
             self.cur.as_mut().unwrap().add_point(wx, wy, lp);
             if hypot(x - self.hold_x, y - self.hold_y) > 5.0 * self.dp {
@@ -2173,9 +2459,14 @@ impl Board {
     }
 
     fn make_shape(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Item {
-        let w = self.pen_w * self.dp / self.sc;
+        let w = self.pen_w * self.dp;
         if self.shape_kind == 0 {
-            Item::shape(item::POLY, vec![x0, y0, x1, y0, x1, y1, x0, y1], self.color, w)
+            Item::shape(
+                item::POLY,
+                vec![x0, y0, x1, y0, x1, y1, x0, y1],
+                self.color,
+                w,
+            )
         } else {
             let k = match self.shape_kind {
                 1 => item::ELLIPSE,
@@ -2187,10 +2478,12 @@ impl Board {
         }
     }
 
-    /// Radierer-Radius in Bildschirm-Pixeln fuer den aktuellen Modus.
+    /// Radierer-Radius in Bildschirm-Pixeln fuer den aktuellen Modus. Der Teil-Radierer
+    /// richtet sich wie die Strichstärke nach Weltkoordinaten (skaliert also mit dem Zoom),
+    /// bleibt aber mindestens 4 Pixel gross.
     fn erase_screen_r(&self) -> f32 {
         if self.erase_mode == 1 {
-            (self.pen_w * 3.0).max(6.0) * self.dp
+            ((self.pen_w * 3.0).max(6.0) * self.dp * self.sc).max(4.0 * self.dp)
         } else {
             10.0 * self.dp
         }
@@ -2221,7 +2514,9 @@ impl Board {
             let mut repl: Vec<Item> = Vec::new();
             if is_stroke {
                 let s = it.as_stroke().unwrap();
-                let Some(parts) = item::erase_split(&s.p, it.width, wx, wy, r) else { continue };
+                let Some(parts) = item::erase_split(&s.p, it.width, wx, wy, r) else {
+                    continue;
+                };
                 repl.extend(parts.into_iter().map(|p| it.part(p)));
             } else {
                 let mut ch = false;
@@ -2295,7 +2590,10 @@ impl Board {
     /// Lokale Rahmenkoordinate (relativ zur Mitte, ungedreht) nach Welt.
     fn lw(&self, lx: f32, ly: f32) -> (f32, f32) {
         let (cs, sn) = (self.sel_ang.cos(), self.sel_ang.sin());
-        (self.sel_cx + lx * cs - ly * sn, self.sel_cy + lx * sn + ly * cs)
+        (
+            self.sel_cx + lx * cs - ly * sn,
+            self.sel_cy + lx * sn + ly * cs,
+        )
     }
 
     /// Lokale Rahmenkoordinate nach Bildschirm.
@@ -2359,7 +2657,11 @@ impl Board {
     /// Kanten-Griffe (Mitte jeder Seite, 0 oben, 1 rechts, 2 unten, 3 links) sind nur sichtbar/greifbar,
     /// wenn die Seite am Bildschirm lang genug ist (>= 3 Grifflaengen), damit die Ecken greifbar bleiben.
     fn edge_visible(&self, k: usize) -> bool {
-        let (len, sep) = if k % 2 == 0 { (self.sel_w, self.sel_h) } else { (self.sel_h, self.sel_w) };
+        let (len, sep) = if k % 2 == 0 {
+            (self.sel_w, self.sel_h)
+        } else {
+            (self.sel_h, self.sel_w)
+        };
         // zusaetzlich: gegenueberliegende Griffe muessen so weit auseinander liegen, dass die Mitte frei zum Verschieben bleibt
         len * self.sc >= 3.0 * 14.0 * self.dp && sep * self.sc >= 44.0 * self.dp
     }
@@ -2391,85 +2693,93 @@ impl Board {
                     return;
                 }
             } else {
-            // Dreh-Griff
-            let (rx, ry) = self.ls(0.0, -hh - 32.0 * dp / self.sc);
-            if hypot(self.dsx - rx, self.dsy - ry) < hit {
-                let (cx, cy) = self.ls(0.0, 0.0);
-                self.g_a0 = (self.dsy - cy).atan2(self.dsx - cx);
-                self.g_ang0 = self.sel_ang;
-                self.drag = 4;
-                return;
-            }
-            // Eck-Griffe
-            let (sgx, sgy) = ([-1.0f32, 1.0, 1.0, -1.0], [-1.0f32, -1.0, 1.0, 1.0]);
-            let mut bk: Option<usize> = None;
-            let mut bd = hit;
-            for k in 0..4 {
-                let (x, y) = self.ls(sgx[k] * hw, sgy[k] * hh);
-                let d = hypot(self.dsx - x, self.dsy - y);
-                if d < bd {
-                    bd = d;
-                    bk = Some(k);
+                // Dreh-Griff
+                let (rx, ry) = self.ls(0.0, -hh - 32.0 * dp / self.sc);
+                if hypot(self.dsx - rx, self.dsy - ry) < hit {
+                    let (cx, cy) = self.ls(0.0, 0.0);
+                    self.g_a0 = (self.dsy - cy).atan2(self.dsx - cx);
+                    self.g_ang0 = self.sel_ang;
+                    self.drag = 4;
+                    return;
                 }
-            }
-            if let Some(k) = bk {
-                let c1 = self.lw(sgx[k] * self.sel_w / 2.0, sgy[k] * self.sel_h / 2.0);
-                let c2 = self.lw(-sgx[k] * self.sel_w / 2.0, -sgy[k] * self.sel_h / 2.0);
-                self.pvx = c2.0;
-                self.pvy = c2.1;
-                let (ux, uy) = (c1.0 - c2.0, c1.1 - c2.1);
-                let l = hypot(ux, uy).max(0.0001);
-                self.g_ux = ux / l;
-                self.g_uy = uy / l;
-                self.d0 = (l * 0.2).max((wx - self.pvx) * self.g_ux + (wy - self.pvy) * self.g_uy);
-                self.g_scale = 1.0;
-                self.drag = 2;
-                return;
-            }
-            // Kanten-Griffe: nur Breite bzw. nur Hoehe skalieren, gegenueberliegende Kante bleibt fest
-            let (egx, egy) = ([0.0f32, 1.0, 0.0, -1.0], [-1.0f32, 0.0, 1.0, 0.0]);
-            let mut ek: Option<usize> = None;
-            let mut ed = hit;
-            for k in 0..4 {
-                if !self.edge_visible(k) {
-                    continue;
+                // Eck-Griffe
+                let (sgx, sgy) = ([-1.0f32, 1.0, 1.0, -1.0], [-1.0f32, -1.0, 1.0, 1.0]);
+                let mut bk: Option<usize> = None;
+                let mut bd = hit;
+                for k in 0..4 {
+                    let (x, y) = self.ls(sgx[k] * hw, sgy[k] * hh);
+                    let d = hypot(self.dsx - x, self.dsy - y);
+                    if d < bd {
+                        bd = d;
+                        bk = Some(k);
+                    }
                 }
-                let (x, y) = self.ls(egx[k] * hw, egy[k] * hh);
-                let d = hypot(self.dsx - x, self.dsy - y);
-                if d < ed {
-                    ed = d;
-                    ek = Some(k);
+                if let Some(k) = bk {
+                    let c1 = self.lw(sgx[k] * self.sel_w / 2.0, sgy[k] * self.sel_h / 2.0);
+                    let c2 = self.lw(-sgx[k] * self.sel_w / 2.0, -sgy[k] * self.sel_h / 2.0);
+                    self.pvx = c2.0;
+                    self.pvy = c2.1;
+                    let (ux, uy) = (c1.0 - c2.0, c1.1 - c2.1);
+                    let l = hypot(ux, uy).max(0.0001);
+                    self.g_ux = ux / l;
+                    self.g_uy = uy / l;
+                    self.d0 =
+                        (l * 0.2).max((wx - self.pvx) * self.g_ux + (wy - self.pvy) * self.g_uy);
+                    self.g_scale = 1.0;
+                    self.drag = 2;
+                    return;
                 }
-            }
-            if let Some(k) = ek {
-                let c1 = self.lw(egx[k] * self.sel_w / 2.0, egy[k] * self.sel_h / 2.0);
-                let c2 = self.lw(-egx[k] * self.sel_w / 2.0, -egy[k] * self.sel_h / 2.0);
-                self.pvx = c2.0;
-                self.pvy = c2.1;
-                let (ux, uy) = (c1.0 - c2.0, c1.1 - c2.1);
-                let l = hypot(ux, uy).max(0.0001);
-                self.g_ux = ux / l;
-                self.g_uy = uy / l;
-                self.d0 = (l * 0.2).max((wx - self.pvx) * self.g_ux + (wy - self.pvy) * self.g_uy);
-                self.g_scale = 1.0;
-                self.g_edge = k;
-                self.drag = 7;
-                return;
-            }
-            // innerhalb des Rahmens: verschieben
-            let (dx, dy) = (wx - self.sel_cx, wy - self.sel_cy);
-            let (cs, sn) = (self.sel_ang.cos(), self.sel_ang.sin());
-            let (lx, ly, m) = (dx * cs + dy * sn, -dx * sn + dy * cs, 8.0 * dp / self.sc);
-            if lx.abs() <= hw + m && ly.abs() <= hh + m {
-                self.drag = 1;
-                return;
-            }
+                // Kanten-Griffe: nur Breite bzw. nur Hoehe skalieren, gegenueberliegende Kante bleibt fest
+                let (egx, egy) = ([0.0f32, 1.0, 0.0, -1.0], [-1.0f32, 0.0, 1.0, 0.0]);
+                let mut ek: Option<usize> = None;
+                let mut ed = hit;
+                for k in 0..4 {
+                    if !self.edge_visible(k) {
+                        continue;
+                    }
+                    let (x, y) = self.ls(egx[k] * hw, egy[k] * hh);
+                    let d = hypot(self.dsx - x, self.dsy - y);
+                    if d < ed {
+                        ed = d;
+                        ek = Some(k);
+                    }
+                }
+                if let Some(k) = ek {
+                    let c1 = self.lw(egx[k] * self.sel_w / 2.0, egy[k] * self.sel_h / 2.0);
+                    let c2 = self.lw(-egx[k] * self.sel_w / 2.0, -egy[k] * self.sel_h / 2.0);
+                    self.pvx = c2.0;
+                    self.pvy = c2.1;
+                    let (ux, uy) = (c1.0 - c2.0, c1.1 - c2.1);
+                    let l = hypot(ux, uy).max(0.0001);
+                    self.g_ux = ux / l;
+                    self.g_uy = uy / l;
+                    self.d0 =
+                        (l * 0.2).max((wx - self.pvx) * self.g_ux + (wy - self.pvy) * self.g_uy);
+                    self.g_scale = 1.0;
+                    self.g_edge = k;
+                    self.drag = 7;
+                    return;
+                }
+                // innerhalb des Rahmens: verschieben
+                let (dx, dy) = (wx - self.sel_cx, wy - self.sel_cy);
+                let (cs, sn) = (self.sel_ang.cos(), self.sel_ang.sin());
+                let (lx, ly, m) = (dx * cs + dy * sn, -dx * sn + dy * cs, 8.0 * dp / self.sc);
+                if lx.abs() <= hw + m && ly.abs() <= hh + m {
+                    self.drag = 1;
+                    return;
+                }
             }
         }
         // ausserhalb: neue Auswahl (die alte bleibt, bis wirklich gezogen wird)
         if !self.sel.is_empty() {
             self.prev_sel = Some(self.sel.clone());
-            self.prev_frame = Some([self.sel_cx, self.sel_cy, self.sel_w, self.sel_h, self.sel_ang]);
+            self.prev_frame = Some([
+                self.sel_cx,
+                self.sel_cy,
+                self.sel_w,
+                self.sel_h,
+                self.sel_ang,
+            ]);
         }
         self.pend = self.top_at(wx, wy, 14.0 * dp / self.sc);
         self.drag = 3;
@@ -2484,7 +2794,8 @@ impl Board {
             return;
         }
         let n = self.lasso.len();
-        if n >= 2 && hypot(wx - self.lasso[n - 2], wy - self.lasso[n - 1]) * self.sc < 2.0 * self.dp {
+        if n >= 2 && hypot(wx - self.lasso[n - 2], wy - self.lasso[n - 1]) * self.sc < 2.0 * self.dp
+        {
             return;
         }
         self.lasso.push(wx);
@@ -2511,7 +2822,12 @@ impl Board {
                 self.sel_clear();
             }
             if let Some(m) = self.marq.as_mut() {
-                *m = RectF::new(self.sx.min(wx), self.sy.min(wy), self.sx.max(wx), self.sy.max(wy));
+                *m = RectF::new(
+                    self.sx.min(wx),
+                    self.sy.min(wy),
+                    self.sx.max(wx),
+                    self.sy.max(wy),
+                );
             }
             return;
         }
@@ -2639,8 +2955,19 @@ impl Board {
             }
             Kind::Shape(_) => {
                 let b = it.bounds();
-                let (cx, cy, hx, hy) = (b.center_x(), b.center_y(), b.width() * 0.45, b.height() * 0.45);
-                for (x, y) in [(cx, cy), (cx - hx, cy), (cx + hx, cy), (cx, cy - hy), (cx, cy + hy)] {
+                let (cx, cy, hx, hy) = (
+                    b.center_x(),
+                    b.center_y(),
+                    b.width() * 0.45,
+                    b.height() * 0.45,
+                );
+                for (x, y) in [
+                    (cx, cy),
+                    (cx - hx, cy),
+                    (cx + hx, cy),
+                    (cx, cy - hy),
+                    (cx, cy + hy),
+                ] {
                     test(x, y);
                 }
             }
@@ -2736,7 +3063,11 @@ impl Board {
             // Tippen auf vorhandenen Text: auswaehlen (erweitertes Menue), sonst neuer Text
             let (x, y) = (self.sx * self.sc + self.tx, self.sy * self.sc + self.ty);
             if !self.select_at_screen(x, y, true) {
-                self.events.push(Event::AskText { wx: self.sx, wy: self.sy, note: self.tool == NOTE });
+                self.events.push(Event::AskText {
+                    wx: self.sx,
+                    wy: self.sy,
+                    note: self.tool == NOTE,
+                });
             }
         }
         self.cur = None;
@@ -2781,20 +3112,38 @@ impl Board {
 
     fn sig(&self) -> CacheSig {
         let ps = self.px_scale;
-        let (dw, dh) = (((self.width * ps).round() as u32).max(1), ((self.height * ps).round() as u32).max(1));
+        let (dw, dh) = (
+            ((self.width * ps).round() as u32).max(1),
+            ((self.height * ps).round() as u32).max(1),
+        );
         CacheSig {
             size: (dw, dh, ps.to_bits()),
             sc: self.sc.to_bits(),
             dark: self.dark,
             bg: self.bg,
-            layers: self.layers.iter().map(|l| (l.id, l.visible, l.opacity.to_bits())).collect(),
-            pages: self.pages().map(|p| p.pages.iter().map(|g| (g.w.to_bits(), g.h.to_bits(), g.bg)).collect()).unwrap_or_default(),
+            layers: self
+                .layers
+                .iter()
+                .map(|l| (l.id, l.visible, l.opacity.to_bits()))
+                .collect(),
+            pages: self
+                .pages()
+                .map(|p| {
+                    p.pages
+                        .iter()
+                        .map(|g| (g.w.to_bits(), g.h.to_bits(), g.bg))
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 
     fn cache_size(&self) -> (u32, u32) {
         let ps = self.px_scale;
-        (((self.width * ps).round() as u32).max(1), ((self.height * ps).round() as u32).max(1))
+        (
+            ((self.width * ps).round() as u32).max(1),
+            ((self.height * ps).round() as u32).max(1),
+        )
     }
 
     /// Zeichnet den Zwischenspeicher komplett neu (Ansicht = sc/tx/ty).
@@ -2808,12 +3157,19 @@ impl Board {
         self.ctx = self.tx;
         self.cty = self.ty;
         self.org = (0, 0);
-        let Some(mut cache) = self.cache.take() else { return };
+        let Some(mut cache) = self.cache.take() else {
+            return;
+        };
         self.draw_cache_area(&mut cache, 0, 0);
         self.cache = Some(cache);
         self.cache_items = self.items.iter().filter(|it| !it.lift).cloned().collect();
         self.cache_sig = Some(self.sig());
-        self.cache_dmg = Damage(vec![IRect { x: 0, y: 0, w: dw, h: dh }]);
+        self.cache_dmg = Damage(vec![IRect {
+            x: 0,
+            y: 0,
+            w: dw,
+            h: dh,
+        }]);
         self.dirty = false;
         self.full_dirty = false;
     }
@@ -2838,7 +3194,10 @@ impl Board {
             self.backdrop(&mut c);
             c.translate(self.tx, self.ty);
             c.scale(self.sc, self.sc);
-            let (l, t) = ((x as f32 / ps - self.tx) / self.sc, (y as f32 / ps - self.ty) / self.sc);
+            let (l, t) = (
+                (x as f32 / ps - self.tx) / self.sc,
+                (y as f32 / ps - self.ty) / self.sc,
+            );
             let vis = RectF::new(l, t, l + w / ps / self.sc, t + h / ps / self.sc);
             self.draw_scene(&mut c, Some(&vis), true, true, self.dp / self.sc);
             if par {
@@ -2856,7 +3215,9 @@ impl Board {
         if r.is_empty() {
             return;
         }
-        let Some(mut cache) = self.cache.take() else { return };
+        let Some(mut cache) = self.cache.take() else {
+            return;
+        };
         if let Some(mut tmp) = Pixmap::new(r.w, r.h) {
             self.draw_cache_area(&mut tmp, r.x, r.y);
             blit(&mut cache, &tmp, r, self.org);
@@ -2883,7 +3244,12 @@ impl Board {
     /// per Copy-on-Write neue Objekte). Ergebnis: Bereich (Geraete-Pixel), der neu gezeichnet werden muss,
     /// oder None, wenn ein komplettes Neuzeichnen guenstiger ist.
     fn item_diff(&self) -> Option<IRect> {
-        let old: HashMap<*const Item, usize> = self.cache_items.iter().enumerate().map(|(i, it)| (Rc::as_ptr(it), i)).collect();
+        let old: HashMap<*const Item, usize> = self
+            .cache_items
+            .iter()
+            .enumerate()
+            .map(|(i, it)| (Rc::as_ptr(it), i))
+            .collect();
         let mut seen = vec![false; self.cache_items.len()];
         let mut last: isize = -1;
         let mut dmg = IRect::default();
@@ -2920,9 +3286,14 @@ impl Board {
     /// Verschiebt den Inhalt um (dx, dy) Geraete-Pixel: nur der Ursprung des Ring-Speichers wandert, gezeichnet
     /// werden nur die frei gewordenen Streifen.
     fn scroll_cache(&mut self, dx: i32, dy: i32) {
-        let Some(cache) = self.cache.as_ref() else { return };
+        let Some(cache) = self.cache.as_ref() else {
+            return;
+        };
         let (w, h) = (cache.width() as i32, cache.height() as i32);
-        self.org = ((self.org.0 as i32 - dx).rem_euclid(w) as u32, (self.org.1 as i32 - dy).rem_euclid(h) as u32);
+        self.org = (
+            (self.org.0 as i32 - dx).rem_euclid(w) as u32,
+            (self.org.1 as i32 - dy).rem_euclid(h) as u32,
+        );
         let ps = self.px_scale;
         self.ctx += dx as f32 / ps;
         self.cty += dy as f32 / ps;
@@ -2931,15 +3302,35 @@ impl Board {
         self.last_ov = shift_rect(self.last_ov, dx, dy, wu, hu);
         self.cache_dmg.shift(dx, dy, wu, hu);
         if dy > 0 {
-            self.redraw_cache_rect(IRect { x: 0, y: 0, w: wu, h: dy as u32 });
+            self.redraw_cache_rect(IRect {
+                x: 0,
+                y: 0,
+                w: wu,
+                h: dy as u32,
+            });
         } else if dy < 0 {
-            self.redraw_cache_rect(IRect { x: 0, y: (h + dy) as u32, w: wu, h: (-dy) as u32 });
+            self.redraw_cache_rect(IRect {
+                x: 0,
+                y: (h + dy) as u32,
+                w: wu,
+                h: (-dy) as u32,
+            });
         }
         let (y0, y1) = if dy > 0 { (dy, h) } else { (0, h + dy) };
         if dx > 0 {
-            self.redraw_cache_rect(IRect { x: 0, y: y0 as u32, w: dx as u32, h: (y1 - y0) as u32 });
+            self.redraw_cache_rect(IRect {
+                x: 0,
+                y: y0 as u32,
+                w: dx as u32,
+                h: (y1 - y0) as u32,
+            });
         } else if dx < 0 {
-            self.redraw_cache_rect(IRect { x: (w + dx) as u32, y: y0 as u32, w: (-dx) as u32, h: (y1 - y0) as u32 });
+            self.redraw_cache_rect(IRect {
+                x: (w + dx) as u32,
+                y: y0 as u32,
+                w: (-dx) as u32,
+                h: (y1 - y0) as u32,
+            });
         }
     }
 
@@ -2948,12 +3339,19 @@ impl Board {
     fn update_cache(&mut self) {
         let (dw, dh) = self.cache_size();
         let size_ok = matches!(&self.cache, Some(c) if c.width() == dw && c.height() == dh);
-        if !size_ok || self.full_dirty || self.cache_sig.as_ref() != Some(&self.sig()) || self.csc != self.sc {
+        if !size_ok
+            || self.full_dirty
+            || self.cache_sig.as_ref() != Some(&self.sig())
+            || self.csc != self.sc
+        {
             self.render_cache();
             return;
         }
         let ps = self.px_scale;
-        let (sx, sy) = (((self.tx - self.ctx) * ps).round(), ((self.ty - self.cty) * ps).round());
+        let (sx, sy) = (
+            ((self.tx - self.ctx) * ps).round(),
+            ((self.ty - self.cty) * ps).round(),
+        );
         if sx != 0.0 || sy != 0.0 {
             if sx.abs() >= dw as f32 * 0.7 || sy.abs() >= dh as f32 * 0.7 {
                 self.render_cache();
@@ -3044,7 +3442,12 @@ impl Board {
             for (x, y) in [(q[0], q[1]), (q[2], q[3])] {
                 let (x, y) = (x * sc + tx, y * sc + ty);
                 c.draw_circle(x, y, 7.0 * dp, &Paint::fill(ACCENT));
-                c.draw_circle(x, y, 7.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+                c.draw_circle(
+                    x,
+                    y,
+                    7.0 * dp,
+                    &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt),
+                );
             }
             return;
         }
@@ -3071,7 +3474,12 @@ impl Board {
         let (rx, ry) = self.ls(0.0, -hh - 32.0 * dp / self.sc);
         c.draw_line(tx0, ty0, rx, ry, &ui);
         c.draw_circle(rx, ry, 14.0 * dp, &Paint::fill(ACCENT));
-        c.draw_circle(rx, ry, 14.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+        c.draw_circle(
+            rx,
+            ry,
+            14.0 * dp,
+            &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt),
+        );
         c.save();
         c.translate(rx - 9.0 * dp, ry - 9.0 * dp);
         c.scale(18.0 * dp / 24.0, 18.0 * dp / 24.0);
@@ -3080,7 +3488,12 @@ impl Board {
         // Eck-Griffe
         for (x, y) in corners {
             c.draw_circle(x, y, 7.0 * dp, &Paint::fill(ACCENT));
-            c.draw_circle(x, y, 7.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+            c.draw_circle(
+                x,
+                y,
+                7.0 * dp,
+                &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt),
+            );
         }
         // Kanten-Griffe (Mitte jeder Seite)
         let (egx, egy) = ([0.0f32, 1.0, 0.0, -1.0], [-1.0f32, 0.0, 1.0, 0.0]);
@@ -3088,7 +3501,12 @@ impl Board {
             if self.edge_visible(k) {
                 let (x, y) = self.ls(egx[k] * hw, egy[k] * hh);
                 c.draw_circle(x, y, 7.0 * dp, &Paint::fill(ACCENT));
-                c.draw_circle(x, y, 7.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+                c.draw_circle(
+                    x,
+                    y,
+                    7.0 * dp,
+                    &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt),
+                );
             }
         }
         if self.mode == 1 && self.drag == 4 && self.moved {
@@ -3120,17 +3538,37 @@ impl Board {
     fn overlay_rect(&mut self, gest: bool, w: u32, h: u32) -> IRect {
         let (ps, sc, tx, ty, dp) = (self.px_scale, self.sc, self.tx, self.ty, self.dp);
         let mut out = IRect::default();
-        let world = |b: &RectF| IRect::cover((b.left * sc + tx) * ps - 2.0, (b.top * sc + ty) * ps - 2.0, (b.right * sc + tx) * ps + 2.0, (b.bottom * sc + ty) * ps + 2.0, w, h);
-        let screen = |l: f32, t: f32, r: f32, b: f32| IRect::cover(l * ps - 2.0, t * ps - 2.0, r * ps + 2.0, b * ps + 2.0, w, h);
+        let world = |b: &RectF| {
+            IRect::cover(
+                (b.left * sc + tx) * ps - 2.0,
+                (b.top * sc + ty) * ps - 2.0,
+                (b.right * sc + tx) * ps + 2.0,
+                (b.bottom * sc + ty) * ps + 2.0,
+                w,
+                h,
+            )
+        };
+        let screen = |l: f32, t: f32, r: f32, b: f32| {
+            IRect::cover(l * ps - 2.0, t * ps - 2.0, r * ps + 2.0, b * ps + 2.0, w, h)
+        };
         if self.lifted && !gest {
             for it in self.sel_items() {
                 out = out.union(world(&paint_bounds(it)));
             }
         }
-        for it in [self.snap.as_ref().or(self.cur.as_ref()), self.prev.as_ref()].into_iter().flatten() {
+        for it in [self.snap.as_ref().or(self.cur.as_ref()), self.prev.as_ref()]
+            .into_iter()
+            .flatten()
+        {
             out = out.union(world(&paint_bounds(it)));
         }
-        if self.tool == SELECT && self.mode == 1 && self.drag == 3 && self.sel_mode == 0 && self.lasso.len() > 2 && self.moved {
+        if self.tool == SELECT
+            && self.mode == 1
+            && self.drag == 3
+            && self.sel_mode == 0
+            && self.lasso.len() > 2
+            && self.moved
+        {
             let mut r = RectF::new(self.lasso[0], self.lasso[1], self.lasso[0], self.lasso[1]);
             for xy in self.lasso.chunks_exact(2) {
                 r.union(&RectF::new(xy[0], xy[1], xy[0], xy[1]));
@@ -3139,15 +3577,29 @@ impl Board {
             out = out.union(world(&r));
         }
         if let Some(m) = self.marq {
-            let mut r = RectF::new(m.left.min(m.right), m.top.min(m.bottom), m.left.max(m.right), m.top.max(m.bottom));
+            let mut r = RectF::new(
+                m.left.min(m.right),
+                m.top.min(m.bottom),
+                m.left.max(m.right),
+                m.top.max(m.bottom),
+            );
             r.inset(-3.0 * dp / sc, -3.0 * dp / sc);
             out = out.union(world(&r));
         }
-        if self.tool == SELECT && !self.sel.is_empty() && !(self.mode == 1 && self.drag == 3 && self.moved) {
+        if self.tool == SELECT
+            && !self.sel.is_empty()
+            && !(self.mode == 1 && self.drag == 3 && self.moved)
+        {
             self.ensure_frame();
             let pad = 6.0 * dp / sc;
             let (hw, hh) = (self.sel_w / 2.0 + pad, self.sel_h / 2.0 + pad);
-            let mut pts = vec![self.ls(-hw, -hh), self.ls(hw, -hh), self.ls(hw, hh), self.ls(-hw, hh), self.ls(0.0, -hh - 32.0 * dp / sc)];
+            let mut pts = vec![
+                self.ls(-hw, -hh),
+                self.ls(hw, -hh),
+                self.ls(hw, hh),
+                self.ls(-hw, hh),
+                self.ls(0.0, -hh - 32.0 * dp / sc),
+            ];
             if let Some(q) = self.lin_ends() {
                 pts.push((q[0] * sc + tx, q[1] * sc + ty));
                 pts.push((q[2] * sc + tx, q[3] * sc + ty));
@@ -3178,9 +3630,17 @@ impl Board {
     pub fn render(&mut self, target: &mut Pixmap) -> Frame {
         self.needs_redraw = false;
         let (tw, th) = (target.width(), target.height());
-        let full = IRect { x: 0, y: 0, w: tw, h: th };
+        let full = IRect {
+            x: 0,
+            y: 0,
+            w: tw,
+            h: th,
+        };
         if self.width <= 0.0 || self.height <= 0.0 {
-            return Frame { org: self.org, ..Frame::default() };
+            return Frame {
+                org: self.org,
+                ..Frame::default()
+            };
         }
         let gest = self.mode == 2 || self.mode == 3 || self.wheel_until.is_some();
         let key = (target.data().as_ptr() as usize, tw, th);
@@ -3188,7 +3648,11 @@ impl Board {
         let size_ok = self.cache_size() == (tw, th);
 
         // Zoom-Geste: vorhandene Textur auf der GPU skalieren
-        if let (true, Some(cache), true) = (gest && size_ok && same_target && !self.dirty, self.cache.as_ref(), self.sc != self.csc && self.cache_sig.is_some()) {
+        if let (true, Some(cache), true) = (
+            gest && size_ok && same_target && !self.dirty,
+            self.cache.as_ref(),
+            self.sc != self.csc && self.cache_sig.is_some(),
+        ) {
             let mut fr = Frame::default();
             let mut d = std::mem::take(&mut self.cache_dmg);
             d.add(self.last_ov);
@@ -3214,13 +3678,22 @@ impl Board {
                 let mut c = Canvas::new(target);
                 c.scale(ps, ps);
                 self.backdrop(&mut c);
-                let vis = RectF::new(-self.tx / self.sc, -self.ty / self.sc, (self.width - self.tx) / self.sc, (self.height - self.ty) / self.sc);
+                let vis = RectF::new(
+                    -self.tx / self.sc,
+                    -self.ty / self.sc,
+                    (self.width - self.tx) / self.sc,
+                    (self.height - self.ty) / self.sc,
+                );
                 c.translate(self.tx, self.ty);
                 c.scale(self.sc, self.sc);
                 self.draw_scene(&mut c, Some(&vis), false, true, self.dp / self.sc);
             }
             self.shown = None;
-            return Frame { damage: vec![full], scaled: None, org: (0, 0) };
+            return Frame {
+                damage: vec![full],
+                scaled: None,
+                org: (0, 0),
+            };
         }
 
         let org = self.org;
@@ -3235,21 +3708,32 @@ impl Board {
         self.last_ov = ov;
         self.shown = Some(key);
         if dmg.is_empty() {
-            return Frame { org, ..Frame::default() };
+            return Frame {
+                org,
+                ..Frame::default()
+            };
         }
         // grosser Anteil: alles kopieren, dann nur die Ueberlagerungen
         if dmg.area() * 10 >= full.area() * 6 {
-            target.data_mut().copy_from_slice(self.cache.as_ref().unwrap().data());
+            target
+                .data_mut()
+                .copy_from_slice(self.cache.as_ref().unwrap().data());
             dmg = Damage(vec![full]);
             if ov.is_empty() {
-                return Frame { damage: dmg.0, scaled: None, org };
+                return Frame {
+                    damage: dmg.0,
+                    scaled: None,
+                    org,
+                };
             }
         }
         // je Bereich: Zwischenspeicher-Ausschnitt + Ueberlagerungen (falls sie hineinreichen)
         let only_ov = dmg.0 == [full];
         let parts: Vec<IRect> = if only_ov { vec![ov] } else { dmg.0.clone() };
         for r in parts {
-            let Some(mut tmp) = crop(self.cache.as_ref().unwrap(), r, org) else { continue };
+            let Some(mut tmp) = crop(self.cache.as_ref().unwrap(), r, org) else {
+                continue;
+            };
             if !ov.is_empty() && intersects(ov, r) {
                 let ps = self.px_scale;
                 let mut c = Canvas::new(&mut tmp);
@@ -3259,7 +3743,11 @@ impl Board {
             }
             blit(target, &tmp, r, org);
         }
-        Frame { damage: dmg.0, scaled: None, org }
+        Frame {
+            damage: dmg.0,
+            scaled: None,
+            org,
+        }
     }
 
     /// Ueberlagerungen ueber dem Zwischenspeicher; c steht auf logischen Bildschirm-Pixeln.
@@ -3284,7 +3772,13 @@ impl Board {
         }
         c.restore();
         let dp = self.dp;
-        if self.tool == SELECT && self.mode == 1 && self.drag == 3 && self.sel_mode == 0 && self.lasso.len() > 2 && self.moved {
+        if self.tool == SELECT
+            && self.mode == 1
+            && self.drag == 3
+            && self.sel_mode == 0
+            && self.lasso.len() > 2
+            && self.moved
+        {
             let mut pb = PathBuilder::new();
             pb.move_to(self.lasso[0], self.lasso[1]);
             for xy in self.lasso[2..].chunks_exact(2) {
@@ -3300,11 +3794,20 @@ impl Board {
         }
         if let Some(m) = self.marq {
             c.draw_rect(m.left, m.top, m.right, m.bottom, &Paint::fill(0x227C8CFF));
-            c.draw_rect(m.left, m.top, m.right, m.bottom, &Paint::stroke(ACCENT, 1.5 * dp / self.sc, Cap::Butt));
+            c.draw_rect(
+                m.left,
+                m.top,
+                m.right,
+                m.bottom,
+                &Paint::stroke(ACCENT, 1.5 * dp / self.sc, Cap::Butt),
+            );
         }
         c.restore();
 
-        if self.tool == SELECT && !self.sel.is_empty() && !(self.mode == 1 && self.drag == 3 && self.moved) {
+        if self.tool == SELECT
+            && !self.sel.is_empty()
+            && !(self.mode == 1 && self.drag == 3 && self.moved)
+        {
             self.draw_frame(c);
         }
 
@@ -3323,7 +3826,10 @@ pub fn note_bg(c: u32) -> u32 {
         return 0xFFFFE27A;
     }
     let (r, g, b) = ((c >> 16) & 255, (c >> 8) & 255, c & 255);
-    0xFF000000 | ((r + (255 - r) * 6 / 10) << 16) | ((g + (255 - g) * 6 / 10) << 8) | (b + (255 - b) * 6 / 10)
+    0xFF000000
+        | ((r + (255 - r) * 6 / 10) << 16)
+        | ((g + (255 - g) * 6 / 10) << 8)
+        | (b + (255 - b) * 6 / 10)
 }
 
 #[cfg(test)]
@@ -3354,7 +3860,11 @@ mod tests {
         drag(&mut b, &[(100.0, 100.0)], ToolType::Stylus);
         assert!(b.events.iter().any(|e| matches!(e, Event::AskText { .. })));
         b.events.clear();
-        b.add_note_rect("Hallo Welt, ein laengerer Text", b.new_note_rect(100.0, 100.0, false), false);
+        b.add_note_rect(
+            "Hallo Welt, ein laengerer Text",
+            b.new_note_rect(100.0, 100.0, false),
+            false,
+        );
         let id = b.items[0].id;
         // Tippen auf den Text: Auswahl (Menü) im Auswahlwerkzeug, kein neuer Text
         drag(&mut b, &[(170.0, 100.0)], ToolType::Stylus);
@@ -3373,7 +3883,12 @@ mod tests {
     #[test]
     fn mittelklick_trifft_innerhalb_einer_form() {
         let mut b = board();
-        b.items.push(Rc::new(Item::shape(item::POLY, vec![100.0, 100.0, 300.0, 100.0, 300.0, 200.0, 100.0, 200.0], INK, 2.0)));
+        b.items.push(Rc::new(Item::shape(
+            item::POLY,
+            vec![100.0, 100.0, 300.0, 100.0, 300.0, 200.0, 100.0, 200.0],
+            INK,
+            2.0,
+        )));
         let id = b.items[0].id;
         // Textwerkzeug trifft nur Texte
         assert!(!b.select_at_screen(200.0, 150.0, true));
@@ -3406,7 +3921,11 @@ mod tests {
     #[test]
     fn draw_undo_redo_and_json() {
         let mut b = board();
-        drag(&mut b, &[(10.0, 10.0), (50.0, 20.0), (90.0, 60.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[(10.0, 10.0), (50.0, 20.0), (90.0, 60.0)],
+            ToolType::Stylus,
+        );
         assert_eq!(b.items.len(), 1);
         b.undo();
         assert_eq!(b.items.len(), 0);
@@ -3419,6 +3938,39 @@ mod tests {
         let mut pm = Pixmap::new(800, 600).unwrap();
         b.render(&mut pm);
         assert_ne!(pm.pixel(50, 21).unwrap().red(), 0xFB);
+    }
+
+    #[test]
+    fn strichdicke_unabhaengig_vom_zoom() {
+        let mut ws = Vec::new();
+        for z in [0.5f32, 1.0, 3.0] {
+            let mut b = board();
+            b.zoom_at(0.0, 0.0, z);
+            b.recog = 2;
+            drag(
+                &mut b,
+                &[(10.0, 100.0), (200.0, 140.0), (390.0, 100.0)],
+                ToolType::Stylus,
+            );
+            b.tool = SHAPE;
+            drag(&mut b, &[(10.0, 300.0), (200.0, 400.0)], ToolType::Stylus);
+            ws.push(b.items.iter().map(|it| it.width).collect::<Vec<_>>());
+        }
+        assert!(ws.iter().all(|w| w.len() == 2 && *w == ws[0]), "{ws:?}");
+    }
+
+    #[test]
+    fn farbe_der_auswahl() {
+        let mut b = board();
+        b.recog = 2;
+        drag(&mut b, &[(10.0, 100.0), (200.0, 140.0)], ToolType::Stylus);
+        b.tool = SELECT;
+        assert_eq!(b.sel_color(), None);
+        b.sel = b.items.iter().map(|it| it.id).collect();
+        b.set_color(0xFFE5484D);
+        assert_eq!(b.sel_color(), Some(Some(0xFFE5484D)));
+        b.undo();
+        assert_ne!(b.items[0].color, 0xFFE5484D);
     }
 
     #[test]
@@ -3440,10 +3992,24 @@ mod tests {
         drag(&mut b, &[(100.0, 100.0), (150.0, 100.0)], ToolType::Stylus);
         drag(&mut b, &[(500.0, 500.0), (550.0, 500.0)], ToolType::Stylus);
         b.set_tool(SELECT);
-        drag(&mut b, &[(80.0, 80.0), (200.0, 80.0), (200.0, 130.0), (80.0, 130.0), (80.0, 85.0)], ToolType::Mouse);
+        drag(
+            &mut b,
+            &[
+                (80.0, 80.0),
+                (200.0, 80.0),
+                (200.0, 130.0),
+                (80.0, 130.0),
+                (80.0, 85.0),
+            ],
+            ToolType::Stylus,
+        );
         assert_eq!(b.sel.len(), 1);
         let before = b.sel_items()[0].bounds();
-        drag(&mut b, &[(125.0, 100.0), (135.0, 110.0), (145.0, 120.0)], ToolType::Mouse);
+        drag(
+            &mut b,
+            &[(125.0, 100.0), (135.0, 110.0), (145.0, 120.0)],
+            ToolType::Stylus,
+        );
         let after = b.sel_items()[0].bounds();
         assert!((after.left - before.left - 20.0).abs() < 0.01);
         assert_eq!(b.undo.len(), 3);
@@ -3466,7 +4032,9 @@ mod tests {
         b.edit_layer(b.active, |l| l.locked = true);
         drag(&mut b, &[(10.0, 10.0), (50.0, 50.0)], ToolType::Stylus);
         assert!(b.items.is_empty());
-        assert!(b.events.contains(&Event::Notice("Ebene ist gesperrt".into())));
+        assert!(b
+            .events
+            .contains(&Event::Notice("Ebene ist gesperrt".into())));
         b.undo();
         assert_eq!(b.layers.len(), 7);
     }
@@ -3491,22 +4059,45 @@ mod tests {
 
     #[test]
     fn kanten_griff_skaliert_nur_breite() {
-        let mut b = sel_board(Item::shape(item::POLY, vec![100.0, 100.0, 200.0, 100.0, 200.0, 150.0, 100.0, 150.0], INK, 2.0));
+        let mut b = sel_board(Item::shape(
+            item::POLY,
+            vec![100.0, 100.0, 200.0, 100.0, 200.0, 150.0, 100.0, 150.0],
+            INK,
+            2.0,
+        ));
         // rechter Kanten-Griff bei (206, 125) -> 100 Pixel nach rechts: Breite verdoppelt
-        drag(&mut b, &[(206.0, 125.0), (250.0, 125.0), (306.0, 125.0)], ToolType::Mouse);
+        drag(
+            &mut b,
+            &[(206.0, 125.0), (250.0, 125.0), (306.0, 125.0)],
+            ToolType::Stylus,
+        );
         let r = b.sel_items()[0].bounds();
         let (w, h) = (r.width(), r.height());
         assert!((w - 200.0 - 2.0).abs() < 8.0, "Breite {w}");
         assert!((h - 50.0 - 2.0).abs() < 4.0, "Hoehe {h}");
         assert!((r.left - 99.0).abs() < 3.0, "linke Kante fest {}", r.left);
-        assert!((b.sel_w - w).abs() < 8.0 && (b.sel_h - h).abs() < 8.0, "{} {}", b.sel_w, b.sel_h);
+        assert!(
+            (b.sel_w - w).abs() < 8.0 && (b.sel_h - h).abs() < 8.0,
+            "{} {}",
+            b.sel_w,
+            b.sel_h
+        );
     }
 
     #[test]
     fn endpunkt_griff_und_undo() {
-        let mut b = sel_board(Item::shape(item::ARROW, vec![100.0, 100.0, 200.0, 100.0], INK, 2.0));
+        let mut b = sel_board(Item::shape(
+            item::ARROW,
+            vec![100.0, 100.0, 200.0, 100.0],
+            INK,
+            2.0,
+        ));
         let n = b.undo.len();
-        drag(&mut b, &[(200.0, 100.0), (250.0, 160.0), (300.0, 200.0)], ToolType::Mouse);
+        drag(
+            &mut b,
+            &[(200.0, 100.0), (250.0, 160.0), (300.0, 200.0)],
+            ToolType::Stylus,
+        );
         let q = b.sel_items()[0].as_shape().unwrap().q.clone();
         assert_eq!(&q[0..2], &[100.0, 100.0]);
         assert!(q[2] > 250.0 && q[3] > 150.0, "{q:?}");
@@ -3568,7 +4159,13 @@ mod tests {
         assert_eq!(b.page_of_items(), vec![Some(0), Some(1)]);
         let top = |b: &Board, i: usize| b.items[i].bounds().top;
         let (t0, t1) = (top(&b, 0), top(&b, 1));
-        let ids: Vec<String> = b.pages().unwrap().pages.iter().map(|p| p.id.clone()).collect();
+        let ids: Vec<String> = b
+            .pages()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|p| p.id.clone())
+            .collect();
 
         // Seite vorne einfuegen: beide Striche rutschen um eine Seite nach unten
         assert_eq!(b.add_page(None), Some(0));
@@ -3585,7 +4182,13 @@ mod tests {
 
         // Seiten tauschen
         assert!(b.move_page(1, 0));
-        let ids2: Vec<String> = b.pages().unwrap().pages.iter().map(|p| p.id.clone()).collect();
+        let ids2: Vec<String> = b
+            .pages()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|p| p.id.clone())
+            .collect();
         assert_eq!(ids2, vec![ids[1].clone(), ids[0].clone()]);
         assert_eq!(b.page_of_items(), vec![Some(1), Some(0)]);
         assert!((top(&b, 0) - t0 - (842.0 + PAGE_GAP)).abs() < 0.01);
@@ -3621,13 +4224,25 @@ mod tests {
         let mut b = paged(2, PageBg::Plain);
         // beginnt im Zwischenraum
         let g = 842.0 + PAGE_GAP / 2.0;
-        drag(&mut b, &[scr(100.0, g), scr(100.0, g + 200.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[scr(100.0, g), scr(100.0, g + 200.0)],
+            ToolType::Stylus,
+        );
         assert!(b.items.is_empty());
         // beginnt rechts neben der Seite
-        drag(&mut b, &[scr(700.0, 100.0), scr(300.0, 100.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[scr(700.0, 100.0), scr(300.0, 100.0)],
+            ToolType::Stylus,
+        );
         assert!(b.items.is_empty());
         // beginnt auf der Seite, endet ausserhalb: bleibt
-        drag(&mut b, &[scr(300.0, 100.0), scr(700.0, 100.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[scr(300.0, 100.0), scr(700.0, 100.0)],
+            ToolType::Stylus,
+        );
         assert_eq!(b.items.len(), 1);
     }
 
@@ -3635,7 +4250,11 @@ mod tests {
     fn page_clipping_render() {
         let mut b = paged(2, PageBg::Plain);
         // senkrechter Strich ueber die Seitengrenze hinweg (von Seite 0 bis Seite 1)
-        drag(&mut b, &[scr(300.0, 700.0), scr(300.0, 842.0 + PAGE_GAP + 150.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[scr(300.0, 700.0), scr(300.0, 842.0 + PAGE_GAP + 150.0)],
+            ToolType::Stylus,
+        );
         assert_eq!(b.items.len(), 1);
         b.pen_w = 6.0;
         let mut pm = Pixmap::new(800, 600).unwrap();
@@ -3664,29 +4283,55 @@ mod tests {
     #[test]
     fn lasso_across_pages_and_eraser() {
         let mut b = paged(2, PageBg::Grid);
-        drag(&mut b, &[scr(100.0, 800.0), scr(200.0, 800.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[scr(100.0, 800.0), scr(200.0, 800.0)],
+            ToolType::Stylus,
+        );
         let y1 = 842.0 + PAGE_GAP + 30.0;
         drag(&mut b, &[scr(100.0, y1), scr(200.0, y1)], ToolType::Stylus);
         assert_eq!(b.page_of_items(), vec![Some(0), Some(1)]);
         b.set_tool(SELECT);
         b.sel_mode = 0;
-        let pts = [scr(50.0, 750.0), scr(250.0, 750.0), scr(250.0, y1 + 50.0), scr(50.0, y1 + 50.0), scr(50.0, 755.0)];
-        drag(&mut b, &pts, ToolType::Mouse);
+        let pts = [
+            scr(50.0, 750.0),
+            scr(250.0, 750.0),
+            scr(250.0, y1 + 50.0),
+            scr(50.0, y1 + 50.0),
+            scr(50.0, 755.0),
+        ];
+        drag(&mut b, &pts, ToolType::Stylus);
         assert_eq!(b.sel.len(), 2);
         // Rechteckauswahl ebenso
         b.sel_mode = 1;
-        drag(&mut b, &[scr(30.0, 600.0), scr(150.0, 870.0), scr(260.0, y1 + 60.0)], ToolType::Mouse);
+        drag(
+            &mut b,
+            &[scr(30.0, 600.0), scr(150.0, 870.0), scr(260.0, y1 + 60.0)],
+            ToolType::Stylus,
+        );
         assert_eq!(b.sel.len(), 2);
         // Radierer, der im Zwischenraum beginnt und beide Striche ueberstreicht
         b.set_tool(ERASER);
-        drag(&mut b, &[scr(150.0, 780.0), scr(150.0, 842.0 + PAGE_GAP / 2.0), scr(150.0, y1 + 20.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[
+                scr(150.0, 780.0),
+                scr(150.0, 842.0 + PAGE_GAP / 2.0),
+                scr(150.0, y1 + 20.0),
+            ],
+            ToolType::Stylus,
+        );
         assert!(b.items.is_empty());
     }
 
     #[test]
     fn pdf_has_one_page_per_board_page() {
         let mut b = paged(3, PageBg::Lined);
-        drag(&mut b, &[scr(100.0, 100.0), scr(300.0, 300.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[scr(100.0, 100.0), scr(300.0, 300.0)],
+            ToolType::Stylus,
+        );
         let pdf = b.export_pdf().unwrap();
         let s = String::from_utf8_lossy(&pdf);
         assert_eq!(s.matches("/Type /Page ").count(), 3);
@@ -3696,7 +4341,12 @@ mod tests {
         // auch ein leeres Seiten-Board ist exportierbar
         let e = paged(1, PageBg::Plain);
         assert!(e.export_bounds().is_some());
-        assert_eq!(String::from_utf8_lossy(&e.export_pdf().unwrap()).matches("/Type /Page ").count(), 1);
+        assert_eq!(
+            String::from_utf8_lossy(&e.export_pdf().unwrap())
+                .matches("/Type /Page ")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -3713,7 +4363,12 @@ mod tests {
     fn assert_frame_eq(b: &mut Board, inc: &mut Pixmap, tag: &str) {
         let f = b.render(inc);
         // Ring-Speicher in normale Lage bringen
-        let full = IRect { x: 0, y: 0, w: inc.width(), h: inc.height() };
+        let full = IRect {
+            x: 0,
+            y: 0,
+            w: inc.width(),
+            h: inc.height(),
+        };
         let lin = crop(inc, full, f.org).unwrap();
         inc.data_mut().copy_from_slice(lin.data());
         let mut fresh = Pixmap::new(inc.width(), inc.height()).unwrap();
@@ -3728,7 +4383,10 @@ mod tests {
                 bad += 1;
             }
         }
-        assert!(bad < 40 && worst < 64, "{tag}: {bad} Abweichungen, max {worst}");
+        assert!(
+            bad < 40 && worst < 64,
+            "{tag}: {bad} Abweichungen, max {worst}"
+        );
         // fortan schrittweise auf dem frischen Bild weiter
         inc.data_mut().copy_from_slice(fresh.data());
     }
@@ -3737,10 +4395,29 @@ mod tests {
         let mut pm = Pixmap::new(800, 600).unwrap();
         b.render(&mut pm);
         let stroke = |b: &mut Board, pm: &mut Pixmap, k: f32| {
-            let pts: Vec<(f32, f32)> = (0..40).map(|i| (100.0 + k * 37.0 % 500.0 + i as f32 * 6.0, 120.0 + (i as f32 * 0.4 + k).sin() * 50.0 + k * 13.0 % 300.0)).collect();
-            b.on_touch(&Motion::single(Action::Down, pts[0].0, pts[0].1, 0.5, ToolType::Stylus));
+            let pts: Vec<(f32, f32)> = (0..40)
+                .map(|i| {
+                    (
+                        100.0 + k * 37.0 % 500.0 + i as f32 * 6.0,
+                        120.0 + (i as f32 * 0.4 + k).sin() * 50.0 + k * 13.0 % 300.0,
+                    )
+                })
+                .collect();
+            b.on_touch(&Motion::single(
+                Action::Down,
+                pts[0].0,
+                pts[0].1,
+                0.5,
+                ToolType::Stylus,
+            ));
             for p in &pts[1..] {
-                b.on_touch(&Motion::single(Action::Move, p.0, p.1, 0.3 + (p.0 * 0.01).sin().abs() * 0.5, ToolType::Stylus));
+                b.on_touch(&Motion::single(
+                    Action::Move,
+                    p.0,
+                    p.1,
+                    0.3 + (p.0 * 0.01).sin().abs() * 0.5,
+                    ToolType::Stylus,
+                ));
                 b.render(pm);
             }
             let l = pts[pts.len() - 1];
@@ -3754,12 +4431,30 @@ mod tests {
         b.tool = PEN;
         assert_frame_eq(&mut b, &mut pm, "Striche");
         // Radieren (ganze Objekte)
-        b.on_touch(&Motion::single(Action::Down, 150.0, 140.0, 0.5, ToolType::Eraser));
+        b.on_touch(&Motion::single(
+            Action::Down,
+            150.0,
+            140.0,
+            0.5,
+            ToolType::Eraser,
+        ));
         for i in 0..30 {
-            b.on_touch(&Motion::single(Action::Move, 150.0 + i as f32 * 8.0, 140.0 + i as f32 * 3.0, 0.5, ToolType::Eraser));
+            b.on_touch(&Motion::single(
+                Action::Move,
+                150.0 + i as f32 * 8.0,
+                140.0 + i as f32 * 3.0,
+                0.5,
+                ToolType::Eraser,
+            ));
             b.render(&mut pm);
         }
-        b.on_touch(&Motion::single(Action::Up, 390.0, 230.0, 0.5, ToolType::Eraser));
+        b.on_touch(&Motion::single(
+            Action::Up,
+            390.0,
+            230.0,
+            0.5,
+            ToolType::Eraser,
+        ));
         assert_frame_eq(&mut b, &mut pm, "Radieren");
         b.undo();
         b.render(&mut pm);
@@ -3768,12 +4463,30 @@ mod tests {
         b.undo();
         assert_frame_eq(&mut b, &mut pm, "Rueckgaengig");
         // Verschieben mit dem Finger (krumme Schritte), dann in Ruhe
-        b.on_touch(&Motion::single(Action::Down, 400.0, 300.0, 0.5, ToolType::Finger));
+        b.on_touch(&Motion::single(
+            Action::Down,
+            400.0,
+            300.0,
+            0.5,
+            ToolType::Finger,
+        ));
         for i in 1..25 {
-            b.on_touch(&Motion::single(Action::Move, 400.0 - i as f32 * 7.3, 300.0 + i as f32 * 4.7, 0.5, ToolType::Finger));
+            b.on_touch(&Motion::single(
+                Action::Move,
+                400.0 - i as f32 * 7.3,
+                300.0 + i as f32 * 4.7,
+                0.5,
+                ToolType::Finger,
+            ));
             b.render(&mut pm);
         }
-        b.on_touch(&Motion::single(Action::Up, 400.0 - 25.0 * 7.3, 300.0 + 25.0 * 4.7, 0.5, ToolType::Finger));
+        b.on_touch(&Motion::single(
+            Action::Up,
+            400.0 - 25.0 * 7.3,
+            300.0 + 25.0 * 4.7,
+            0.5,
+            ToolType::Finger,
+        ));
         assert_frame_eq(&mut b, &mut pm, "Verschieben");
         // Mausrad-Verschieben und -Zoom
         for i in 0..8 {
@@ -3799,24 +4512,64 @@ mod tests {
         b.tick(12.0);
         b.render(&mut pm);
         stroke(&mut b, &mut pm, 3.0);
-        b.on_touch(&Motion::single(Action::Down, 200.0, 200.0, 0.5, ToolType::Eraser));
+        b.on_touch(&Motion::single(
+            Action::Down,
+            200.0,
+            200.0,
+            0.5,
+            ToolType::Eraser,
+        ));
         for i in 0..20 {
-            b.on_touch(&Motion::single(Action::Move, 200.0 + i as f32 * 9.0, 200.0 + i as f32 * 5.0, 0.5, ToolType::Eraser));
+            b.on_touch(&Motion::single(
+                Action::Move,
+                200.0 + i as f32 * 9.0,
+                200.0 + i as f32 * 5.0,
+                0.5,
+                ToolType::Eraser,
+            ));
             b.render(&mut pm);
         }
-        b.on_touch(&Motion::single(Action::Up, 380.0, 300.0, 0.5, ToolType::Eraser));
+        b.on_touch(&Motion::single(
+            Action::Up,
+            380.0,
+            300.0,
+            0.5,
+            ToolType::Eraser,
+        ));
         b.render(&mut pm);
         // Auswahl ziehen
         b.set_tool(SELECT);
-        drag(&mut b, &[(50.0, 50.0), (750.0, 50.0), (750.0, 550.0), (50.0, 550.0), (50.0, 60.0)], ToolType::Stylus);
+        drag(
+            &mut b,
+            &[
+                (50.0, 50.0),
+                (750.0, 50.0),
+                (750.0, 550.0),
+                (50.0, 550.0),
+                (50.0, 60.0),
+            ],
+            ToolType::Stylus,
+        );
         if let Some(r) = b.sel_bounds() {
             let (cx, cy) = (r.center_x() * b.sc + b.tx, r.center_y() * b.sc + b.ty);
             b.on_touch(&Motion::single(Action::Down, cx, cy, 0.5, ToolType::Stylus));
             for i in 1..15 {
-                b.on_touch(&Motion::single(Action::Move, cx + i as f32 * 5.0, cy + i as f32 * 2.0, 0.5, ToolType::Stylus));
+                b.on_touch(&Motion::single(
+                    Action::Move,
+                    cx + i as f32 * 5.0,
+                    cy + i as f32 * 2.0,
+                    0.5,
+                    ToolType::Stylus,
+                ));
                 b.render(&mut pm);
             }
-            b.on_touch(&Motion::single(Action::Up, cx + 75.0, cy + 30.0, 0.5, ToolType::Stylus));
+            b.on_touch(&Motion::single(
+                Action::Up,
+                cx + 75.0,
+                cy + 30.0,
+                0.5,
+                ToolType::Stylus,
+            ));
         }
         assert_frame_eq(&mut b, &mut pm, "Auswahl ziehen");
         b.delete_sel();

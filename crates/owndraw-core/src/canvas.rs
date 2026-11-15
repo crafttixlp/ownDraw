@@ -4,8 +4,8 @@
 use crate::text;
 use std::rc::Rc;
 use tiny_skia::{
-    Color, FillRule, FilterQuality, LineCap, LineJoin, Mask, Paint as SkPaint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef,
-    Rect, Stroke, StrokeDash, Transform,
+    Color, FillRule, FilterQuality, LineCap, LineJoin, Mask, Paint as SkPaint, Path, PathBuilder,
+    Pixmap, PixmapPaint, PixmapRef, Rect, Stroke, StrokeDash, Transform,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -34,7 +34,14 @@ pub struct Paint {
 
 impl Default for Paint {
     fn default() -> Self {
-        Paint { color: 0xFF000000, style: Style::Fill, stroke_width: 1.0, cap: Cap::Butt, dash: None, text_size: 12.0 }
+        Paint {
+            color: 0xFF000000,
+            style: Style::Fill,
+            stroke_width: 1.0,
+            cap: Cap::Butt,
+            dash: None,
+            text_size: 12.0,
+        }
     }
 }
 
@@ -43,10 +50,20 @@ impl Paint {
         Self::default()
     }
     pub fn stroke(color: u32, width: f32, cap: Cap) -> Self {
-        Paint { color, style: Style::Stroke, stroke_width: width, cap, dash: None, text_size: 12.0 }
+        Paint {
+            color,
+            style: Style::Stroke,
+            stroke_width: width,
+            cap,
+            dash: None,
+            text_size: 12.0,
+        }
     }
     pub fn fill(color: u32) -> Self {
-        Paint { color, ..Self::default() }
+        Paint {
+            color,
+            ..Self::default()
+        }
     }
 }
 
@@ -95,7 +112,16 @@ unsafe impl Sync for RawPix {}
 
 impl<'a> Canvas<'a> {
     pub fn new(base: &'a mut Pixmap) -> Self {
-        Canvas { base, layers: Vec::new(), stack: Vec::new(), m: Transform::identity(), clip: None, rec: None, rec_own: Vec::new(), rec_keep: Vec::new() }
+        Canvas {
+            base,
+            layers: Vec::new(),
+            stack: Vec::new(),
+            m: Transform::identity(),
+            clip: None,
+            rec: None,
+            rec_own: Vec::new(),
+            rec_keep: Vec::new(),
+        }
     }
 
     /// Ab jetzt nur aufzeichnen (nichts zeichnen).
@@ -189,7 +215,8 @@ impl<'a> Canvas<'a> {
         match Pixmap::new(self.base.width(), self.base.height()) {
             Some(pm) => {
                 self.layers.push(pm);
-                self.stack.push(Saved::Layer(self.m, alpha, self.clip.clone()));
+                self.stack
+                    .push(Saved::Layer(self.m, alpha, self.clip.clone()));
             }
             None => self.stack.push(Saved::Matrix(self.m, self.clip.clone())),
         }
@@ -206,8 +233,12 @@ impl<'a> Canvas<'a> {
                 self.m = m;
                 self.clip = clip;
                 if let Some(top) = self.layers.pop() {
-                    let pp = PixmapPaint { opacity: alpha as f32 / 255.0, ..PixmapPaint::default() };
-                    self.target().draw_pixmap(0, 0, top.as_ref(), &pp, Transform::identity(), None);
+                    let pp = PixmapPaint {
+                        opacity: alpha as f32 / 255.0,
+                        ..PixmapPaint::default()
+                    };
+                    self.target()
+                        .draw_pixmap(0, 0, top.as_ref(), &pp, Transform::identity(), None);
                 }
             }
             None => {}
@@ -262,8 +293,17 @@ impl<'a> Canvas<'a> {
                 t.fill_path(path, &sp, FillRule::Winding, m, clip)
             }
             Style::Stroke => {
-                let cap = if p.cap == Cap::Round { LineCap::Round } else { LineCap::Butt };
-                let mut st = Stroke { width: p.stroke_width.max(0.0), line_cap: cap, line_join: LineJoin::Round, ..Stroke::default() };
+                let cap = if p.cap == Cap::Round {
+                    LineCap::Round
+                } else {
+                    LineCap::Butt
+                };
+                let mut st = Stroke {
+                    width: p.stroke_width.max(0.0),
+                    line_cap: cap,
+                    line_join: LineJoin::Round,
+                    ..Stroke::default()
+                };
                 if let Some((on, off)) = p.dash {
                     if on > 0.0 && off > 0.0 {
                         st.dash = StrokeDash::new(vec![on, off], 0.0);
@@ -436,7 +476,9 @@ impl<'a> Canvas<'a> {
                     let base = row * bw;
                     let ey = cy - ay;
                     let (full2, out2) = ((re - 1.0).max(0.0) * (re - 1.0).max(0.0), re * re);
-                    for (px, o) in (rx0..rx1).zip(cov[base + (rx0 - x0) as usize..base + (rx1 - x0) as usize].iter_mut()) {
+                    for (px, o) in (rx0..rx1)
+                        .zip(cov[base + (rx0 - x0) as usize..base + (rx1 - x0) as usize].iter_mut())
+                    {
                         if *o == 255 {
                             continue;
                         }
@@ -463,7 +505,11 @@ impl<'a> Canvas<'a> {
             // Zusammensetzen (vormultipliziert, source-over), mit Clip-Maske
             let sa = color >> 24;
             let pm = |c: u32| div255(c * sa);
-            let (sr, sg, sb) = (pm((color >> 16) & 255), pm((color >> 8) & 255), pm(color & 255));
+            let (sr, sg, sb) = (
+                pm((color >> 16) & 255),
+                pm((color >> 8) & 255),
+                pm(color & 255),
+            );
             let (tgt, clip) = self.parts();
             let tw = tgt.width() as usize;
             let mask = clip.map(|k| k.data());
@@ -530,7 +576,10 @@ impl<'a> Canvas<'a> {
             return;
         }
         let m = self.m.pre_translate(l, t).pre_scale(sx, sy);
-        let pp = PixmapPaint { quality: FilterQuality::Bilinear, ..PixmapPaint::default() };
+        let pp = PixmapPaint {
+            quality: FilterQuality::Bilinear,
+            ..PixmapPaint::default()
+        };
         let (t, clip) = self.parts();
         t.draw_pixmap(0, 0, pm, &pp, m, clip);
     }
@@ -550,7 +599,13 @@ impl<'a> Canvas<'a> {
 impl<'a> Canvas<'a> {
     /// Beendet die Aufnahme. Die zurueckgegebenen Bilder muessen bis nach der Wiedergabe gehalten werden.
     pub fn take_recording(&mut self) -> (Recording, Vec<Rc<Pixmap>>) {
-        (Recording(self.rec.take().unwrap_or_default(), std::mem::take(&mut self.rec_own)), std::mem::take(&mut self.rec_keep))
+        (
+            Recording(
+                self.rec.take().unwrap_or_default(),
+                std::mem::take(&mut self.rec_own),
+            ),
+            std::mem::take(&mut self.rec_keep),
+        )
     }
 }
 
@@ -594,7 +649,10 @@ impl Recording {
     /// Zeichnet die Aufnahme in pm, aufgeteilt in waagrechte Streifen auf mehrere Threads.
     pub fn replay_parallel(&self, pm: &mut Pixmap) {
         let (w, h) = (pm.width(), pm.height());
-        let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).min(8) as u32;
+        let n = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+            .min(8) as u32;
         if n <= 1 || h < 64 {
             self.replay(pm, 0);
             return;
@@ -603,7 +661,12 @@ impl Recording {
         let bands = (n * 3).min(h / 16).max(1);
         let bh = h.div_ceil(bands);
         let row = w as usize * 4;
-        let mut parts: Vec<(u32, &mut [u8])> = pm.data_mut().chunks_mut(bh as usize * row).enumerate().map(|(i, d)| (i as u32 * bh, d)).collect();
+        let mut parts: Vec<(u32, &mut [u8])> = pm
+            .data_mut()
+            .chunks_mut(bh as usize * row)
+            .enumerate()
+            .map(|(i, d)| (i as u32 * bh, d))
+            .collect();
         let mut groups: Vec<Vec<(u32, &mut [u8])>> = (0..n).map(|_| Vec::new()).collect();
         for (i, p) in parts.drain(..).enumerate() {
             groups[i % n as usize].push(p);
@@ -613,7 +676,9 @@ impl Recording {
                 sc.spawn(move || {
                     for (y0, d) in g {
                         let hh = (d.len() / row) as u32;
-                        let Some(mut band) = Pixmap::new(w, hh) else { continue };
+                        let Some(mut band) = Pixmap::new(w, hh) else {
+                            continue;
+                        };
                         band.data_mut().copy_from_slice(d);
                         self.replay(&mut band, y0);
                         d.copy_from_slice(band.data());
@@ -709,7 +774,15 @@ pub fn round_rect_path(l: f32, t: f32, r: f32, b: f32, rad: f32) -> Option<Path>
 
 /// Kreisbogen wie android.graphics.Path.arcTo(oval, start, sweep): Winkel in Grad, 0 = rechts, im Uhrzeigersinn.
 /// Verbindet mit einer Linie zum Bogenanfang, wenn der Pfad schon Punkte hat.
-pub fn arc_to(pb: &mut PathBuilder, l: f32, t: f32, r: f32, b: f32, start_deg: f32, sweep_deg: f32) {
+pub fn arc_to(
+    pb: &mut PathBuilder,
+    l: f32,
+    t: f32,
+    r: f32,
+    b: f32,
+    start_deg: f32,
+    sweep_deg: f32,
+) {
     let (cx, cy, rx, ry) = ((l + r) / 2.0, (t + b) / 2.0, (r - l) / 2.0, (b - t) / 2.0);
     let n = ((sweep_deg.abs() / 90.0).ceil() as i32).max(1);
     let step = (sweep_deg / n as f32).to_radians();

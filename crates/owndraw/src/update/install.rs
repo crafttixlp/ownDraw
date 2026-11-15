@@ -13,14 +13,20 @@ pub fn running_appimage() -> Option<PathBuf> {
 }
 
 fn sibling(target: &Path, suffix: &str) -> PathBuf {
-    let mut n = target.file_name().map(|s| s.to_os_string()).unwrap_or_default();
+    let mut n = target
+        .file_name()
+        .map(|s| s.to_os_string())
+        .unwrap_or_default();
     n.push(suffix);
     target.with_file_name(n)
 }
 
 /// Prüft vorab, ob neben `target` geschrieben werden darf (verständlicher Hinweis statt Fehler mittendrin).
 pub fn check_writable(target: &Path) -> Result<(), Error> {
-    let dir = target.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let dir = target
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     let probe = dir.join(format!(".owndraw-write-test-{}", std::process::id()));
     match std::fs::File::create(&probe) {
         Ok(_) => {
@@ -54,7 +60,13 @@ pub struct Installed {
 }
 
 /// Ersetzt `target` durch `new_file`. `old_version` ist die bisher laufende Version (für `versions/`).
-pub fn install_appimage(new_file: &Path, new_version: &Version, target: &Path, old_version: &Version, versions_dir: &Path) -> Result<Installed, Error> {
+pub fn install_appimage(
+    new_file: &Path,
+    new_version: &Version,
+    target: &Path,
+    old_version: &Version,
+    versions_dir: &Path,
+) -> Result<Installed, Error> {
     check_writable(target)?;
     let staged = sibling(target, ".new");
     let bak = sibling(target, ".bak");
@@ -90,7 +102,12 @@ pub fn install_appimage(new_file: &Path, new_version: &Version, target: &Path, o
         let _ = std::fs::remove_file(&staged);
         return Err(e);
     }
-    Ok(Installed { version: new_version.clone(), path: target.to_path_buf(), backup: bak, restart: true })
+    Ok(Installed {
+        version: new_version.clone(),
+        path: target.to_path_buf(),
+        backup: bak,
+        restart: true,
+    })
 }
 
 /// Startet die (neu installierte) Datei und lässt die laufende App danach schließen.

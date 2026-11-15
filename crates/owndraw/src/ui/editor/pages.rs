@@ -39,7 +39,9 @@ pub fn page_count(b: &Board) -> usize {
 
 /// Weltrechteck der Seite i (Vertrag aus `owndraw_core::pages`: untereinander, links bündig, Abstand `PAGE_GAP`).
 pub fn page_rect(b: &Board, i: usize) -> Option<RectF> {
-    let BoardMode::Pages(s) = &b.board_mode else { return None };
+    let BoardMode::Pages(s) = &b.board_mode else {
+        return None;
+    };
     let p = s.pages.get(i)?;
     let y: f32 = s.pages[..i].iter().map(|q| q.h + PAGE_GAP).sum();
     Some(RectF::new(0.0, y, p.w, y + p.h))
@@ -55,7 +57,13 @@ pub fn current_page(b: &Board) -> usize {
     let mut best = (0, f32::MAX);
     for i in 0..n {
         if let Some(r) = page_rect(b, i) {
-            let d = if wy < r.top { r.top - wy } else if wy > r.bottom { wy - r.bottom } else { 0.0 };
+            let d = if wy < r.top {
+                r.top - wy
+            } else if wy > r.bottom {
+                wy - r.bottom
+            } else {
+                0.0
+            };
             if d < best.1 {
                 best = (i, d);
             }
@@ -83,7 +91,9 @@ pub fn initial_view(b: &mut Board) {
 }
 
 pub fn current_bg(b: &Board) -> Option<PageBg> {
-    let BoardMode::Pages(s) = &b.board_mode else { return None };
+    let BoardMode::Pages(s) = &b.board_mode else {
+        return None;
+    };
     s.pages.get(current_page(b)).map(|p| p.bg)
 }
 
@@ -145,10 +155,19 @@ impl PageThumbs {
             }
             self.keys[i] = key;
             if let Some(pm) = b.render_composite(&r, k, true) {
-                let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
+                let img = egui::ColorImage::from_rgba_premultiplied(
+                    [pm.width() as usize, pm.height() as usize],
+                    pm.data(),
+                );
                 match self.tex[i].as_mut() {
                     Some(t) => t.set(img, egui::TextureOptions::LINEAR),
-                    None => self.tex[i] = Some(ctx.load_texture(format!("page-{i}"), img, egui::TextureOptions::LINEAR)),
+                    None => {
+                        self.tex[i] = Some(ctx.load_texture(
+                            format!("page-{i}"),
+                            img,
+                            egui::TextureOptions::LINEAR,
+                        ))
+                    }
                 }
             }
         }
@@ -174,17 +193,53 @@ fn nav_chip(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, act: &mut Option<Act>
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             let small = Vec2::splat(btn - 6.0);
-            if ui.add_enabled(cur > 0, egui::Button::new("‹").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Vorherige Seite").clicked() {
+            if ui
+                .add_enabled(
+                    cur > 0,
+                    egui::Button::new("‹")
+                        .fill(egui::Color32::TRANSPARENT)
+                        .min_size(small),
+                )
+                .on_hover_text("Vorherige Seite")
+                .clicked()
+            {
                 *act = Some(Act::Goto(cur - 1));
             }
-            let t = egui::RichText::new(format!("Seite {} / {}", cur + 1, n)).size(14.0).color(c(p.text));
-            if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(0.0, btn - 6.0))).on_hover_text("Seitenliste").clicked() {
+            let t = egui::RichText::new(format!("Seite {} / {}", cur + 1, n))
+                .size(14.0)
+                .color(c(p.text));
+            if ui
+                .add(
+                    egui::Button::new(t)
+                        .fill(egui::Color32::TRANSPARENT)
+                        .min_size(Vec2::new(0.0, btn - 6.0)),
+                )
+                .on_hover_text("Seitenliste")
+                .clicked()
+            {
                 *act = Some(Act::Open);
             }
-            if ui.add_enabled(cur + 1 < n, egui::Button::new("›").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Nächste Seite").clicked() {
+            if ui
+                .add_enabled(
+                    cur + 1 < n,
+                    egui::Button::new("›")
+                        .fill(egui::Color32::TRANSPARENT)
+                        .min_size(small),
+                )
+                .on_hover_text("Nächste Seite")
+                .clicked()
+            {
                 *act = Some(Act::Goto(cur + 1));
             }
-            if ui.add(egui::Button::new("+").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Neue Seite nach dieser").clicked() {
+            if ui
+                .add(
+                    egui::Button::new("+")
+                        .fill(egui::Color32::TRANSPARENT)
+                        .min_size(small),
+                )
+                .on_hover_text("Neue Seite nach dieser")
+                .clicked()
+            {
                 *act = Some(Act::Add);
             }
         });
@@ -206,57 +261,120 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
     }
     let canvas = lay.canvas;
     let mut act: Option<Act> = None;
-    let left = canvas.left() + M + if lay.tb == BarPos::Left { lay.thick + M } else { 0.0 };
+    let left = canvas.left()
+        + M
+        + if lay.tb_edge == Some(BarPos::Left) {
+            lay.thick + M
+        } else {
+            0.0
+        };
     match lay.env.ff {
         FormFactor::Expanded => {
             if let Some(dock) = lay.dock_pages {
-                let r = Editor::float(ctx, "pages-dock", dock.min, Align2::LEFT_TOP, dock, Order::Middle, |ui| {
-                    let p = style::pal();
-                    egui::Frame::new().fill(c(p.card)).stroke(egui::Stroke::new(1.0, c(p.line))).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
-                        ui.set_width(DOCK_PAGES - 22.0);
-                        ui.set_min_height(dock.height() - 22.0);
-                        header(ui, sh, &mut act);
-                        list(ui, ed, sh, ctx, true, dock.height() - 120.0, &mut act);
-                    });
-                });
+                let r = Editor::float(
+                    ctx,
+                    "pages-dock",
+                    dock.min,
+                    Align2::LEFT_TOP,
+                    dock,
+                    Order::Middle,
+                    |ui| {
+                        let p = style::pal();
+                        egui::Frame::new()
+                            .fill(c(p.card))
+                            .stroke(egui::Stroke::new(1.0, c(p.line)))
+                            .inner_margin(egui::Margin::same(10))
+                            .show(ui, |ui| {
+                                ui.set_width(DOCK_PAGES - 22.0);
+                                ui.set_min_height(dock.height() - 22.0);
+                                header(ui, sh, &mut act);
+                                list(ui, ed, sh, ctx, true, dock.height() - 120.0, &mut act);
+                            });
+                    },
+                );
                 ed.st.popup_rects.push(r);
             } else {
                 // eingeklappt: kleine Seiten-Kachel zum Aufklappen
-                let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+                let r = Editor::float(
+                    ctx,
+                    "pages-chip",
+                    Pos2::new(left, lay.y_below),
+                    Align2::LEFT_TOP,
+                    canvas,
+                    Order::Middle,
+                    |ui| nav_chip(ui, ed, sh, &mut act),
+                );
                 ed.st.popup_rects.push(r);
             }
         }
         FormFactor::Medium => {
             if ed.st.pages_open != Some(true) {
-                let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+                let r = Editor::float(
+                    ctx,
+                    "pages-chip",
+                    Pos2::new(left, lay.y_below),
+                    Align2::LEFT_TOP,
+                    canvas,
+                    Order::Middle,
+                    |ui| nav_chip(ui, ed, sh, &mut act),
+                );
                 ed.st.popup_rects.push(r);
             } else {
                 let max_h = (canvas.bottom() - lay.y_below - M - 70.0).max(140.0);
-                let r = Editor::float(ctx, "pages-float", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| {
-                    style::pill(20).show(ui, |ui| {
-                        egui::Frame::new().inner_margin(egui::Margin::same(8)).show(ui, |ui| {
-                            ui.set_width(150.0);
-                            header(ui, sh, &mut act);
-                            list(ui, ed, sh, ctx, true, max_h, &mut act);
+                let r = Editor::float(
+                    ctx,
+                    "pages-float",
+                    Pos2::new(left, lay.y_below),
+                    Align2::LEFT_TOP,
+                    canvas,
+                    Order::Middle,
+                    |ui| {
+                        style::pill(20).show(ui, |ui| {
+                            egui::Frame::new()
+                                .inner_margin(egui::Margin::same(8))
+                                .show(ui, |ui| {
+                                    ui.set_width(150.0);
+                                    header(ui, sh, &mut act);
+                                    list(ui, ed, sh, ctx, true, max_h, &mut act);
+                                });
                         });
-                    });
-                });
+                    },
+                );
                 ed.st.popup_rects.push(r);
             }
         }
         FormFactor::Compact => {
             let p = style::pal();
-            let r = Editor::float(ctx, "pages-chip", Pos2::new(left, lay.y_below), Align2::LEFT_TOP, canvas, Order::Middle, |ui| nav_chip(ui, ed, sh, &mut act));
+            let r = Editor::float(
+                ctx,
+                "pages-chip",
+                Pos2::new(left, lay.y_below),
+                Align2::LEFT_TOP,
+                canvas,
+                Order::Middle,
+                |ui| nav_chip(ui, ed, sh, &mut act),
+            );
             ed.st.popup_rects.push(r);
             if ed.st.pages_open == Some(true) {
-                let r = Editor::float(ctx, "pages-full", canvas.min, Align2::LEFT_TOP, canvas, Order::Foreground, |ui| {
-                    egui::Frame::new().fill(c(p.bg)).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
-                        ui.set_width(canvas.width() - 24.0);
-                        ui.set_min_height(canvas.height() - 24.0);
-                        header(ui, sh, &mut act);
-                        list(ui, ed, sh, ctx, false, canvas.height() - 150.0, &mut act);
-                    });
-                });
+                let r = Editor::float(
+                    ctx,
+                    "pages-full",
+                    canvas.min,
+                    Align2::LEFT_TOP,
+                    canvas,
+                    Order::Foreground,
+                    |ui| {
+                        egui::Frame::new()
+                            .fill(c(p.bg))
+                            .inner_margin(egui::Margin::same(12))
+                            .show(ui, |ui| {
+                                ui.set_width(canvas.width() - 24.0);
+                                ui.set_min_height(canvas.height() - 24.0);
+                                header(ui, sh, &mut act);
+                                list(ui, ed, sh, ctx, false, canvas.height() - 150.0, &mut act);
+                            });
+                    },
+                );
                 ed.st.popup_rects.push(r);
             }
         }
@@ -277,7 +395,12 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
             if page_count(&ed.board) <= 1 {
                 sh.toast("Mindestens eine Seite bleibt bestehen");
             } else {
-                sh.dialog = Some(Dialog::Confirm { title: "Seite löschen", text: format!("Seite {} mit allem Inhalt löschen?", i + 1), ok: "Löschen", action: ConfirmAction::DeletePage(i) });
+                sh.dialog = Some(Dialog::Confirm {
+                    title: "Seite löschen",
+                    text: format!("Seite {} mit allem Inhalt löschen?", i + 1),
+                    ok: "Löschen",
+                    action: ConfirmAction::DeletePage(i),
+                });
             }
         }
         Some(Act::Move(a, b)) => {
@@ -292,7 +415,9 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
             ed.st.pages_open = Some(open);
             // angedockte Seitenleiste am PC: Zustand merken
             if lay.env.ff == FormFactor::Expanded {
-                sh.settings.extra.insert("pages_dock".into(), serde_json::json!(open));
+                sh.settings
+                    .extra
+                    .insert("pages_dock".into(), serde_json::json!(open));
             }
         }
         None => {}
@@ -304,7 +429,15 @@ fn header(ui: &mut Ui, sh: &Shared, act: &mut Option<Act>) {
         ui.label(egui::RichText::new("Seiten").size(16.0).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if sh.env.ff == FormFactor::Expanded {
-                if ui.add(egui::Button::new(egui::RichText::new("‹").size(18.0)).fill(egui::Color32::TRANSPARENT).min_size(Vec2::splat(sh.env.btn - 10.0))).on_hover_text("Seitenleiste einklappen").clicked() {
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new("‹").size(18.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .min_size(Vec2::splat(sh.env.btn - 10.0)),
+                    )
+                    .on_hover_text("Seitenleiste einklappen")
+                    .clicked()
+                {
                     *act = Some(Act::Close);
                 }
             } else if style::plain_btn(ui, "Schließen", sh.env.btn - 8.0).clicked() {
@@ -315,7 +448,15 @@ fn header(ui: &mut Ui, sh: &Shared, act: &mut Option<Act>) {
     ui.add_space(2.0);
 }
 
-fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thumbs: bool, max_h: f32, act: &mut Option<Act>) {
+fn list(
+    ui: &mut Ui,
+    ed: &mut Editor,
+    sh: &mut Shared,
+    ctx: &egui::Context,
+    thumbs: bool,
+    max_h: f32,
+    act: &mut Option<Act>,
+) {
     let p = style::pal();
     let n = page_count(&ed.board);
     let cur = current_page(&ed.board);
@@ -329,79 +470,130 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
     let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
     let mut rows: Vec<egui::Rect> = Vec::with_capacity(n);
     let mut released = false;
-    egui::ScrollArea::vertical().max_height(max_h.max(100.0)).auto_shrink([false, true]).show(ui, |ui| {
-        for i in 0..n {
-            let on = i == cur;
-            let lifted = dragging == Some(i);
-            let fill = if lifted { c(p.hover) } else if on { c(p.active) } else { egui::Color32::TRANSPARENT };
-            let fr = egui::Frame::new().fill(fill).corner_radius(10).inner_margin(egui::Margin::same(4));
-            let row = fr.show(ui, |ui| {
-                if thumbs {
-                    let (w, h) = page_rect(&ed.board, i).map(|r| (r.width(), r.height())).unwrap_or((595.0, 842.0));
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(tw, tw * h / w), Sense::click_and_drag());
-                    ui.painter().rect_filled(rect, 3.0, c(0xFFFBFBF8));
-                    if let Some(Some(t)) = ed.page_thumbs.tex.get(i) {
-                        ui.painter().image(t.id(), rect, egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
-                    }
-                    ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(1.0, c(if on { p.accent } else { p.line })), egui::StrokeKind::Inside);
-                    ui.label(egui::RichText::new(format!("{}", i + 1)).size(12.0).color(c(p.dim)));
-                    if resp.clicked() {
-                        *act = Some(Act::Goto(i));
-                    }
-                    if resp.drag_started() {
-                        dragging = Some(i);
-                    }
-                    if resp.drag_stopped() {
-                        released = true;
-                    }
-                    let resp = resp.on_hover_text("Tippen: springen · Ziehen: Reihenfolge ändern");
-                    if on || resp.hovered() {
-                        row_actions(ui, sh, i, n, btn, act);
-                    }
+    egui::ScrollArea::vertical()
+        .max_height(max_h.max(100.0))
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            for i in 0..n {
+                let on = i == cur;
+                let lifted = dragging == Some(i);
+                let fill = if lifted {
+                    c(p.hover)
+                } else if on {
+                    c(p.active)
                 } else {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        // Griff zum Ziehen
-                        let (gr, g) = ui.allocate_exact_size(Vec2::new(18.0, btn), Sense::drag());
-                        for k in 0..3 {
-                            let y = gr.center().y + (k as f32 - 1.0) * 6.0;
-                            for x in [gr.center().x - 3.0, gr.center().x + 3.0] {
-                                ui.painter().circle_filled(Pos2::new(x, y), 1.6, c(p.dim));
-                            }
+                    egui::Color32::TRANSPARENT
+                };
+                let fr = egui::Frame::new()
+                    .fill(fill)
+                    .corner_radius(10)
+                    .inner_margin(egui::Margin::same(4));
+                let row = fr.show(ui, |ui| {
+                    if thumbs {
+                        let (w, h) = page_rect(&ed.board, i)
+                            .map(|r| (r.width(), r.height()))
+                            .unwrap_or((595.0, 842.0));
+                        let (rect, resp) = ui.allocate_exact_size(
+                            Vec2::new(tw, tw * h / w),
+                            Sense::click_and_drag(),
+                        );
+                        ui.painter().rect_filled(rect, 3.0, c(0xFFFBFBF8));
+                        if let Some(Some(t)) = ed.page_thumbs.tex.get(i) {
+                            ui.painter().image(
+                                t.id(),
+                                rect,
+                                egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                                egui::Color32::WHITE,
+                            );
                         }
-                        if g.hovered() {
-                            ctx.set_cursor_icon(egui::CursorIcon::Grab);
-                        }
-                        if g.drag_started() {
-                            dragging = Some(i);
-                        }
-                        if g.drag_stopped() {
-                            released = true;
-                        }
-                        let t = egui::RichText::new(format!("Seite {}", i + 1)).size(15.0).color(c(p.text));
-                        let w = ui.available_width() - 3.0 * btn - 8.0;
-                        if ui.add(egui::Button::new(t).fill(egui::Color32::TRANSPARENT).min_size(Vec2::new(w.max(60.0), btn))).clicked() {
+                        ui.painter().rect_stroke(
+                            rect,
+                            3.0,
+                            egui::Stroke::new(1.0, c(if on { p.accent } else { p.line })),
+                            egui::StrokeKind::Inside,
+                        );
+                        ui.label(
+                            egui::RichText::new(format!("{}", i + 1))
+                                .size(12.0)
+                                .color(c(p.dim)),
+                        );
+                        if resp.clicked() {
                             *act = Some(Act::Goto(i));
                         }
-                        row_actions(ui, sh, i, n, btn, act);
-                    });
-                }
-            });
-            rows.push(row.response.rect);
-        }
-        // Einfügemarke beim Ziehen
-        if let (Some(from), Some(pos)) = (dragging, ctx.pointer_interact_pos()) {
-            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-            let to = drop_target(&rows, from, pos.y);
-            if to != from {
-                let r = rows[to];
-                let y = if to > from { r.bottom() + 1.0 } else { r.top() - 1.0 };
-                ui.painter().hline(r.x_range(), y, egui::Stroke::new(3.0, c(p.accent)));
+                        if resp.drag_started() {
+                            dragging = Some(i);
+                        }
+                        if resp.drag_stopped() {
+                            released = true;
+                        }
+                        let resp =
+                            resp.on_hover_text("Tippen: springen · Ziehen: Reihenfolge ändern");
+                        if on || resp.hovered() {
+                            row_actions(ui, sh, i, n, btn, act);
+                        }
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            // Griff zum Ziehen
+                            let (gr, g) =
+                                ui.allocate_exact_size(Vec2::new(18.0, btn), Sense::drag());
+                            for k in 0..3 {
+                                let y = gr.center().y + (k as f32 - 1.0) * 6.0;
+                                for x in [gr.center().x - 3.0, gr.center().x + 3.0] {
+                                    ui.painter().circle_filled(Pos2::new(x, y), 1.6, c(p.dim));
+                                }
+                            }
+                            if g.hovered() {
+                                ctx.set_cursor_icon(egui::CursorIcon::Grab);
+                            }
+                            if g.drag_started() {
+                                dragging = Some(i);
+                            }
+                            if g.drag_stopped() {
+                                released = true;
+                            }
+                            let t = egui::RichText::new(format!("Seite {}", i + 1))
+                                .size(15.0)
+                                .color(c(p.text));
+                            let w = ui.available_width() - 3.0 * btn - 8.0;
+                            if ui
+                                .add(
+                                    egui::Button::new(t)
+                                        .fill(egui::Color32::TRANSPARENT)
+                                        .min_size(Vec2::new(w.max(60.0), btn)),
+                                )
+                                .clicked()
+                            {
+                                *act = Some(Act::Goto(i));
+                            }
+                            row_actions(ui, sh, i, n, btn, act);
+                        });
+                    }
+                });
+                rows.push(row.response.rect);
             }
-        }
-    });
+            // Einfügemarke beim Ziehen
+            if let (Some(from), Some(pos)) = (dragging, ctx.pointer_interact_pos()) {
+                ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                let to = drop_target(&rows, from, pos.y);
+                if to != from {
+                    let r = rows[to];
+                    let y = if to > from {
+                        r.bottom() + 1.0
+                    } else {
+                        r.top() - 1.0
+                    };
+                    ui.painter()
+                        .hline(r.x_range(), y, egui::Stroke::new(3.0, c(p.accent)));
+                }
+            }
+        });
     if released {
-        if let (Some(from), Some(pos)) = (dragging, ctx.pointer_interact_pos().or(ctx.input(|i| i.pointer.latest_pos()))) {
+        if let (Some(from), Some(pos)) = (
+            dragging,
+            ctx.pointer_interact_pos()
+                .or(ctx.input(|i| i.pointer.latest_pos())),
+        ) {
             let to = drop_target(&rows, from, pos.y);
             if to != from {
                 *act = Some(Act::Move(from, to));
@@ -420,7 +612,10 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
     });
     ui.add_space(6.0);
     ui.horizontal_wrapped(|ui| {
-        if style::accent_btn(ui, "+ Seite", btn - 6.0).on_hover_text("Neue Seite nach der aktuellen").clicked() {
+        if style::accent_btn(ui, "+ Seite", btn - 6.0)
+            .on_hover_text("Neue Seite nach der aktuellen")
+            .clicked()
+        {
             *act = Some(Act::Add);
         }
         // Zu Seite springen
@@ -439,13 +634,34 @@ fn row_actions(ui: &mut Ui, sh: &mut Shared, i: usize, n: usize, btn: f32, act: 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         let small = Vec2::splat(btn - 6.0);
-        if i > 0 && ui.add(egui::Button::new("↑").min_size(small)).on_hover_text("Nach oben").clicked() {
+        if i > 0
+            && ui
+                .add(egui::Button::new("↑").min_size(small))
+                .on_hover_text("Nach oben")
+                .clicked()
+        {
             *act = Some(Act::Move(i, i - 1));
         }
-        if i + 1 < n && ui.add(egui::Button::new("↓").min_size(small)).on_hover_text("Nach unten").clicked() {
+        if i + 1 < n
+            && ui
+                .add(egui::Button::new("↓").min_size(small))
+                .on_hover_text("Nach unten")
+                .clicked()
+        {
             *act = Some(Act::Move(i, i + 1));
         }
-        if style::icon_btn(ui, &mut sh.icons, owndraw_core::icons::TRASH, style::pal().danger, false, false, small.x, "Seite löschen").clicked() {
+        if style::icon_btn(
+            ui,
+            &mut sh.icons,
+            owndraw_core::icons::TRASH,
+            style::pal().danger,
+            false,
+            false,
+            small.x,
+            "Seite löschen",
+        )
+        .clicked()
+        {
             *act = Some(Act::Delete(i));
         }
     });
@@ -457,7 +673,11 @@ mod tests {
 
     #[test]
     fn ziel_beim_ziehen() {
-        let rows: Vec<egui::Rect> = (0..4).map(|i| egui::Rect::from_min_size(Pos2::new(0.0, i as f32 * 100.0), Vec2::new(50.0, 90.0))).collect();
+        let rows: Vec<egui::Rect> = (0..4)
+            .map(|i| {
+                egui::Rect::from_min_size(Pos2::new(0.0, i as f32 * 100.0), Vec2::new(50.0, 90.0))
+            })
+            .collect();
         assert_eq!(drop_target(&rows, 0, 10.0), 0);
         assert_eq!(drop_target(&rows, 0, 160.0), 1);
         assert_eq!(drop_target(&rows, 0, 260.0), 2);

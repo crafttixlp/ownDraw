@@ -89,11 +89,20 @@ impl ImageStore {
 }
 
 fn sha256_hex(b: &[u8]) -> String {
-    Sha256::digest(b).iter().map(|x| format!("{x:02x}")).collect()
+    Sha256::digest(b)
+        .iter()
+        .map(|x| format!("{x:02x}"))
+        .collect()
 }
 
 fn clean_ext(e: &str) -> String {
-    let e: String = e.trim_start_matches('.').to_ascii_lowercase().chars().filter(char::is_ascii_alphanumeric).take(5).collect();
+    let e: String = e
+        .trim_start_matches('.')
+        .to_ascii_lowercase()
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(5)
+        .collect();
     if e.is_empty() {
         "png".into()
     } else {
@@ -102,7 +111,13 @@ fn clean_ext(e: &str) -> String {
 }
 
 fn safe_name(n: &str) -> bool {
-    !n.is_empty() && n.len() < 200 && !n.contains('/') && !n.contains('\\') && !n.contains("..") && !n.contains('\0') && !n.starts_with('.')
+    !n.is_empty()
+        && n.len() < 200
+        && !n.contains('/')
+        && !n.contains('\\')
+        && !n.contains("..")
+        && !n.contains('\0')
+        && !n.starts_with('.')
 }
 
 /// Ein Board-JSON mit einer Ebene (wie `Board::new(1.0).to_json()`).
@@ -124,7 +139,12 @@ pub fn rfc3339(ms: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }
 
 /// UUID v4 (Zufall aus `store::random_hex`).
@@ -133,7 +153,14 @@ pub fn new_uuid() -> String {
     h[12] = b'4';
     h[16] = b"89ab"[(h[16] % 4) as usize];
     let s = String::from_utf8(h).unwrap_or_default();
-    format!("{}-{}-{}-{}-{}", &s[0..8], &s[8..12], &s[12..16], &s[16..20], &s[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &s[0..8],
+        &s[8..12],
+        &s[12..16],
+        &s[16..20],
+        &s[20..32]
+    )
 }
 
 /// Ein Board (Image-Items: Feld "f") – Iterator über veränderbare Img-Items.
@@ -195,7 +222,10 @@ fn fmt_err<E: std::fmt::Display>(what: &str) -> impl FnOnce(E) -> DocError + '_ 
 }
 
 fn num(v: Option<&Value>, d: f32) -> f32 {
-    v.and_then(Value::as_f64).map(|x| x as f32).filter(|x| *x > 0.0).unwrap_or(d)
+    v.and_then(Value::as_f64)
+        .map(|x| x as f32)
+        .filter(|x| *x > 0.0)
+        .unwrap_or(d)
 }
 
 fn mode_from_manifest(m: &Value) -> BoardMode {
@@ -204,8 +234,15 @@ fn mode_from_manifest(m: &Value) -> BoardMode {
     }
     let def = PageSetup::default();
     let pg = m.get("page").filter(|v| v.is_object());
-    let (w, h) = (num(pg.and_then(|p| p.get("w")), def.w), num(pg.and_then(|p| p.get("h")), def.h));
-    let bg = pg.and_then(|p| p.get("bg")).and_then(Value::as_str).map(PageBg::from_name).unwrap_or(def.bg);
+    let (w, h) = (
+        num(pg.and_then(|p| p.get("w")), def.w),
+        num(pg.and_then(|p| p.get("h")), def.h),
+    );
+    let bg = pg
+        .and_then(|p| p.get("bg"))
+        .and_then(Value::as_str)
+        .map(PageBg::from_name)
+        .unwrap_or(def.bg);
     let mut pages: Vec<Page> = m
         .get("pages")
         .and_then(Value::as_array)
@@ -213,17 +250,31 @@ fn mode_from_manifest(m: &Value) -> BoardMode {
             a.iter()
                 .filter(|p| p.is_object())
                 .map(|p| Page {
-                    id: p.get("id").and_then(Value::as_str).map(String::from).unwrap_or_else(|| crate::store::random_hex(8)),
+                    id: p
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                        .unwrap_or_else(|| crate::store::random_hex(8)),
                     w: num(p.get("w"), w),
                     h: num(p.get("h"), h),
-                    bg: p.get("bg").and_then(Value::as_str).map(PageBg::from_name).unwrap_or(bg),
+                    bg: p
+                        .get("bg")
+                        .and_then(Value::as_str)
+                        .map(PageBg::from_name)
+                        .unwrap_or(bg),
                     extra: p.get("extra").cloned().unwrap_or(Value::Null),
                 })
                 .collect()
         })
         .unwrap_or_default();
     if pages.is_empty() {
-        pages.push(Page { id: crate::store::random_hex(8), w, h, bg, extra: Value::Null });
+        pages.push(Page {
+            id: crate::store::random_hex(8),
+            w,
+            h,
+            bg,
+            extra: Value::Null,
+        });
     }
     BoardMode::Pages(PageSetup { w, h, bg, pages })
 }
@@ -244,10 +295,22 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
             continue;
         }
         let img = n.strip_prefix("img/").map(String::from);
-        if img.is_none() && !matches!(n.as_str(), "manifest.json" | "meta.json" | "board.json" | "thumb.png") {
+        if img.is_none()
+            && !matches!(
+                n.as_str(),
+                "manifest.json" | "meta.json" | "board.json" | "thumb.png"
+            )
+        {
             continue;
         }
-        let d = read_limited(&mut e, if img.is_some() { MAX_TOTAL - total.min(MAX_TOTAL) } else { MAX_SMALL })?;
+        let d = read_limited(
+            &mut e,
+            if img.is_some() {
+                MAX_TOTAL - total.min(MAX_TOTAL)
+            } else {
+                MAX_SMALL
+            },
+        )?;
         total += d.len() as u64;
         if total > MAX_TOTAL {
             return Err(DocError::Format("Datei zu groß".into()));
@@ -264,24 +327,56 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
             _ => thumb = Some(d),
         }
     }
-    let board: Value = serde_json::from_slice(&board.ok_or_else(|| DocError::Format("board.json fehlt".into()))?).map_err(fmt_err("board.json"))?;
+    let board: Value =
+        serde_json::from_slice(&board.ok_or_else(|| DocError::Format("board.json fehlt".into()))?)
+            .map_err(fmt_err("board.json"))?;
     if !board.is_object() {
         return Err(DocError::Format("board.json ist kein Objekt".into()));
     }
     let now = rfc3339(crate::store::now_ms());
     let (meta, mode) = if let Some(mb) = manifest {
         let m: Value = serde_json::from_slice(&mb).map_err(fmt_err("manifest.json"))?;
-        let obj = m.as_object().ok_or_else(|| DocError::Format("manifest.json ist kein Objekt".into()))?;
-        if obj.get("format").and_then(Value::as_str).is_some_and(|f| f != "owndraw") {
+        let obj = m
+            .as_object()
+            .ok_or_else(|| DocError::Format("manifest.json ist kein Objekt".into()))?;
+        if obj
+            .get("format")
+            .and_then(Value::as_str)
+            .is_some_and(|f| f != "owndraw")
+        {
             return Err(DocError::Format("kein OwnDraw-Manifest".into()));
         }
-        let version = obj.get("version").and_then(Value::as_i64).unwrap_or(FORMAT_VERSION);
-        let extra: Map<String, Value> =
-            obj.iter().filter(|(k, _)| !matches!(k.as_str(), "format" | "version" | "id" | "name" | "mode" | "page" | "pages" | "modified")).map(|(k, v)| (k.clone(), v.clone())).collect();
+        let version = obj
+            .get("version")
+            .and_then(Value::as_i64)
+            .unwrap_or(FORMAT_VERSION);
+        let extra: Map<String, Value> = obj
+            .iter()
+            .filter(|(k, _)| {
+                !matches!(
+                    k.as_str(),
+                    "format" | "version" | "id" | "name" | "mode" | "page" | "pages" | "modified"
+                )
+            })
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         let meta = Meta {
-            id: obj.get("id").and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(new_uuid),
-            name: obj.get("name").and_then(Value::as_str).unwrap_or("Board").to_string(),
-            modified: obj.get("modified").and_then(Value::as_str).map(String::from).unwrap_or(now),
+            id: obj
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .unwrap_or_else(new_uuid),
+            name: obj
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("Board")
+                .to_string(),
+            modified: obj
+                .get("modified")
+                .and_then(Value::as_str)
+                .map(String::from)
+                .unwrap_or(now),
             version,
             read_only: version > FORMAT_VERSION,
             extra,
@@ -289,11 +384,34 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
         (meta, mode_from_manifest(&m))
     } else {
         // v1: meta.json {"name","format":1,"app"}
-        let m: Value = meta1.and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
-        let name = m.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).unwrap_or("Importiertes Board");
-        (Meta { id: new_uuid(), name: name.chars().take(80).collect(), modified: now, version: 1, read_only: false, extra: Map::new() }, BoardMode::Infinite)
+        let m: Value = meta1
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null);
+        let name = m
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("Importiertes Board");
+        (
+            Meta {
+                id: new_uuid(),
+                name: name.chars().take(80).collect(),
+                modified: now,
+                version: 1,
+                read_only: false,
+                extra: Map::new(),
+            },
+            BoardMode::Infinite,
+        )
     };
-    Ok(Document { meta, mode, board, images, thumb })
+    Ok(Document {
+        meta,
+        mode,
+        board,
+        images,
+        thumb,
+    })
 }
 
 fn page_json(p: &Page) -> Value {
@@ -310,7 +428,11 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     let mut board = doc.board.clone();
     let mut out = ImageStore::default();
     for it in img_items(&mut board) {
-        let f = it.get("f").and_then(Value::as_str).unwrap_or("").to_string();
+        let f = it
+            .get("f")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         if let Some(b) = doc.images.files.get(&f) {
             let ext = f.rsplit_once('.').map(|(_, e)| e).unwrap_or("png");
             let n = out.add(b.clone(), ext);
@@ -320,7 +442,8 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     let mut m = doc.meta.extra.clone();
     m.insert("format".into(), json!("owndraw"));
     m.insert("version".into(), json!(FORMAT_VERSION));
-    m.entry("app").or_insert_with(|| json!(env!("CARGO_PKG_VERSION")));
+    m.entry("app")
+        .or_insert_with(|| json!(env!("CARGO_PKG_VERSION")));
     m.insert("id".into(), json!(doc.meta.id));
     m.insert("name".into(), json!(doc.meta.name));
     m.insert("modified".into(), json!(rfc3339(crate::store::now_ms())));
@@ -332,23 +455,33 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
         }
         BoardMode::Pages(s) => {
             m.insert("mode".into(), json!("pages"));
-            m.insert("page".into(), json!({"w": s.w as f64, "h": s.h as f64, "bg": s.bg.name()}));
-            m.insert("pages".into(), Value::Array(s.pages.iter().map(page_json).collect()));
+            m.insert(
+                "page".into(),
+                json!({"w": s.w as f64, "h": s.h as f64, "bg": s.bg.name()}),
+            );
+            m.insert(
+                "pages".into(),
+                Value::Array(s.pages.iter().map(page_json).collect()),
+            );
         }
     }
     let mut z = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let opt = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let st = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    z.start_file("manifest.json", opt).map_err(fmt_err("ZIP schreiben"))?;
+    z.start_file("manifest.json", opt)
+        .map_err(fmt_err("ZIP schreiben"))?;
     z.write_all(Value::Object(m).to_string().as_bytes())?;
-    z.start_file("board.json", opt).map_err(fmt_err("ZIP schreiben"))?;
+    z.start_file("board.json", opt)
+        .map_err(fmt_err("ZIP schreiben"))?;
     z.write_all(board.to_string().as_bytes())?;
     if let Some(t) = &doc.thumb {
-        z.start_file("thumb.png", st).map_err(fmt_err("ZIP schreiben"))?;
+        z.start_file("thumb.png", st)
+            .map_err(fmt_err("ZIP schreiben"))?;
         z.write_all(t)?;
     }
     for (n, b) in &out.files {
-        z.start_file(format!("img/{n}"), st).map_err(fmt_err("ZIP schreiben"))?;
+        z.start_file(format!("img/{n}"), st)
+            .map_err(fmt_err("ZIP schreiben"))?;
         z.write_all(b)?;
     }
     Ok(z.finish().map_err(fmt_err("ZIP schreiben"))?.into_inner())
@@ -364,7 +497,9 @@ mod tests {
         for p in im.pixels_mut() {
             *p = image::Rgba([c, 0, 0, 255]);
         }
-        image::DynamicImage::ImageRgba8(im).write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png).unwrap();
+        image::DynamicImage::ImageRgba8(im)
+            .write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png)
+            .unwrap();
         v
     }
 
@@ -383,7 +518,10 @@ mod tests {
     fn check(d: &Document) -> Document {
         let bytes = write_owndraw(d).unwrap();
         let z = zip::ZipArchive::new(Cursor::new(&bytes)).unwrap();
-        let imgs = z.file_names().filter(|n| n.as_ref().is_ok_and(|n| n.starts_with("img/"))).count();
+        let imgs = z
+            .file_names()
+            .filter(|n| n.as_ref().is_ok_and(|n| n.starts_with("img/")))
+            .count();
         assert_eq!(imgs, 2);
         let r = read_owndraw(&bytes).unwrap();
         assert_eq!(r.mode, d.mode);
@@ -410,10 +548,25 @@ mod tests {
 
     #[test]
     fn roundtrip_seiten() {
-        let s = PageSetup { pages: vec![
-            Page { id: "p1".into(), w: 595.0, h: 842.0, bg: PageBg::Grid, extra: Value::Null },
-            Page { id: "p2".into(), w: 420.0, h: 595.0, bg: PageBg::Dotted, extra: json!({"pdf": "x"}) },
-        ], ..PageSetup::default() };
+        let s = PageSetup {
+            pages: vec![
+                Page {
+                    id: "p1".into(),
+                    w: 595.0,
+                    h: 842.0,
+                    bg: PageBg::Grid,
+                    extra: Value::Null,
+                },
+                Page {
+                    id: "p2".into(),
+                    w: 420.0,
+                    h: 595.0,
+                    bg: PageBg::Dotted,
+                    extra: json!({"pdf": "x"}),
+                },
+            ],
+            ..PageSetup::default()
+        };
         let d = sample(BoardMode::Pages(s));
         check(&d);
     }
@@ -457,7 +610,12 @@ mod tests {
         let st = crate::store::Store::new(&base);
         let id = st.create("Alt");
         let img = st.save_image_png(&png(5)).unwrap();
-        st.save(&id, &json!({"bg":0,"items":[{"t":"i","f":img}],"layers":[]}).to_string(), Some(&png(6)), true);
+        st.save(
+            &id,
+            &json!({"bg":0,"items":[{"t":"i","f":img}],"layers":[]}).to_string(),
+            Some(&png(6)),
+            true,
+        );
         let mut buf = Cursor::new(Vec::new());
         assert!(st.export_board(&id, &mut buf));
         let d = read_owndraw(buf.get_ref()).unwrap();

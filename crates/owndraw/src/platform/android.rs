@@ -66,7 +66,10 @@ pub mod bridge {
 
     pub fn on_picked(tag: i32, uri: Option<String>) {
         let file = uri.map(|u| uri_to_ref(&u));
-        lock().events.push(PlatformEvent::Picked { tag: tag as Tag, file });
+        lock().events.push(PlatformEvent::Picked {
+            tag: tag as Tag,
+            file,
+        });
         repaint();
     }
 
@@ -90,7 +93,9 @@ pub mod bridge {
                 log::warn!("onPause: App hat das Pause-Ereignis nicht rechtzeitig verarbeitet");
                 break;
             }
-            let (g, _) = cv.wait_timeout(q, deadline - now).unwrap_or_else(|e| e.into_inner());
+            let (g, _) = cv
+                .wait_timeout(q, deadline - now)
+                .unwrap_or_else(|e| e.into_inner());
             q = g;
             if !q.pause_pending {
                 repaint();
@@ -99,11 +104,19 @@ pub mod bridge {
     }
 
     pub fn on_open(uri: String) {
-        lock().events.push(PlatformEvent::OpenFile(uri_to_ref(&uri)));
+        lock()
+            .events
+            .push(PlatformEvent::OpenFile(uri_to_ref(&uri)));
         repaint();
     }
 
-    pub fn on_drop(uri: Option<String>, text: Option<String>, mime: Option<String>, x: f32, y: f32) {
+    pub fn on_drop(
+        uri: Option<String>,
+        text: Option<String>,
+        mime: Option<String>,
+        x: f32,
+        y: f32,
+    ) {
         let pos = Some((x, y));
         let d = if let Some(u) = uri {
             let file = uri_to_ref(&u);
@@ -111,9 +124,19 @@ pub mod bridge {
                 FileRef::Path(_) => file.display_name(),
                 FileRef::Uri(u) => query_name(u).unwrap_or_else(|| file.display_name()),
             };
-            Drop { name: with_ext(name, mime.as_deref()), file: Some(file), bytes: None, pos }
+            Drop {
+                name: with_ext(name, mime.as_deref()),
+                file: Some(file),
+                bytes: None,
+                pos,
+            }
         } else if let Some(t) = text {
-            Drop { file: None, bytes: Some(t.into_bytes()), name: "text.txt".into(), pos }
+            Drop {
+                file: None,
+                bytes: Some(t.into_bytes()),
+                name: "text.txt".into(),
+                pos,
+            }
         } else {
             return;
         };
@@ -185,8 +208,11 @@ type R<T> = Result<T, Fail>;
 fn with_env<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> R<T>) -> io::Result<T> {
     let ctx = ndk_context::android_context();
     // SAFETY: android-activity setzt den Kontext vor `android_main`; VM und Activity-Global-Ref leben so lange wie die App.
-    let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| io::Error::other(e.to_string()))?;
-    let mut env = vm.attach_current_thread_permanently().map_err(|e| io::Error::other(e.to_string()))?;
+    let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }
+        .map_err(|e| io::Error::other(e.to_string()))?;
+    let mut env = vm
+        .attach_current_thread_permanently()
+        .map_err(|e| io::Error::other(e.to_string()))?;
     // SAFETY: globale Referenz der Activity (gehört android-activity, wird hier nicht freigegeben).
     let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
     let r = env.with_local_frame(64, |env| {
@@ -216,7 +242,9 @@ fn take_exception(env: &mut JNIEnv) -> Option<io::Error> {
         io::ErrorKind::PermissionDenied
     } else if msg.starts_with("java.io.FileNotFoundException") {
         io::ErrorKind::NotFound
-    } else if msg.starts_with("java.lang.UnsupportedOperationException") || msg.starts_with("java.lang.IllegalArgumentException") {
+    } else if msg.starts_with("java.lang.UnsupportedOperationException")
+        || msg.starts_with("java.lang.IllegalArgumentException")
+    {
         io::ErrorKind::Unsupported
     } else {
         io::ErrorKind::Other
@@ -258,19 +286,35 @@ fn rstr(env: &mut JNIEnv, o: JObject) -> R<Option<String>> {
 
 fn parse_uri<'l>(env: &mut JNIEnv<'l>, s: &str) -> R<JObject<'l>> {
     let js = jstr(env, s)?;
-    Ok(env.call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&js)])?.l()?)
+    Ok(env
+        .call_static_method(
+            "android/net/Uri",
+            "parse",
+            "(Ljava/lang/String;)Landroid/net/Uri;",
+            &[JValue::Object(&js)],
+        )?
+        .l()?)
 }
 
 fn uri_string(env: &mut JNIEnv, uri: &JObject) -> R<Option<String>> {
     if uri.is_null() {
         return Ok(None);
     }
-    let s = env.call_method(uri, "toString", "()Ljava/lang/String;", &[])?.l()?;
+    let s = env
+        .call_method(uri, "toString", "()Ljava/lang/String;", &[])?
+        .l()?;
     rstr(env, s)
 }
 
 fn resolver<'l>(env: &mut JNIEnv<'l>, act: &JObject) -> R<JObject<'l>> {
-    Ok(env.call_method(act, "getContentResolver", "()Landroid/content/ContentResolver;", &[])?.l()?)
+    Ok(env
+        .call_method(
+            act,
+            "getContentResolver",
+            "()Landroid/content/ContentResolver;",
+            &[],
+        )?
+        .l()?)
 }
 
 fn string_array<'l>(env: &mut JNIEnv<'l>, items: &[&str]) -> R<JObjectArray<'l>> {
@@ -284,19 +328,33 @@ fn string_array<'l>(env: &mut JNIEnv<'l>, items: &[&str]) -> R<JObjectArray<'l>>
 
 fn new_intent<'l>(env: &mut JNIEnv<'l>, action: &str) -> R<JObject<'l>> {
     let a = jstr(env, action)?;
-    Ok(env.new_object("android/content/Intent", "(Ljava/lang/String;)V", &[JValue::Object(&a)])?)
+    Ok(env.new_object(
+        "android/content/Intent",
+        "(Ljava/lang/String;)V",
+        &[JValue::Object(&a)],
+    )?)
 }
 
 fn intent_str<'l>(env: &mut JNIEnv<'l>, intent: &JObject, method: &str, value: &str) -> R<()> {
     let v = jstr(env, value)?;
-    env.call_method(intent, method, "(Ljava/lang/String;)Landroid/content/Intent;", &[JValue::Object(&v)])?;
+    env.call_method(
+        intent,
+        method,
+        "(Ljava/lang/String;)Landroid/content/Intent;",
+        &[JValue::Object(&v)],
+    )?;
     Ok(())
 }
 
 fn intent_extra_str(env: &mut JNIEnv, intent: &JObject, key: &str, value: &str) -> R<()> {
     let k = jstr(env, key)?;
     let v = jstr(env, value)?;
-    env.call_method(intent, "putExtra", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;", &[JValue::Object(&k), JValue::Object(&v)])?;
+    env.call_method(
+        intent,
+        "putExtra",
+        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+        &[JValue::Object(&k), JValue::Object(&v)],
+    )?;
     Ok(())
 }
 
@@ -306,11 +364,23 @@ const FLAG_GRANT_WRITE_URI_PERMISSION: i32 = 0x0000_0002;
 const FLAG_GRANT_PERSISTABLE_URI_PERMISSION: i32 = 0x0000_0040;
 
 fn start_for_result(env: &mut JNIEnv, act: &JObject, intent: &JObject, tag: Tag) -> R<()> {
-    let flags = FLAG_GRANT_READ_URI_PERMISSION | FLAG_GRANT_WRITE_URI_PERMISSION | FLAG_GRANT_PERSISTABLE_URI_PERMISSION;
-    env.call_method(intent, "addFlags", "(I)Landroid/content/Intent;", &[JValue::Int(flags)])?;
+    let flags = FLAG_GRANT_READ_URI_PERMISSION
+        | FLAG_GRANT_WRITE_URI_PERMISSION
+        | FLAG_GRANT_PERSISTABLE_URI_PERMISSION;
+    env.call_method(
+        intent,
+        "addFlags",
+        "(I)Landroid/content/Intent;",
+        &[JValue::Int(flags)],
+    )?;
     // requestCode muss ≥ 0 sein; Tags > i32::MAX werden abgeschnitten.
     let code = (tag & 0x7fff_ffff) as i32;
-    env.call_method(act, "startActivityForResult", "(Landroid/content/Intent;I)V", &[JValue::Object(intent), JValue::Int(code)])?;
+    env.call_method(
+        act,
+        "startActivityForResult",
+        "(Landroid/content/Intent;I)V",
+        &[JValue::Object(intent), JValue::Int(code)],
+    )?;
     Ok(())
 }
 
@@ -349,7 +419,13 @@ fn open_mimes(kinds: &[FileKind]) -> Vec<&'static str> {
 /// MIME-Typ für neu angelegte Dateien (kein Platzhalter erlaubt).
 fn create_mime(kind: FileKind, name: &str) -> &'static str {
     match kind {
-        FileKind::Image => match name.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+        FileKind::Image => match name
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "jpg" | "jpeg" => "image/jpeg",
             "webp" => "image/webp",
             _ => "image/png",
@@ -373,7 +449,12 @@ fn document_uri<'l>(env: &mut JNIEnv<'l>, act: &JObject, uri: &JObject) -> R<JOb
         return Ok(env.new_local_ref(uri)?);
     }
     let id = env
-        .call_static_method("android/provider/DocumentsContract", "getTreeDocumentId", "(Landroid/net/Uri;)Ljava/lang/String;", &[JValue::Object(uri)])?
+        .call_static_method(
+            "android/provider/DocumentsContract",
+            "getTreeDocumentId",
+            "(Landroid/net/Uri;)Ljava/lang/String;",
+            &[JValue::Object(uri)],
+        )?
         .l()?;
     Ok(env
         .call_static_method(
@@ -405,7 +486,14 @@ fn query_column(env: &mut JNIEnv, act: &JObject, uri: &JObject, column: &str) ->
         if !env.call_method(&cur, "moveToFirst", "()Z", &[])?.z()? {
             return Ok(None);
         }
-        let s = env.call_method(&cur, "getString", "(I)Ljava/lang/String;", &[JValue::Int(0)])?.l()?;
+        let s = env
+            .call_method(
+                &cur,
+                "getString",
+                "(I)Ljava/lang/String;",
+                &[JValue::Int(0)],
+            )?
+            .l()?;
         rstr(env, s)
     })();
     close_quietly(env, &cur);
@@ -426,9 +514,19 @@ fn read_uri(uri: &str) -> io::Result<Vec<u8>> {
     with_env(|env, act| {
         let u = parse_uri(env, uri)?;
         let res = resolver(env, act)?;
-        let is = env.call_method(&res, "openInputStream", "(Landroid/net/Uri;)Ljava/io/InputStream;", &[JValue::Object(&u)])?.l()?;
+        let is = env
+            .call_method(
+                &res,
+                "openInputStream",
+                "(Landroid/net/Uri;)Ljava/io/InputStream;",
+                &[JValue::Object(&u)],
+            )?
+            .l()?;
         if is.is_null() {
-            return Err(Fail(io::Error::new(io::ErrorKind::NotFound, "openInputStream lieferte null")));
+            return Err(Fail(io::Error::new(
+                io::ErrorKind::NotFound,
+                "openInputStream lieferte null",
+            )));
         }
         const N: usize = 64 * 1024;
         let buf = env.new_byte_array(N as i32)?;
@@ -436,7 +534,9 @@ fn read_uri(uri: &str) -> io::Result<Vec<u8>> {
         let mut tmp = vec![0i8; N];
         let r = (|| -> R<()> {
             loop {
-                let n = env.call_method(&is, "read", "([B)I", &[JValue::Object(&buf)])?.i()?;
+                let n = env
+                    .call_method(&is, "read", "([B)I", &[JValue::Object(&buf)])?
+                    .i()?;
                 if n < 0 {
                     return Ok(());
                 }
@@ -469,7 +569,12 @@ fn write_uri(cache: &Path, uri: &str, data: &[u8]) -> io::Result<()> {
         for mode in ["wt", "rwt"] {
             let m = jstr(env, mode)?;
             match env
-                .call_method(&res, "openOutputStream", "(Landroid/net/Uri;Ljava/lang/String;)Ljava/io/OutputStream;", &[JValue::Object(&u), JValue::Object(&m)])
+                .call_method(
+                    &res,
+                    "openOutputStream",
+                    "(Landroid/net/Uri;Ljava/lang/String;)Ljava/io/OutputStream;",
+                    &[JValue::Object(&u), JValue::Object(&m)],
+                )
                 .and_then(|v| v.l())
             {
                 Ok(o) if !o.is_null() => {
@@ -477,11 +582,16 @@ fn write_uri(cache: &Path, uri: &str, data: &[u8]) -> io::Result<()> {
                     break;
                 }
                 Ok(_) => last = Some(io::Error::other("openOutputStream lieferte null")),
-                Err(e) => last = Some(take_exception(env).unwrap_or_else(|| io::Error::other(e.to_string()))),
+                Err(e) => {
+                    last =
+                        Some(take_exception(env).unwrap_or_else(|| io::Error::other(e.to_string())))
+                }
             }
         }
         if os.is_null() {
-            return Err(Fail(last.unwrap_or_else(|| io::Error::other("openOutputStream fehlgeschlagen"))));
+            return Err(Fail(last.unwrap_or_else(|| {
+                io::Error::other("openOutputStream fehlgeschlagen")
+            })));
         }
         const N: usize = 64 * 1024;
         let buf = env.new_byte_array(N as i32)?;
@@ -496,7 +606,12 @@ fn write_uri(cache: &Path, uri: &str, data: &[u8]) -> io::Result<()> {
                 // SAFETY: u8 und i8 haben gleiche Größe und Ausrichtung.
                 let signed = unsafe { std::slice::from_raw_parts(chunk.as_ptr().cast::<i8>(), n) };
                 env.set_byte_array_region(&buf, 0, signed)?;
-                env.call_method(&os, "write", "([BII)V", &[JValue::Object(&buf), JValue::Int(0), JValue::Int(n as i32)])?;
+                env.call_method(
+                    &os,
+                    "write",
+                    "([BII)V",
+                    &[JValue::Object(&buf), JValue::Int(0), JValue::Int(n as i32)],
+                )?;
             }
             env.call_method(&os, "flush", "()V", &[])?;
             Ok(())
@@ -514,19 +629,30 @@ fn write_uri(cache: &Path, uri: &str, data: &[u8]) -> io::Result<()> {
             let _ = std::fs::remove_file(&tmp);
             Ok(())
         }
-        Err(e) => Err(io::Error::new(e.kind(), format!("{e} (Kopie: {})", tmp.display()))),
+        Err(e) => Err(io::Error::new(
+            e.kind(),
+            format!("{e} (Kopie: {})", tmp.display()),
+        )),
     }
 }
 
 fn fnv1a(b: &[u8]) -> u64 {
-    b.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &c| (h ^ c as u64).wrapping_mul(0x0100_0000_01b3))
+    b.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &c| {
+        (h ^ c as u64).wrapping_mul(0x0100_0000_01b3)
+    })
 }
 
 /// Schreibt atomar über eine temporäre Datei im selben Ordner und Umbenennen.
 fn write_path_atomic(p: &Path, data: &[u8]) -> io::Result<()> {
-    let dir = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let dir = p
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir)?;
-    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let tmp = dir.join(format!(".{name}.{}.tmp", std::process::id()));
     let r = (|| {
         let mut f = std::fs::File::create(&tmp)?;
@@ -568,15 +694,22 @@ impl AndroidPlatform {
     /// `data_dir` = `AndroidApp::internal_data_path()`.
     pub fn new(data_dir: PathBuf) -> AndroidPlatform {
         let cache_dir = with_env(|env, act| {
-            let f = env.call_method(act, "getCacheDir", "()Ljava/io/File;", &[])?.l()?;
-            let s = env.call_method(&f, "getAbsolutePath", "()Ljava/lang/String;", &[])?.l()?;
+            let f = env
+                .call_method(act, "getCacheDir", "()Ljava/io/File;", &[])?
+                .l()?;
+            let s = env
+                .call_method(&f, "getAbsolutePath", "()Ljava/lang/String;", &[])?
+                .l()?;
             rstr(env, s)
         })
         .ok()
         .flatten()
         .map(PathBuf::from)
         .unwrap_or_else(|| data_dir.parent().unwrap_or(&data_dir).join("cache"));
-        AndroidPlatform { data_dir, cache_dir }
+        AndroidPlatform {
+            data_dir,
+            cache_dir,
+        }
     }
 
     /// Gewählter Standard-Ort aus `settings.json` (Feld `default_dir`), falls gesetzt.
@@ -590,11 +723,16 @@ impl AndroidPlatform {
     fn clip_png(&self, w: u32, h: u32, rgba: Vec<u8>) -> Option<PathBuf> {
         let img = image::RgbaImage::from_raw(w, h, rgba)?;
         let mut png = Vec::new();
-        image::DynamicImage::ImageRgba8(img).write_to(&mut io::Cursor::new(&mut png), image::ImageFormat::Png).ok()?;
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .ok()?;
         let dir = self.cache_dir.join("clip");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).ok()?;
-        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
         let p = dir.join(format!("owndraw-{ms}.png"));
         std::fs::write(&p, png).ok()?;
         Some(p)
@@ -623,7 +761,12 @@ impl Platform for AndroidPlatform {
                 intent_str(env, &i, "setType", "*/*")?;
                 let k = jstr(env, "android.intent.extra.MIME_TYPES")?;
                 let arr = string_array(env, &mimes)?;
-                env.call_method(&i, "putExtra", "(Ljava/lang/String;[Ljava/lang/String;)Landroid/content/Intent;", &[JValue::Object(&k), JValue::Object(&arr)])?;
+                env.call_method(
+                    &i,
+                    "putExtra",
+                    "(Ljava/lang/String;[Ljava/lang/String;)Landroid/content/Intent;",
+                    &[JValue::Object(&k), JValue::Object(&arr)],
+                )?;
             }
             start_for_result(env, act, &i, tag)
         });
@@ -686,7 +829,10 @@ impl Platform for AndroidPlatform {
             FileRef::Path(d) => {
                 std::fs::create_dir_all(d)?;
                 let p = unique_path(d, name);
-                std::fs::OpenOptions::new().write(true).create_new(true).open(&p)?;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&p)?;
                 Ok(FileRef::Path(p))
             }
             FileRef::Uri(tree) => {
@@ -707,7 +853,8 @@ impl Platform for AndroidPlatform {
                         .l()?;
                     uri_string(env, &u)
                 })?;
-                s.map(FileRef::Uri).ok_or_else(|| io::Error::other("createDocument lieferte null"))
+                s.map(FileRef::Uri)
+                    .ok_or_else(|| io::Error::other("createDocument lieferte null"))
             }
         }
     }
@@ -726,7 +873,8 @@ impl Platform for AndroidPlatform {
     }
 
     fn default_dir(&self) -> FileRef {
-        self.configured_dir().unwrap_or_else(|| FileRef::Path(self.data_dir.join("boards")))
+        self.configured_dir()
+            .unwrap_or_else(|| FileRef::Path(self.data_dir.join("boards")))
     }
 
     fn config_dir(&self) -> PathBuf {
@@ -742,7 +890,9 @@ impl Platform for AndroidPlatform {
         let entries = log_err(
             "Zwischenablage lesen",
             with_env(|env, act| {
-                let arr = env.call_method(act, "clipGet", "()[Ljava/lang/String;", &[])?.l()?;
+                let arr = env
+                    .call_method(act, "clipGet", "()[Ljava/lang/String;", &[])?
+                    .l()?;
                 if arr.is_null() {
                     return Ok(Vec::new());
                 }
@@ -769,7 +919,10 @@ impl Platform for AndroidPlatform {
             } else if let Some(u) = e.strip_prefix('u') {
                 let (mime, uri) = u.split_once('\n').unwrap_or(("", u));
                 if image.is_none() && (mime.is_empty() || mime.starts_with("image/")) {
-                    image = self.read(&uri_to_ref(uri)).ok().and_then(|b| decode_rgba(&b));
+                    image = self
+                        .read(&uri_to_ref(uri))
+                        .ok()
+                        .and_then(|b| decode_rgba(&b));
                 }
             }
         }
@@ -785,7 +938,10 @@ impl Platform for AndroidPlatform {
         let (text, png) = match d {
             ClipData::Text(t) => (Some(t), None),
             ClipData::Image { w, h, rgba } => (None, self.clip_png(w, h, rgba)),
-            ClipData::Items { json, image } => (Some(format!("{ITEMS_PREFIX}{json}")), image.and_then(|(w, h, rgba)| self.clip_png(w, h, rgba))),
+            ClipData::Items { json, image } => (
+                Some(format!("{ITEMS_PREFIX}{json}")),
+                image.and_then(|(w, h, rgba)| self.clip_png(w, h, rgba)),
+            ),
         };
         let png = png.map(|p| p.to_string_lossy().into_owned());
         log_err(
@@ -799,7 +955,12 @@ impl Platform for AndroidPlatform {
                     Some(p) => jstr(env, p)?,
                     None => JObject::null(),
                 };
-                env.call_method(act, "clipSet", "(Ljava/lang/String;Ljava/lang/String;)V", &[JValue::Object(&t), JValue::Object(&p)])?;
+                env.call_method(
+                    act,
+                    "clipSet",
+                    "(Ljava/lang/String;Ljava/lang/String;)V",
+                    &[JValue::Object(&t), JValue::Object(&p)],
+                )?;
                 Ok(())
             }),
         );
@@ -824,7 +985,12 @@ impl Platform for AndroidPlatform {
             "URL öffnen",
             with_env(|env, act| {
                 let u = jstr(env, url)?;
-                env.call_method(act, "openUrl", "(Ljava/lang/String;)V", &[JValue::Object(&u)])?;
+                env.call_method(
+                    act,
+                    "openUrl",
+                    "(Ljava/lang/String;)V",
+                    &[JValue::Object(&u)],
+                )?;
                 Ok(())
             }),
         );
@@ -841,21 +1007,38 @@ impl Platform for AndroidPlatform {
 pub fn http_get(url: &str) -> io::Result<String> {
     with_env(|env, act| {
         let u = jstr(env, url)?;
-        let r = env.call_method(act, "httpGet", "(Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&u)])?.l()?;
+        let r = env
+            .call_method(
+                act,
+                "httpGet",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[JValue::Object(&u)],
+            )?
+            .l()?;
         Ok(rstr(env, r)?.unwrap_or_default())
     })
 }
 
 /// Lädt nach `dest`. Der blockierende Java-Aufruf läuft in einem eigenen Thread; dieser hier meldet den
 /// Fortschritt (Dateigröße) und gibt den Abbruch weiter.
-pub fn http_download(url: &str, dest: &Path, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(u64, Option<u64>)) -> io::Result<()> {
+pub fn http_download(
+    url: &str,
+    dest: &Path,
+    cancelled: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> io::Result<()> {
     let done = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|s| {
         let h = s.spawn(|| {
             let r = with_env(|env, act| {
                 let u = jstr(env, url)?;
                 let d = jstr(env, &dest.to_string_lossy())?;
-                env.call_method(act, "httpDownload", "(Ljava/lang/String;Ljava/lang/String;)J", &[JValue::Object(&u), JValue::Object(&d)])?;
+                env.call_method(
+                    act,
+                    "httpDownload",
+                    "(Ljava/lang/String;Ljava/lang/String;)J",
+                    &[JValue::Object(&u), JValue::Object(&d)],
+                )?;
                 Ok(())
             });
             done.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -876,7 +1059,8 @@ pub fn http_download(url: &str, dest: &Path, cancelled: &dyn Fn() -> bool, progr
                 );
             }
         }
-        h.join().unwrap_or_else(|_| Err(io::Error::other("Download-Thread abgestürzt")))
+        h.join()
+            .unwrap_or_else(|_| Err(io::Error::other("Download-Thread abgestürzt")))
     })
 }
 
@@ -884,13 +1068,22 @@ pub fn http_download(url: &str, dest: &Path, cancelled: &dyn Fn() -> bool, progr
 pub fn install_apk(apk: &Path) -> io::Result<String> {
     with_env(|env, act| {
         let p = jstr(env, &apk.to_string_lossy())?;
-        let r = env.call_method(act, "installApk", "(Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&p)])?.l()?;
+        let r = env
+            .call_method(
+                act,
+                "installApk",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[JValue::Object(&p)],
+            )?
+            .l()?;
         Ok(rstr(env, r)?.unwrap_or_default())
     })
 }
 
 /// Dialog konnte nicht gestartet werden → als Abbruch melden, damit die App nicht wartet.
 fn on_dialog_failed(tag: Tag) {
-    lock().events.push(PlatformEvent::Picked { tag, file: None });
+    lock()
+        .events
+        .push(PlatformEvent::Picked { tag, file: None });
     repaint();
 }

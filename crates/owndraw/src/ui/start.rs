@@ -34,7 +34,10 @@ impl StartState {
         let tex = session::read_thumb(&*sh.platform, f)
             .and_then(|b| owndraw_core::tiny_skia::Pixmap::decode_png(&b).ok())
             .map(|pm| {
-                let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
+                let img = egui::ColorImage::from_rgba_premultiplied(
+                    [pm.width() as usize, pm.height() as usize],
+                    pm.data(),
+                );
                 ctx.load_texture(format!("thumb-{key}"), img, egui::TextureOptions::LINEAR)
             });
         self.thumbs.insert(key, tex);
@@ -52,7 +55,13 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
     let p = style::pal();
     let env = sh.env;
     let compact = env.ff == FormFactor::Compact;
-    let side: i8 = if compact { 16 } else if env.ff == FormFactor::Medium { 28 } else { 48 };
+    let side: i8 = if compact {
+        16
+    } else if env.ff == FormFactor::Medium {
+        28
+    } else {
+        48
+    };
     let h = env.btn;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(egui::Margin { left: side, right: side, top: 22, bottom: 24 }).show(ui, |ui| {
@@ -192,7 +201,12 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
 fn dashed_round_rect(p: &egui::Painter, r: Rect, rad: f32, st: Stroke) {
     let mut pts = Vec::new();
     let n = 10;
-    let corners = [(r.right() - rad, r.top() + rad, -90.0f32), (r.right() - rad, r.bottom() - rad, 0.0), (r.left() + rad, r.bottom() - rad, 90.0), (r.left() + rad, r.top() + rad, 180.0)];
+    let corners = [
+        (r.right() - rad, r.top() + rad, -90.0f32),
+        (r.right() - rad, r.bottom() - rad, 0.0),
+        (r.left() + rad, r.bottom() - rad, 90.0),
+        (r.left() + rad, r.top() + rad, 180.0),
+    ];
     for (cx, cy, a0) in corners {
         for i in 0..=n {
             let a = (a0 + 90.0 * i as f32 / n as f32).to_radians();

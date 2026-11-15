@@ -1,8 +1,8 @@
 //! Hauptfenster: Bildschirmwechsel (Start, Editor, Einstellungen), Dokumente öffnen/anlegen, Dialog-Ergebnisse,
 //! Hinweise (Toast) und das Anwenden der Einstellungen. Alle Plattform-Zugriffe laufen über `Platform`.
 
-use crate::layout::Env;
 use crate::autosave::{AutosaveStatus, SaveFormat};
+use crate::layout::Env;
 use crate::platform::{FileKind, FileRef, Platform, PlatformEvent, Tag};
 use crate::recent::{Recent, RecentEntry};
 use crate::session::{self, NewParams};
@@ -43,8 +43,15 @@ pub enum Req {
     NewDialog,
     OpenFile(FileRef),
     RemoveRecent(FileRef),
-    PickOpen { purpose: PickPurpose, kinds: Vec<FileKind> },
-    PickSave { purpose: PickPurpose, name: String, kind: FileKind },
+    PickOpen {
+        purpose: PickPurpose,
+        kinds: Vec<FileKind>,
+    },
+    PickSave {
+        purpose: PickPurpose,
+        name: String,
+        kind: FileKind,
+    },
 }
 
 /// Von allen Bildschirmen gemeinsam genutzter Zustand.
@@ -78,7 +85,10 @@ pub enum Screen {
 
 /// Dateiname ohne verbotene Zeichen.
 pub fn safe_file_name(n: &str) -> String {
-    let s: String = n.chars().map(|ch| if "\\/:*?\"<>|".contains(ch) { '_' } else { ch }).collect();
+    let s: String = n
+        .chars()
+        .map(|ch| if "\\/:*?\"<>|".contains(ch) { '_' } else { ch })
+        .collect();
     if s.trim().is_empty() {
         "Board".into()
     } else {
@@ -122,7 +132,16 @@ impl App {
     pub fn new(platform: Box<dyn Platform>, settings: Settings, open_file: Option<FileRef>) -> App {
         let recent = Recent::load(&platform.config_dir());
         App {
-            sh: Shared { platform, settings, icons: Icons::default(), env: Env::new(1000.0, false), now: 0.0, toast: None, dialog: None, reqs: Vec::new() },
+            sh: Shared {
+                platform,
+                settings,
+                icons: Icons::default(),
+                env: Env::new(1000.0, false),
+                now: 0.0,
+                toast: None,
+                dialog: None,
+                reqs: Vec::new(),
+            },
             screen: Screen::Start,
             back_screen: Screen::Start,
             editor: None,
@@ -147,16 +166,28 @@ impl App {
         let n = files.len();
         for p in files {
             let f = FileRef::Path(p);
-            let (name, pages) = session::read_summary(&*self.sh.platform, &f).unwrap_or_else(|| (f.display_name(), false));
-            self.recent.add(RecentEntry { file: f, name, modified_ms: owndraw_core::store::now_ms(), pages });
+            let (name, pages) = session::read_summary(&*self.sh.platform, &f)
+                .unwrap_or_else(|| (f.display_name(), false));
+            self.recent.add(RecentEntry {
+                file: f,
+                name,
+                modified_ms: owndraw_core::store::now_ms(),
+                pages,
+            });
         }
         if n > 0 {
-            self.sh.toast_for(&format!("{n} alte Boards übernommen"), 5.0);
+            self.sh
+                .toast_for(&format!("{n} alte Boards übernommen"), 5.0);
         }
     }
 
     fn recent_entry(f: FileRef, e: &Editor) -> RecentEntry {
-        RecentEntry { file: f, name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board) }
+        RecentEntry {
+            file: f,
+            name: e.name().to_string(),
+            modified_ms: owndraw_core::store::now_ms(),
+            pages: crate::ui::editor::pages::is_pages(&e.board),
+        }
     }
 
     /// Speichert das offene Dokument sofort (Beenden, Pause).
@@ -184,7 +215,12 @@ impl App {
     // ---------------------------------------------------------------- Dokumente
 
     fn default_dir(&self) -> FileRef {
-        self.sh.settings.default_dir.as_deref().and_then(FileRef::from_key).unwrap_or_else(|| self.sh.platform.default_dir())
+        self.sh
+            .settings
+            .default_dir
+            .as_deref()
+            .and_then(FileRef::from_key)
+            .unwrap_or_else(|| self.sh.platform.default_dir())
     }
 
     /// Schließt das offene Dokument (speichert zuerst) und merkt es in „Zuletzt“.
@@ -233,25 +269,46 @@ impl App {
             // Xournal++-Import: Original bleibt unverändert; Autosave schreibt `<name>.owndraw` daneben
             // (oder direkt ins .xopp, wenn eingestellt).
             if doc.meta.name.is_empty() {
-                doc.meta.name = f.display_name().trim_end_matches(".xopp").trim_end_matches(".XOPP").to_string();
+                doc.meta.name = f
+                    .display_name()
+                    .trim_end_matches(".xopp")
+                    .trim_end_matches(".XOPP")
+                    .to_string();
             }
             if self.sh.settings.xopp_autosave_direct {
                 let mut ed = Editor::open(&mut self.sh, doc, Some(f));
                 ed.autosave.set_format(SaveFormat::Xopp);
-                self.sh.toast("Xournal++-Datei geöffnet (Änderungen gehen direkt ins .xopp)");
+                self.sh
+                    .toast("Xournal++-Datei geöffnet (Änderungen gehen direkt ins .xopp)");
                 self.enter_editor(ctx, ed);
                 return;
             }
             let name = format!("{}.owndraw", safe_file_name(&doc.meta.name));
             match &f {
                 FileRef::Path(p) => {
-                    let beside = p.parent().filter(|d| !d.as_os_str().is_empty()).map(|d| FileRef::Path(d.to_path_buf()));
+                    let beside = p
+                        .parent()
+                        .filter(|d| !d.as_os_str().is_empty())
+                        .map(|d| FileRef::Path(d.to_path_buf()));
                     let target = beside
-                        .and_then(|d| self.sh.platform.create_in(&d, &name, FileKind::Owndraw).ok().filter(writable_dir))
-                        .or_else(|| self.sh.platform.create_in(&self.default_dir(), &name, FileKind::Owndraw).ok());
+                        .and_then(|d| {
+                            self.sh
+                                .platform
+                                .create_in(&d, &name, FileKind::Owndraw)
+                                .ok()
+                                .filter(writable_dir)
+                        })
+                        .or_else(|| {
+                            self.sh
+                                .platform
+                                .create_in(&self.default_dir(), &name, FileKind::Owndraw)
+                                .ok()
+                        });
                     match target {
                         Some(t) => self.finish_import(ctx, doc, t),
-                        None => self.sh.toast_for("Kein Speicherort für den Import verfügbar", 4.0),
+                        None => self
+                            .sh
+                            .toast_for("Kein Speicherort für den Import verfügbar", 4.0),
                     }
                 }
                 FileRef::Uri(_) => {
@@ -288,18 +345,32 @@ impl App {
             self.sh.platform.pick_save(&fname, FileKind::Owndraw, tag);
             return;
         }
-        match self.sh.platform.create_in(&self.default_dir(), &fname, FileKind::Owndraw) {
+        match self
+            .sh
+            .platform
+            .create_in(&self.default_dir(), &fname, FileKind::Owndraw)
+        {
             Ok(f) => self.finish_create(ctx, params, f),
-            Err(e) => self.sh.toast_for(&format!("Speicherort nicht verfügbar: {e}"), 4.0),
+            Err(e) => self
+                .sh
+                .toast_for(&format!("Speicherort nicht verfügbar: {e}"), 4.0),
         }
     }
 
     /// Startbildschirm: Bild abgelegt → neues unendliches Board mit dem Bild.
     fn new_with_image(&mut self, ctx: &egui::Context, bytes: &[u8]) {
-        let params = NewParams { name: "Bild".into(), pages: false, ..NewParams::default() };
+        let params = NewParams {
+            name: "Bild".into(),
+            pages: false,
+            ..NewParams::default()
+        };
         let before = self.editor.as_ref().map(|e| e.doc.meta.id.clone());
         self.create(ctx, params, false);
-        if let Some(e) = self.editor.as_mut().filter(|e| Some(&e.doc.meta.id) != before.as_ref()) {
+        if let Some(e) = self
+            .editor
+            .as_mut()
+            .filter(|e| Some(&e.doc.meta.id) != before.as_ref())
+        {
             if let Err(m) = e.import_image_bytes(bytes) {
                 self.sh.toast(&m);
             }
@@ -319,14 +390,21 @@ impl App {
     // ---------------------------------------------------------------- Ereignisse
 
     fn handle_pick(&mut self, ctx: &egui::Context, tag: Tag, file: Option<FileRef>) {
-        let Some((purpose, params)) = self.pending.remove(&tag) else { return };
+        let Some((purpose, params)) = self.pending.remove(&tag) else {
+            return;
+        };
         let Some(f) = file else {
             self.pending_docs.remove(&tag);
             return;
         };
         if let Some(doc) = self.pending_docs.remove(&tag) {
             let f = match f {
-                FileRef::Path(p) if p.extension().is_none_or(|e| !e.eq_ignore_ascii_case("owndraw")) => FileRef::Path(PathBuf::from(format!("{}.owndraw", p.display()))),
+                FileRef::Path(p)
+                    if p.extension()
+                        .is_none_or(|e| !e.eq_ignore_ascii_case("owndraw")) =>
+                {
+                    FileRef::Path(PathBuf::from(format!("{}.owndraw", p.display())))
+                }
                 other => other,
             };
             self.finish_import(ctx, doc, f);
@@ -372,7 +450,11 @@ impl App {
                         self.title(ctx);
                     }
                 }
-                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask)),
+                Req::NewDialog => {
+                    self.sh.dialog = Some(Dialog::new_doc(
+                        self.sh.settings.save_choice == SaveChoice::Ask,
+                    ))
+                }
                 Req::OpenFile(f) => self.open_ref(ctx, f),
                 Req::RemoveRecent(f) => {
                     self.recent.remove(&f);
@@ -382,7 +464,11 @@ impl App {
                     let tag = self.tag(purpose, None);
                     self.sh.platform.pick_open(&kinds, tag);
                 }
-                Req::PickSave { purpose, name, kind } => {
+                Req::PickSave {
+                    purpose,
+                    name,
+                    kind,
+                } => {
                     let tag = self.tag(purpose, None);
                     self.sh.platform.pick_save(&name, kind, tag);
                 }
@@ -391,7 +477,9 @@ impl App {
     }
 
     fn handle_dialog(&mut self, ctx: &egui::Context) {
-        let Some(out) = dialogs::show(ctx, &mut self.sh) else { return };
+        let Some(out) = dialogs::show(ctx, &mut self.sh) else {
+            return;
+        };
         match out {
             Outcome::Create(p, custom) => self.create(ctx, p, custom),
             Outcome::Rename(what, text) => {
@@ -415,25 +503,42 @@ impl App {
     }
 
     fn toast_ui(&mut self, ctx: &egui::Context) {
-        let Some((msg, until)) = self.sh.toast.clone() else { return };
+        let Some((msg, until)) = self.sh.toast.clone() else {
+            return;
+        };
         if self.sh.now >= until {
             self.sh.toast = None;
             return;
         }
-        ctx.request_repaint_after(std::time::Duration::from_secs_f64((until - self.sh.now).max(0.01)));
-        let (anchor, off) = if self.screen == Screen::Editor { (Align2::CENTER_TOP, Vec2::new(0.0, 76.0)) } else { (Align2::CENTER_BOTTOM, Vec2::new(0.0, -40.0)) };
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(
+            (until - self.sh.now).max(0.01),
+        ));
+        let (anchor, off) = if self.screen == Screen::Editor {
+            (Align2::CENTER_TOP, Vec2::new(0.0, 76.0))
+        } else {
+            (Align2::CENTER_BOTTOM, Vec2::new(0.0, -40.0))
+        };
         let maxw = (ctx.content_rect().width() - 32.0).max(120.0);
-        egui::Area::new(egui::Id::unique("toast")).order(egui::Order::Tooltip).anchor(anchor, off).interactable(false).show(ctx, |ui| {
-            egui::Frame::new()
-                .fill(c(0xF2303138))
-                .corner_radius(CornerRadius::same(20))
-                .inner_margin(egui::Margin::symmetric(20, 10))
-                .shadow(egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: Color32::from_black_alpha(80) })
-                .show(ui, |ui| {
-                    ui.set_max_width(maxw - 40.0);
-                    ui.label(egui::RichText::new(msg).size(14.0).color(c(0xFFE9EAEE)));
-                });
-        });
+        egui::Area::new(egui::Id::unique("toast"))
+            .order(egui::Order::Tooltip)
+            .anchor(anchor, off)
+            .interactable(false)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(c(0xF2303138))
+                    .corner_radius(CornerRadius::same(20))
+                    .inner_margin(egui::Margin::symmetric(20, 10))
+                    .shadow(egui::Shadow {
+                        offset: [0, 2],
+                        blur: 8,
+                        spread: 0,
+                        color: Color32::from_black_alpha(80),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_max_width(maxw - 40.0);
+                        ui.label(egui::RichText::new(msg).size(14.0).color(c(0xFFE9EAEE)));
+                    });
+            });
     }
 }
 
@@ -487,27 +592,34 @@ impl eframe::App for App {
 
         let bg = c(style::pal().bg);
         let mut edit_tools = false;
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(bg)).show(ui, |ui| match (self.screen, self.editor.as_mut()) {
-            (Screen::Editor, Some(e)) => e.ui(ui, &mut self.sh),
-            (Screen::Settings, _) => {
-                let sh = &mut self.sh;
-                match crate::ui::settings::show(ui, &mut sh.settings, &*sh.platform) {
-                    SettingsAction::Back => {
-                        self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(bg))
+            .show(ui, |ui| match (self.screen, self.editor.as_mut()) {
+                (Screen::Editor, Some(e)) => e.ui(ui, &mut self.sh),
+                (Screen::Settings, _) => {
+                    let sh = &mut self.sh;
+                    match crate::ui::settings::show(ui, &mut sh.settings, &*sh.platform) {
+                        SettingsAction::Back => {
+                            self.screen =
+                                if self.back_screen == Screen::Editor && self.editor.is_none() {
+                                    Screen::Start
+                                } else {
+                                    self.back_screen
+                                };
+                        }
+                        SettingsAction::PickFolder => {
+                            let tag = self.tag(PickPurpose::DefaultDir, None);
+                            self.sh.platform.pick_folder(tag);
+                        }
+                        SettingsAction::EditTools => edit_tools = true,
+                        SettingsAction::Changed | SettingsAction::None => {}
                     }
-                    SettingsAction::PickFolder => {
-                        let tag = self.tag(PickPurpose::DefaultDir, None);
-                        self.sh.platform.pick_folder(tag);
-                    }
-                    SettingsAction::EditTools => edit_tools = true,
-                    SettingsAction::Changed | SettingsAction::None => {}
                 }
-            }
-            _ => {
-                self.screen = Screen::Start;
-                crate::ui::start::show(ui, &mut self.sh, &mut self.start, &self.recent);
-            }
-        });
+                _ => {
+                    self.screen = Screen::Start;
+                    crate::ui::start::show(ui, &mut self.sh, &mut self.start, &self.recent);
+                }
+            });
         if edit_tools {
             self.start_edit_tools(&ctx);
         }
@@ -523,7 +635,10 @@ impl eframe::App for App {
 /// Ordner der Datei beschreibbar? (Rechte-Probe für den Xournal++-Import daneben; nur Pfade.)
 fn writable_dir(f: &FileRef) -> bool {
     match f {
-        FileRef::Path(p) => p.parent().and_then(|d| std::fs::metadata(d).ok()).is_some_and(|m| !m.permissions().readonly()),
+        FileRef::Path(p) => p
+            .parent()
+            .and_then(|d| std::fs::metadata(d).ok())
+            .is_some_and(|m| !m.permissions().readonly()),
         FileRef::Uri(_) => true,
     }
 }

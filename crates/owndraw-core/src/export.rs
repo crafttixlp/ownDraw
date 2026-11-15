@@ -16,7 +16,10 @@ pub fn pdf_from_pixmap(pm: &Pixmap, pw: f32, ph: f32) -> Vec<u8> {
 
 /// PDF mit n Seiten; `page(i)` liefert das Bild der Seite i und ihre Groesse in Punkt (das Bild fuellt die Seite).
 /// Jede Seite wird sofort komprimiert, damit nie alle Bilder gleichzeitig im Speicher liegen. None, wenn eine Seite fehlt.
-pub fn pdf_pages(n: usize, mut page: impl FnMut(usize) -> Option<(Pixmap, f32, f32)>) -> Option<Vec<u8>> {
+pub fn pdf_pages(
+    n: usize,
+    mut page: impl FnMut(usize) -> Option<(Pixmap, f32, f32)>,
+) -> Option<Vec<u8>> {
     let n = n.max(1);
     let mut out: Vec<u8> = Vec::new();
     let mut offs = Vec::new();
@@ -30,7 +33,10 @@ pub fn pdf_pages(n: usize, mut page: impl FnMut(usize) -> Option<(Pixmap, f32, f
     // Objekte: 1 Katalog, 2 Seitenbaum, je Seite i: 3+3i Seite, 4+3i Bild, 5+3i Inhalt
     obj(&mut out, b"<< /Type /Catalog /Pages 2 0 R >>");
     let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 3 + 3 * i)).collect();
-    obj(&mut out, format!("<< /Type /Pages /Kids [{}] /Count {n} >>", kids.join(" ")).as_bytes());
+    obj(
+        &mut out,
+        format!("<< /Type /Pages /Kids [{}] /Count {n} >>", kids.join(" ")).as_bytes(),
+    );
     for i in 0..n {
         let (pm, pw, ph) = page(i)?;
         let (w, h) = (pm.width(), pm.height());
@@ -68,7 +74,13 @@ pub fn pdf_pages(n: usize, mut page: impl FnMut(usize) -> Option<(Pixmap, f32, f
     for o in &offs {
         out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
     }
-    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", offs.len() + 1).as_bytes());
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            offs.len() + 1
+        )
+        .as_bytes(),
+    );
     Some(out)
 }
 
@@ -95,9 +107,11 @@ pub fn write_zip<W: Write + Seek>(v: &Board, board_name: &str, os: W) -> bool {
         let files: Vec<String> = p.names.iter().map(|n| format!("ebenen/{n}.png")).collect();
         let mut z = zip::ZipWriter::new(os);
         let opt = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        let stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let stored =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         z.start_file("index.html", opt).ok()?;
-        z.write_all(html(board_name, v.bg_color(), p.w, p.h, &p.ls, &files).as_bytes()).ok()?;
+        z.write_all(html(board_name, v.bg_color(), p.w, p.h, &p.ls, &files).as_bytes())
+            .ok()?;
         let comp = v.render_composite(&p.b, p.k, true)?.encode_png().ok()?;
         z.start_file("00-vorschau.png", stored).ok()?;
         z.write_all(&comp).ok()?;
@@ -107,7 +121,8 @@ pub fn write_zip<W: Write + Seek>(v: &Board, board_name: &str, os: W) -> bool {
             z.write_all(&png).ok()?;
         }
         z.start_file("prompt.txt", opt).ok()?;
-        z.write_all(prompt(p.w, p.h, &p.ls, &p.names).as_bytes()).ok()?;
+        z.write_all(prompt(p.w, p.h, &p.ls, &p.names).as_bytes())
+            .ok()?;
         z.start_file("LIESMICH.txt", opt).ok()?;
         z.write_all(README.as_bytes()).ok()?;
         z.finish().ok()?;
@@ -128,7 +143,11 @@ pub fn build_preview(cache_dir: &Path, v: &Board) -> Option<PathBuf> {
         std::fs::write(dir.join(&files[i]), png).ok()?;
     }
     let index = dir.join("index.html");
-    std::fs::write(&index, html("Vorschau", v.bg_color(), p.w, p.h, &p.ls, &files)).ok()?;
+    std::fs::write(
+        &index,
+        html("Vorschau", v.bg_color(), p.w, p.h, &p.ls, &files),
+    )
+    .ok()?;
     Some(index)
 }
 
@@ -154,7 +173,14 @@ fn plan(v: &Board, long_edge: f32) -> Option<Plan> {
     let w = ((b.width() * k).round() as i32).max(1);
     let h = ((b.height() * k).round() as i32).max(1);
     let names = names(&ls);
-    Some(Plan { b, k, w, h, ls, names })
+    Some(Plan {
+        b,
+        k,
+        w,
+        h,
+        ls,
+        names,
+    })
 }
 
 /// Eindeutige Dateinamen (ohne .png), jeweils mit zweistelligem Positionspraefix.
@@ -224,7 +250,12 @@ fn trigger(l: &Layer) -> String {
         _ => None,
     };
     match t {
-        None => (if l.hover { "Hover" } else { "nichts (statisch)" }).to_string(),
+        None => (if l.hover {
+            "Hover"
+        } else {
+            "nichts (statisch)"
+        })
+        .to_string(),
         Some(t) if l.hover => format!("{t}, Hover"),
         Some(t) => t.to_string(),
     }
@@ -232,27 +263,46 @@ fn trigger(l: &Layer) -> String {
 
 pub fn prompt(w: i32, h: i32, ls: &[Layer], names: &[String]) -> String {
     let mut s = String::new();
-    s.push_str("Baue aus den hochgeladenen Ebenen eine responsive One-Page-Website (HTML, CSS, JS).\n\n");
+    s.push_str(
+        "Baue aus den hochgeladenen Ebenen eine responsive One-Page-Website (HTML, CSS, JS).\n\n",
+    );
     s.push_str("Ebenen (hinten nach vorne): ");
     for (i, n) in names.iter().enumerate() {
         s.push_str(if i > 0 { ", " } else { "" });
         s.push_str(n);
         s.push_str(".png");
     }
-    s.push_str(&format!(". Alle sind gleich groß ({w}×{h} px) und liegen deckungsgleich.\n\n"));
+    s.push_str(&format!(
+        ". Alle sind gleich groß ({w}×{h} px) und liegen deckungsgleich.\n\n"
+    ));
     s.push_str("Animationen:\n");
     for (i, l) in ls.iter().enumerate() {
-        let a = if l.anim >= 0 && (l.anim as usize) < ANIM_NAMES.len() { l.anim } else { 0 };
+        let a = if l.anim >= 0 && (l.anim as usize) < ANIM_NAMES.len() {
+            l.anim
+        } else {
+            0
+        };
         s.push_str(&format!("- {}.png: ", names[i]));
         if a == A_NONE {
             s.push_str("keine Animation");
         } else if a == A_PARALLAX {
-            s.push_str(&format!("{}, Faktor {}", ANIM_NAMES[a as usize], de(clamp(l.speed, 0.0, 1.0), 2)));
+            s.push_str(&format!(
+                "{}, Faktor {}",
+                ANIM_NAMES[a as usize],
+                de(clamp(l.speed, 0.0, 1.0), 2)
+            ));
         } else {
-            s.push_str(&format!("{}, Tempo {}×", ANIM_NAMES[a as usize], de(clamp(l.speed, 0.25, 3.0), 2)));
+            s.push_str(&format!(
+                "{}, Tempo {}×",
+                ANIM_NAMES[a as usize],
+                de(clamp(l.speed, 0.25, 3.0), 2)
+            ));
         }
         if l.opacity < 0.995 {
-            s.push_str(&format!(", Deckkraft {} %", (l.opacity * 100.0 + 0.5).floor() as i32));
+            s.push_str(&format!(
+                ", Deckkraft {} %",
+                (l.opacity * 100.0 + 0.5).floor() as i32
+            ));
         }
         s.push_str(&format!(", ausgelöst durch {}\n", trigger(l)));
     }
@@ -276,16 +326,26 @@ Viel Spaß!\n";
 
 /// Animierte One-Page-Website mit den Ebenen als deckungsgleiche Bilder.
 pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]) -> String {
-    let lum = (0.299 * ((bg >> 16) & 255) as f32 + 0.587 * ((bg >> 8) & 255) as f32 + 0.114 * (bg & 255) as f32) / 255.0;
+    let lum = (0.299 * ((bg >> 16) & 255) as f32
+        + 0.587 * ((bg >> 8) & 255) as f32
+        + 0.114 * (bg & 255) as f32)
+        / 255.0;
     let dark = lum < 0.5;
     let ink = if dark { "245,245,240" } else { "25,25,30" };
     let t = esc(title);
     let mut s = String::with_capacity(8192);
     s.push_str("<!DOCTYPE html>\n<html lang=\"de\">\n<head>\n<meta charset=\"utf-8\">\n");
     s.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
-    s.push_str(&format!("<meta name=\"theme-color\" content=\"{}\">\n", hex(bg)));
+    s.push_str(&format!(
+        "<meta name=\"theme-color\" content=\"{}\">\n",
+        hex(bg)
+    ));
     s.push_str(&format!("<title>{t}</title>\n<style>\n"));
-    s.push_str(&format!(":root{{--bg:{};--ink:{ink};--ratio:{w} / {h};--rn:{}}}\n", hex(bg), num(w as f32 / h as f32, 5)));
+    s.push_str(&format!(
+        ":root{{--bg:{};--ink:{ink};--ratio:{w} / {h};--rn:{}}}\n",
+        hex(bg),
+        num(w as f32 / h as f32, 5)
+    ));
     s.push_str("*{box-sizing:border-box}\n");
     s.push_str("html{background:var(--bg);scroll-behavior:smooth}\n");
     s.push_str("body{margin:0;background:var(--bg);color:rgb(var(--ink));font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}\n");
@@ -298,7 +358,9 @@ pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]
     s.push_str(".h img{display:block;position:absolute;left:0;top:0;width:100%;height:100%;user-select:none;-webkit-user-drag:none}\n");
     s.push_str(".stage.pt{cursor:pointer}\n");
     s.push_str("@keyframes drift{from{transform:translateX(-3%)}to{transform:translateX(3%)}}\n");
-    s.push_str("@keyframes float{from{transform:translateY(-1.5%)}to{transform:translateY(1.5%)}}\n");
+    s.push_str(
+        "@keyframes float{from{transform:translateY(-1.5%)}to{transform:translateY(1.5%)}}\n",
+    );
     s.push_str("@keyframes fadein{from{opacity:0}to{opacity:1}}\n");
     s.push_str("@keyframes slideup{from{transform:translateY(10%);opacity:0}to{transform:none;opacity:1}}\n");
     s.push_str("@keyframes hue{from{filter:hue-rotate(0deg)}to{filter:hue-rotate(35deg)}}\n");
@@ -310,7 +372,9 @@ pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]
     s.push_str(".a6{animation:hue 14s ease-in-out infinite alternate}\n");
     s.push_str(".a7{animation:rise 6s ease-in-out infinite}\n");
     s.push_str(".cue{position:absolute;left:50%;bottom:clamp(14px,3vh,32px);width:22px;height:22px;margin-left:-11px;border-right:2px solid rgba(var(--ink),.45);border-bottom:2px solid rgba(var(--ink),.45);transform:rotate(45deg);animation:cue 2s ease-in-out infinite;z-index:2;opacity:.8}\n");
-    s.push_str("@keyframes cue{0%,100%{translate:0 0;opacity:.2}50%{translate:6px 6px;opacity:.8}}\n");
+    s.push_str(
+        "@keyframes cue{0%,100%{translate:0 0;opacity:.2}50%{translate:6px 6px;opacity:.8}}\n",
+    );
     s.push_str(".more{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 16px;text-align:center}\n");
     s.push_str(".more h2{margin:0;font-size:clamp(1.4rem,4vw,2.2rem);font-weight:600;letter-spacing:-.01em}\n");
     s.push_str(".more p{margin:0;max-width:34ch;line-height:1.55;color:rgba(var(--ink),.6);font-size:clamp(.95rem,2.4vw,1.1rem)}\n");
@@ -318,19 +382,33 @@ pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]
     s.push_str("@media (max-aspect-ratio:1/1){.hero{min-height:0;padding:max(16px,3vh) 0}.cue{display:none}.more{min-height:70vh}}\n");
     s.push_str("@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.l,.h,.h img,.cue{animation:none!important;transition:none!important}.l{transform:none!important}}\n");
     s.push_str("</style>\n</head>\n<body>\n");
-    s.push_str(&format!("<header class=\"hero\">\n<h1 class=\"sr\">{t}</h1>\n"));
-    s.push_str(&format!("<div class=\"stage\" id=\"stage\" role=\"img\" aria-label=\"{t}\">\n"));
+    s.push_str(&format!(
+        "<header class=\"hero\">\n<h1 class=\"sr\">{t}</h1>\n"
+    ));
+    s.push_str(&format!(
+        "<div class=\"stage\" id=\"stage\" role=\"img\" aria-label=\"{t}\">\n"
+    ));
     let mut slide_idx = 0;
     for (i, l) in ls.iter().enumerate() {
-        let a = if (0..=A_RISE).contains(&l.anim) { l.anim } else { 0 };
+        let a = if (0..=A_RISE).contains(&l.anim) {
+            l.anim
+        } else {
+            0
+        };
         s.push_str("<div class=\"l\"");
         if a == A_PARALLAX {
-            s.push_str(&format!(" data-px=\"{}\"", num(clamp(l.speed, 0.0, 1.0), 3)));
+            s.push_str(&format!(
+                " data-px=\"{}\"",
+                num(clamp(l.speed, 0.0, 1.0), 3)
+            ));
         }
         if l.hover {
             s.push_str(" data-hv=\"1\"");
         }
-        s.push_str(&format!(" style=\"opacity:{}\"><div class=\"h\"><img", num(clamp(l.opacity, 0.0, 1.0), 3)));
+        s.push_str(&format!(
+            " style=\"opacity:{}\"><div class=\"h\"><img",
+            num(clamp(l.opacity, 0.0, 1.0), 3)
+        ));
         if a >= A_DRIFT {
             s.push_str(&format!(" class=\"a{a}\" style=\""));
             let sp = clamp(l.speed, 0.25, 3.0);
@@ -344,7 +422,10 @@ pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]
             };
             s.push_str(&format!("animation-duration:{}s", num(base / sp, 2)));
             if a == A_SLIDE_UP {
-                s.push_str(&format!(";animation-delay:{}s", num(0.15 * slide_idx as f32 + 0.1, 2)));
+                s.push_str(&format!(
+                    ";animation-delay:{}s",
+                    num(0.15 * slide_idx as f32 + 0.1, 2)
+                ));
                 slide_idx += 1;
             }
             s.push('"');
@@ -376,10 +457,14 @@ pub fn html(title: &str, bg: u32, w: i32, h: i32, ls: &[Layer], files: &[String]
     s.push_str("function prep(){try{var m=512,k=Math.min(1,m/Math.max(o.img.naturalWidth,o.img.naturalHeight));\n");
     s.push_str("var c=document.createElement('canvas');c.width=Math.max(1,Math.round(o.img.naturalWidth*k));c.height=Math.max(1,Math.round(o.img.naturalHeight*k));\n");
     s.push_str("var x=c.getContext('2d',{willReadFrequently:true});x.drawImage(o.img,0,0,c.width,c.height);x.getImageData(0,0,1,1);\n");
-    s.push_str("o.cx=x;o.w=c.width;o.hh=c.height;o.ok=true;}catch(err){o.ok=false;coarse=true;}}\n");
+    s.push_str(
+        "o.cx=x;o.w=c.width;o.hh=c.height;o.ok=true;}catch(err){o.ok=false;coarse=true;}}\n",
+    );
     s.push_str("if(o.img.complete&&o.img.naturalWidth)prep();else o.img.addEventListener('load',prep);});\n");
     s.push_str("function set(o,on){o.h.classList.toggle('on',on);}\n");
-    s.push_str("function off(){hv.forEach(function(o){set(o,false);});stage.classList.remove('pt');}\n");
+    s.push_str(
+        "function off(){hv.forEach(function(o){set(o,false);});stage.classList.remove('pt');}\n",
+    );
     s.push_str("stage.addEventListener('mousemove',function(ev){\n");
     s.push_str("var r=stage.getBoundingClientRect(),u=(ev.clientX-r.left)/r.width,v=(ev.clientY-r.top)/r.height;\n");
     s.push_str("if(u<0||u>=1||v<0||v>=1){off();return;}\n");

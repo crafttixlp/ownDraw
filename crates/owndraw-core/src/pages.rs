@@ -81,7 +81,18 @@ pub struct PageSetup {
 impl Default for PageSetup {
     fn default() -> Self {
         let (w, h) = PageFormat::A4.size();
-        PageSetup { w, h, bg: PageBg::Lined, pages: vec![Page { id: crate::store::random_hex(8), w, h, bg: PageBg::Lined, extra: Value::Null }] }
+        PageSetup {
+            w,
+            h,
+            bg: PageBg::Lined,
+            pages: vec![Page {
+                id: crate::store::random_hex(8),
+                w,
+                h,
+                bg: PageBg::Lined,
+                extra: Value::Null,
+            }],
+        }
     }
 }
 
@@ -101,14 +112,25 @@ use crate::item::Item;
 impl Page {
     /// Neue Seite mit frischer id.
     pub fn new(w: f32, h: f32, bg: PageBg) -> Page {
-        Page { id: crate::store::random_hex(8), w, h, bg, extra: Value::Null }
+        Page {
+            id: crate::store::random_hex(8),
+            w,
+            h,
+            bg,
+            extra: Value::Null,
+        }
     }
 }
 
 impl PageSetup {
     /// Einstellungen mit `n` (mind. 1) gleichen Seiten.
     pub fn new(w: f32, h: f32, bg: PageBg, n: usize) -> PageSetup {
-        PageSetup { w, h, bg, pages: (0..n.max(1)).map(|_| Page::new(w, h, bg)).collect() }
+        PageSetup {
+            w,
+            h,
+            bg,
+            pages: (0..n.max(1)).map(|_| Page::new(w, h, bg)).collect(),
+        }
     }
 
     /// Seitenrechtecke in Weltkoordinaten (untereinander, x = 0, Abstand [`PAGE_GAP`]).
@@ -142,7 +164,9 @@ impl PageSetup {
 
     /// Seite, die den Weltpunkt (x, y) enthaelt (Rand eingeschlossen); None im Zwischenraum/ausserhalb.
     pub fn page_at(&self, x: f32, y: f32) -> Option<usize> {
-        self.rects().iter().position(|r| x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)
+        self.rects()
+            .iter()
+            .position(|r| x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)
     }
 
     /// Naechstgelegene Seite zum Weltpunkt (Abstand zum Rechteck; enthaltende Seite gewinnt). None ohne Seiten.

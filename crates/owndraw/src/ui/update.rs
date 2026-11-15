@@ -55,7 +55,10 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
     // Modus und Start-Hinweis
     if desktop {
         ui.horizontal_wrapped(|ui| {
-            for (m, l) in [(UpdateMode::Package, "Fertiges Paket"), (UpdateMode::Source, "Aus Quellcode bauen")] {
+            for (m, l) in [
+                (UpdateMode::Package, "Fertiges Paket"),
+                (UpdateMode::Source, "Aus Quellcode bauen"),
+            ] {
                 if style::chip(ui, l, settings.update_mode == m, h).clicked() {
                     settings.update_mode = m;
                 }
@@ -63,19 +66,34 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
         });
         let hint = match settings.update_mode {
             UpdateMode::Package => "Lädt das fertige AppImage (schnell).",
-            UpdateMode::Source => "Lädt den Quellcode und baut ihn selbst (braucht Rust und einige Minuten).",
+            UpdateMode::Source => {
+                "Lädt den Quellcode und baut ihn selbst (braucht Rust und einige Minuten)."
+            }
         };
         ui.label(egui::RichText::new(hint).size(12.0).color(c(p.dim)));
     } else {
         ui.label(egui::RichText::new("Auf Android wird immer die fertige APK geladen und vom System-Installer eingespielt (Recht „Unbekannte Apps installieren“ nötig).").size(12.0).color(c(p.dim)));
     }
-    cfg.mode = if desktop { settings.update_mode } else { UpdateMode::Package };
-    ui.checkbox(&mut settings.update_check_on_start, "Beim Start nach Updates suchen (nur Hinweis)");
+    cfg.mode = if desktop {
+        settings.update_mode
+    } else {
+        UpdateMode::Package
+    };
+    ui.checkbox(
+        &mut settings.update_check_on_start,
+        "Beim Start nach Updates suchen (nur Hinweis)",
+    );
     ui.add_space(6.0);
 
     ui.horizontal(|ui| {
         let enabled = !busy && cfg.configured();
-        if ui.add_enabled_ui(enabled, |ui| style::primary_btn(ui, "Nach Updates suchen", h)).inner.clicked() {
+        if ui
+            .add_enabled_ui(enabled, |ui| {
+                style::primary_btn(ui, "Nach Updates suchen", h)
+            })
+            .inner
+            .clicked()
+        {
             up.check(cfg.clone(), false);
         }
         if busy && style::danger_btn(ui, "Abbrechen", h).clicked() {
@@ -93,9 +111,16 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
                 ui.add_space(8.0);
                 style::card().show(ui, |ui| {
                     if chk.skipped {
-                        ui.label(egui::RichText::new("Diese Version hatten Sie übersprungen.").color(c(p.dim)));
+                        ui.label(
+                            egui::RichText::new("Diese Version hatten Sie übersprungen.")
+                                .color(c(p.dim)),
+                        );
                     }
-                    ui.label(egui::RichText::new(format!("Neue Version {} verfügbar", rel.version)).size(16.0).strong());
+                    ui.label(
+                        egui::RichText::new(format!("Neue Version {} verfügbar", rel.version))
+                            .size(16.0)
+                            .strong(),
+                    );
                     if !rel.date.is_empty() {
                         ui.label(egui::RichText::new(&rel.date).size(12.0).color(c(p.dim)));
                     }
@@ -108,7 +133,8 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
                         if style::plain_btn(ui, "Später", h).clicked() {
                             up.dismiss_update();
                         }
-                        if !chk.skipped && style::plain_btn(ui, "Version überspringen", h).clicked() {
+                        if !chk.skipped && style::plain_btn(ui, "Version überspringen", h).clicked()
+                        {
                             settings.update_skip = Some(rel.version.to_string());
                             up.dismiss_update();
                         }
@@ -117,10 +143,19 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
             }
             (Some(_), true) => {}
             (Some(rel), false) => {
-                ui.label(egui::RichText::new(format!("OwnDraw ist aktuell (neueste veröffentlichte Version: {}).", rel.version)).color(c(p.dim)));
+                ui.label(
+                    egui::RichText::new(format!(
+                        "OwnDraw ist aktuell (neueste veröffentlichte Version: {}).",
+                        rel.version
+                    ))
+                    .color(c(p.dim)),
+                );
             }
             (None, _) => {
-                ui.label(egui::RichText::new("Es gibt noch keine veröffentlichte Version.").color(c(p.dim)));
+                ui.label(
+                    egui::RichText::new("Es gibt noch keine veröffentlichte Version.")
+                        .color(c(p.dim)),
+                );
             }
         }
     }
@@ -143,7 +178,13 @@ fn busy_view(ui: &mut egui::Ui, st: &Status) {
     }
     match st.progress {
         Some((d, Some(t))) if t > 0 => {
-            ui.add(egui::ProgressBar::new((d as f32 / t as f32).clamp(0.0, 1.0)).text(format!("{} von {}", mb(d), mb(t))));
+            ui.add(
+                egui::ProgressBar::new((d as f32 / t as f32).clamp(0.0, 1.0)).text(format!(
+                    "{} von {}",
+                    mb(d),
+                    mb(t)
+                )),
+            );
         }
         Some((d, _)) => {
             ui.add(egui::ProgressBar::new(0.0).animate(true).text(mb(d)));
@@ -153,19 +194,34 @@ fn busy_view(ui: &mut egui::Ui, st: &Status) {
         }
     }
     if !st.log.is_empty() {
-        egui::ScrollArea::vertical().id_salt("update_log").max_height(180.0).stick_to_bottom(true).show(ui, |ui| {
-            for l in &st.log {
-                ui.label(egui::RichText::new(l).monospace().size(11.0));
-            }
-        });
+        egui::ScrollArea::vertical()
+            .id_salt("update_log")
+            .max_height(180.0)
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for l in &st.log {
+                    ui.label(egui::RichText::new(l).monospace().size(11.0));
+                }
+            });
     }
 }
 
-fn messages(ui: &mut egui::Ui, up: &Updater, st: &Status, settings: &mut Settings, platform: &dyn Platform, h: f32) {
+fn messages(
+    ui: &mut egui::Ui,
+    up: &Updater,
+    st: &Status,
+    settings: &mut Settings,
+    platform: &dyn Platform,
+    h: f32,
+) {
     let p = style::pal();
     if let Some(e) = &st.error {
         ui.add_space(6.0);
-        let col = if *e == Error::Cancelled { c(p.dim) } else { c(p.danger_text) };
+        let col = if *e == Error::Cancelled {
+            c(p.dim)
+        } else {
+            c(p.danger_text)
+        };
         ui.label(egui::RichText::new(e.to_string()).color(col));
         ui.horizontal_wrapped(|ui| {
             if *e == Error::NoToolchain {
@@ -192,7 +248,12 @@ fn messages(ui: &mut egui::Ui, up: &Updater, st: &Status, settings: &mut Setting
                     match update::install::spawn_new(&d.path) {
                         Ok(()) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
                         Err(e) => {
-                            ui.ctx().memory_mut(|m| m.data.insert_temp(egui::Id::unique("owndraw_update_restart_err"), e.to_string()));
+                            ui.ctx().memory_mut(|m| {
+                                m.data.insert_temp(
+                                    egui::Id::unique("owndraw_update_restart_err"),
+                                    e.to_string(),
+                                )
+                            });
                         }
                     }
                 }
@@ -200,8 +261,14 @@ fn messages(ui: &mut egui::Ui, up: &Updater, st: &Status, settings: &mut Setting
                     up.dismiss_message();
                 }
             });
-            if let Some(e) = ui.ctx().memory(|m| m.data.get_temp::<String>(egui::Id::unique("owndraw_update_restart_err"))) {
-                ui.label(egui::RichText::new(format!("Neustart nicht möglich: {e}")).color(c(p.danger_text)));
+            if let Some(e) = ui.ctx().memory(|m| {
+                m.data
+                    .get_temp::<String>(egui::Id::unique("owndraw_update_restart_err"))
+            }) {
+                ui.label(
+                    egui::RichText::new(format!("Neustart nicht möglich: {e}"))
+                        .color(c(p.danger_text)),
+                );
             }
         } else {
             ui.label("Der System-Installer wurde geöffnet. Bestätigen Sie dort die Installation (ggf. zuerst „Unbekannte Apps installieren“ für OwnDraw erlauben).");
@@ -217,28 +284,56 @@ fn notes(ui: &mut egui::Ui, rel: &Release, salt: &str) {
         return;
     }
     ui.add_space(4.0);
-    egui::ScrollArea::vertical().id_salt(format!("{salt}{}", rel.tag)).max_height(160.0).show(ui, |ui| {
-        ui.label(rel.body.trim());
-    });
+    egui::ScrollArea::vertical()
+        .id_salt(format!("{salt}{}", rel.tag))
+        .max_height(160.0)
+        .show(ui, |ui| {
+            ui.label(rel.body.trim());
+        });
 }
 
-fn saved_view(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, platform: &dyn Platform, h: f32, desktop: bool) {
+fn saved_view(
+    ui: &mut egui::Ui,
+    up: &Updater,
+    cfg: &Config,
+    st: &Status,
+    platform: &dyn Platform,
+    h: f32,
+    desktop: bool,
+) {
     if !desktop {
         return;
     }
     let p = style::pal();
     let saved = versions::list_saved(&cfg.versions_dir);
     if saved.is_empty() {
-        ui.label(egui::RichText::new("Noch keine Vorversion gespeichert (entsteht beim nächsten Update).").size(12.0).color(c(p.dim)));
+        ui.label(
+            egui::RichText::new(
+                "Noch keine Vorversion gespeichert (entsteht beim nächsten Update).",
+            )
+            .size(12.0)
+            .color(c(p.dim)),
+        );
         return;
     }
     let busy = st.busy.is_some();
     if let Some(n) = versions::newest_saved(&cfg.versions_dir) {
-        if !busy && style::accent_btn(ui, &format!("Vorherige Version wiederherstellen ({})", n.version), h).clicked() {
+        if !busy
+            && style::accent_btn(
+                ui,
+                &format!("Vorherige Version wiederherstellen ({})", n.version),
+                h,
+            )
+            .clicked()
+        {
             request_restore(ui, up, cfg, n, platform);
         }
     }
-    ui.label(egui::RichText::new("Gespeichert (auch offline nutzbar):").size(12.0).color(c(p.dim)));
+    ui.label(
+        egui::RichText::new("Gespeichert (auch offline nutzbar):")
+            .size(12.0)
+            .color(c(p.dim)),
+    );
     for s in saved {
         ui.horizontal(|ui| {
             ui.label(format!("Version {}", s.version));
@@ -249,9 +344,17 @@ fn saved_view(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, platfo
     }
 }
 
-fn request_restore(ui: &mut egui::Ui, up: &Updater, cfg: &Config, s: versions::Saved, _platform: &dyn Platform) {
-    if s.version < cfg.current && versions::format_warning(&s.version, cfg.recent_boards).is_some() {
-        ui.ctx().memory_mut(|m| m.data.insert_temp(pending_id(), Some(Pending::Restore(s))));
+fn request_restore(
+    ui: &mut egui::Ui,
+    up: &Updater,
+    cfg: &Config,
+    s: versions::Saved,
+    _platform: &dyn Platform,
+) {
+    if s.version < cfg.current && versions::format_warning(&s.version, cfg.recent_boards).is_some()
+    {
+        ui.ctx()
+            .memory_mut(|m| m.data.insert_temp(pending_id(), Some(Pending::Restore(s))));
     } else {
         up.restore(cfg.clone(), s);
     }
@@ -260,10 +363,26 @@ fn request_restore(ui: &mut egui::Ui, up: &Updater, cfg: &Config, s: versions::S
 fn release_list(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, h: f32, desktop: bool) {
     let p = style::pal();
     let busy = st.busy.is_some();
-    let open = ui.ctx().memory(|m| m.data.get_temp::<bool>(list_id())).unwrap_or(false);
+    let open = ui
+        .ctx()
+        .memory(|m| m.data.get_temp::<bool>(list_id()))
+        .unwrap_or(false);
     ui.horizontal(|ui| {
-        if !busy && cfg.configured() && style::plain_btn(ui, if open { "Alle Versionen ausblenden" } else { "Alle Versionen anzeigen" }, h).clicked() {
-            ui.ctx().memory_mut(|m| m.data.insert_temp(list_id(), !open));
+        if !busy
+            && cfg.configured()
+            && style::plain_btn(
+                ui,
+                if open {
+                    "Alle Versionen ausblenden"
+                } else {
+                    "Alle Versionen anzeigen"
+                },
+                h,
+            )
+            .clicked()
+        {
+            ui.ctx()
+                .memory_mut(|m| m.data.insert_temp(list_id(), !open));
             if !open && st.releases.is_none() {
                 up.load_list(cfg.clone());
             }
@@ -280,38 +399,62 @@ fn release_list(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, h: f
     };
     for rel in list {
         let current = rel.version == cfg.current;
-        let header = format!("{}{}   {}", rel.version, if current { "  (installiert)" } else { "" }, rel.date);
-        egui::CollapsingHeader::new(egui::RichText::new(header).strong()).id_salt(("rel", &rel.tag)).show(ui, |ui| {
-            if !rel.title.is_empty() && rel.title != rel.tag {
-                ui.label(&rel.title);
-            }
-            if rel.body.trim().is_empty() {
-                ui.label(egui::RichText::new("Kein Änderungstext.").color(c(p.dim)));
-            }
-            notes(ui, rel, "list_notes");
-            let allowed = desktop || rel.version > cfg.current;
-            if !current && allowed && !busy {
-                let label = if rel.version < cfg.current { "Auf diese Version zurückgehen" } else { "Diese Version installieren" };
-                if style::accent_btn(ui, label, h).clicked() {
-                    if rel.version < cfg.current && versions::format_warning(&rel.version, cfg.recent_boards).is_some() {
-                        ui.ctx().memory_mut(|m| m.data.insert_temp(pending_id(), Some(Pending::Install(rel.clone()))));
+        let header = format!(
+            "{}{}   {}",
+            rel.version,
+            if current { "  (installiert)" } else { "" },
+            rel.date
+        );
+        egui::CollapsingHeader::new(egui::RichText::new(header).strong())
+            .id_salt(("rel", &rel.tag))
+            .show(ui, |ui| {
+                if !rel.title.is_empty() && rel.title != rel.tag {
+                    ui.label(&rel.title);
+                }
+                if rel.body.trim().is_empty() {
+                    ui.label(egui::RichText::new("Kein Änderungstext.").color(c(p.dim)));
+                }
+                notes(ui, rel, "list_notes");
+                let allowed = desktop || rel.version > cfg.current;
+                if !current && allowed && !busy {
+                    let label = if rel.version < cfg.current {
+                        "Auf diese Version zurückgehen"
                     } else {
-                        up.install(cfg.clone(), rel.clone());
+                        "Diese Version installieren"
+                    };
+                    if style::accent_btn(ui, label, h).clicked() {
+                        if rel.version < cfg.current
+                            && versions::format_warning(&rel.version, cfg.recent_boards).is_some()
+                        {
+                            ui.ctx().memory_mut(|m| {
+                                m.data
+                                    .insert_temp(pending_id(), Some(Pending::Install(rel.clone())))
+                            });
+                        } else {
+                            up.install(cfg.clone(), rel.clone());
+                        }
                     }
                 }
-            }
-        });
+            });
     }
 }
 
 fn confirm_view(ui: &mut egui::Ui, up: &Updater, cfg: &Config, h: f32) {
-    let Some(Some(pend)) = ui.ctx().memory(|m| m.data.get_temp::<Option<Pending>>(pending_id())) else { return };
+    let Some(Some(pend)) = ui
+        .ctx()
+        .memory(|m| m.data.get_temp::<Option<Pending>>(pending_id()))
+    else {
+        return;
+    };
     let version = match &pend {
         Pending::Install(r) => r.version.clone(),
         Pending::Restore(s) => s.version.clone(),
     };
     let warn = versions::format_warning(&version, cfg.recent_boards).unwrap_or_default();
-    let clear = |ui: &egui::Ui| ui.ctx().memory_mut(|m| m.data.insert_temp::<Option<Pending>>(pending_id(), None));
+    let clear = |ui: &egui::Ui| {
+        ui.ctx()
+            .memory_mut(|m| m.data.insert_temp::<Option<Pending>>(pending_id(), None))
+    };
     ui.add_space(8.0);
     style::card().show(ui, |ui| {
         ui.label(egui::RichText::new(format!("Auf Version {version} wechseln?")).strong());

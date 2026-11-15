@@ -75,16 +75,30 @@ fn insert_images(e: &mut Editor, images: &[PendingImage]) -> Vec<String> {
 }
 
 /// Verarbeitet bereitgestellte Drops (ohne Oberfläche, testbar).
-pub fn route_drops(platform: &dyn Platform, drops: Vec<crate::platform::Drop>, editor: Option<&mut Editor>) -> Vec<DropOutcome> {
+pub fn route_drops(
+    platform: &dyn Platform,
+    drops: Vec<crate::platform::Drop>,
+    editor: Option<&mut Editor>,
+) -> Vec<DropOutcome> {
     let mut out = Vec::new();
     let mut images: Vec<PendingImage> = Vec::new();
     for d in drops {
-        let name = if d.name.is_empty() { d.file.as_ref().map(|f| f.display_name()).unwrap_or_default() } else { d.name.clone() };
+        let name = if d.name.is_empty() {
+            d.file
+                .as_ref()
+                .map(|f| f.display_name())
+                .unwrap_or_default()
+        } else {
+            d.name.clone()
+        };
         let kind = kind_of(&name, d.bytes.as_deref());
         match decide(kind, d.file.is_some(), editor.is_some()) {
             Decision::Open => out.extend(d.file.map(DropOutcome::Open)),
             Decision::InsertImage | Decision::NewWithImage => {
-                let bytes = d.bytes.clone().or_else(|| d.file.as_ref().and_then(|f| platform.read(f).ok()));
+                let bytes = d
+                    .bytes
+                    .clone()
+                    .or_else(|| d.file.as_ref().and_then(|f| platform.read(f).ok()));
                 let Some(b) = bytes else {
                     out.push(DropOutcome::Toast(MSG_READ.into()));
                     continue;
@@ -101,14 +115,26 @@ pub fn route_drops(platform: &dyn Platform, drops: Vec<crate::platform::Drop>, e
         }
     }
     if let (Some(e), false) = (editor, images.is_empty()) {
-        out.extend(insert_images(e, &images).into_iter().map(DropOutcome::Toast));
+        out.extend(
+            insert_images(e, &images)
+                .into_iter()
+                .map(DropOutcome::Toast),
+        );
     }
     out
 }
 
-pub fn handle_drops(ctx: &egui::Context, platform: &dyn Platform, editor: Option<&mut Editor>) -> Vec<DropOutcome> {
+pub fn handle_drops(
+    ctx: &egui::Context,
+    platform: &dyn Platform,
+    editor: Option<&mut Editor>,
+) -> Vec<DropOutcome> {
     let out = route_drops(platform, platform.take_drops(ctx), editor);
-    if platform.drag_hover(ctx) || std::env::var("OWNDRAW_DROP_HINT").map(|v| v == "1").unwrap_or(false) {
+    if platform.drag_hover(ctx)
+        || std::env::var("OWNDRAW_DROP_HINT")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+    {
         overlay(ctx);
     }
     out
@@ -120,16 +146,53 @@ fn overlay(ctx: &egui::Context) {
     let screen = ctx.content_rect();
     let accent = c(p.accent);
     #[allow(deprecated)]
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("drop-hint")));
-    let scrim = if p.dark { Color32::from_black_alpha(140) } else { Color32::from_black_alpha(70) };
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Tooltip,
+        egui::Id::new("drop-hint"),
+    ));
+    let scrim = if p.dark {
+        Color32::from_black_alpha(140)
+    } else {
+        Color32::from_black_alpha(70)
+    };
     painter.rect_filled(screen, 0.0, scrim);
     let r = screen.shrink(14.0);
-    painter.rect_filled(r, 18.0, Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 28));
-    painter.extend(egui::Shape::dashed_line(&rounded_outline(r, 18.0), Stroke::new(3.0, accent), 14.0, 9.0));
-    let card = Rect::from_center_size(screen.center(), egui::vec2(300.0_f32.min(screen.width() - 40.0), 96.0));
-    painter.rect(card, 18.0, c(p.card), Stroke::new(1.0, c(p.line)), egui::StrokeKind::Inside);
-    painter.text(card.center() - egui::vec2(0.0, 12.0), Align2::CENTER_CENTER, "Zum Einfügen loslassen", egui::FontId::proportional(18.0), c(p.text));
-    painter.text(card.center() + egui::vec2(0.0, 16.0), Align2::CENTER_CENTER, "Bild, .owndraw oder .xopp", egui::FontId::proportional(13.0), c(p.dim));
+    painter.rect_filled(
+        r,
+        18.0,
+        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 28),
+    );
+    painter.extend(egui::Shape::dashed_line(
+        &rounded_outline(r, 18.0),
+        Stroke::new(3.0, accent),
+        14.0,
+        9.0,
+    ));
+    let card = Rect::from_center_size(
+        screen.center(),
+        egui::vec2(300.0_f32.min(screen.width() - 40.0), 96.0),
+    );
+    painter.rect(
+        card,
+        18.0,
+        c(p.card),
+        Stroke::new(1.0, c(p.line)),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        card.center() - egui::vec2(0.0, 12.0),
+        Align2::CENTER_CENTER,
+        "Zum Einfügen loslassen",
+        egui::FontId::proportional(18.0),
+        c(p.text),
+    );
+    painter.text(
+        card.center() + egui::vec2(0.0, 16.0),
+        Align2::CENTER_CENTER,
+        "Bild, .owndraw oder .xopp",
+        egui::FontId::proportional(13.0),
+        c(p.dim),
+    );
 }
 
 /// Geschlossener Linienzug eines abgerundeten Rechtecks (für gestrichelte Linie).
@@ -185,22 +248,49 @@ mod tests {
 
     fn png_bytes(w: u32) -> Vec<u8> {
         let mut o = Vec::new();
-        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(w, w, image::Rgba([200, 30, 30, 255])))
-            .write_to(&mut std::io::Cursor::new(&mut o), image::ImageFormat::Png)
-            .unwrap();
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            w,
+            w,
+            image::Rgba([200, 30, 30, 255]),
+        ))
+        .write_to(&mut std::io::Cursor::new(&mut o), image::ImageFormat::Png)
+        .unwrap();
         o
     }
 
     #[test]
     fn simulierte_drops_xopp_und_png() {
         let pf = StubPlatform::new();
-        let xopp = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../owndraw-core/tests/xopp/strokes.xopp"));
+        let xopp = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../owndraw-core/tests/xopp/strokes.xopp"
+        ));
         assert!(xopp.is_file());
         let drops = vec![
-            Drop { file: Some(FileRef::Path(xopp.clone())), bytes: None, name: "strokes.xopp".into(), pos: None },
-            Drop { file: None, bytes: Some(png_bytes(20)), name: "bild.png".into(), pos: Some((300.0, 300.0)) },
-            Drop { file: None, bytes: Some(png_bytes(30)), name: "zwei.png".into(), pos: Some((300.0, 300.0)) },
-            Drop { file: None, bytes: None, name: "x.pdf".into(), pos: None },
+            Drop {
+                file: Some(FileRef::Path(xopp.clone())),
+                bytes: None,
+                name: "strokes.xopp".into(),
+                pos: None,
+            },
+            Drop {
+                file: None,
+                bytes: Some(png_bytes(20)),
+                name: "bild.png".into(),
+                pos: Some((300.0, 300.0)),
+            },
+            Drop {
+                file: None,
+                bytes: Some(png_bytes(30)),
+                name: "zwei.png".into(),
+                pos: Some((300.0, 300.0)),
+            },
+            Drop {
+                file: None,
+                bytes: None,
+                name: "x.pdf".into(),
+                pos: None,
+            },
         ];
         // mit Editor: .xopp öffnen, zwei Bilder (versetzt), PDF-Hinweis
         let mut ed = super::super::clip::tests::editor(false);
@@ -211,7 +301,10 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(ed.board.items.len(), 2);
         let (a, b) = (ed.board.items[0].bounds(), ed.board.items[1].bounds());
-        assert!((a.center_x() - b.center_x()).abs() > 1.0, "Bilder müssen versetzt liegen");
+        assert!(
+            (a.center_x() - b.center_x()).abs() > 1.0,
+            "Bilder müssen versetzt liegen"
+        );
         // Startbildschirm: Bild -> neues Board, .xopp -> öffnen
         let out = route_drops(&pf, drops[..2].to_vec(), None);
         assert!(matches!(&out[0], DropOutcome::Open(_)));

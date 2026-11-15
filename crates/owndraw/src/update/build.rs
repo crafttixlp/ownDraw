@@ -21,7 +21,11 @@ pub struct BuildSpec {
 
 impl BuildSpec {
     pub fn owndraw() -> BuildSpec {
-        BuildSpec { package: "owndraw".into(), bin: "owndraw".into(), appimage_script: true }
+        BuildSpec {
+            package: "owndraw".into(),
+            bin: "owndraw".into(),
+            appimage_script: true,
+        }
     }
 }
 
@@ -32,11 +36,16 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<PathBuf, Error> {
     let f = std::fs::File::open(archive)?;
     let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(f));
     // `unpack` verwirft Pfade mit `..` und absolute Pfade.
-    ar.unpack(dest).map_err(|e| Error::Other(format!("Archiv nicht entpackbar: {e}")))?;
+    ar.unpack(dest)
+        .map_err(|e| Error::Other(format!("Archiv nicht entpackbar: {e}")))?;
     if dest.join("Cargo.toml").is_file() {
         return Ok(dest.to_path_buf());
     }
-    let dirs: Vec<PathBuf> = std::fs::read_dir(dest)?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let dirs: Vec<PathBuf> = std::fs::read_dir(dest)?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
     match dirs.as_slice() {
         [d] if d.join("Cargo.toml").is_file() => Ok(d.clone()),
         _ => Err(Error::Other("Im Quell-Archiv fehlt die Cargo.toml.".into())),
@@ -45,7 +54,15 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<PathBuf, Error> {
 
 /// Findet `cargo` (PATH, sonst `~/.cargo/bin`). `None` = keine Toolchain.
 pub fn find_cargo() -> Option<PathBuf> {
-    let ok = |p: &Path| Command::new(p).arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+    let ok = |p: &Path| {
+        Command::new(p)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
     let plain = PathBuf::from("cargo");
     if ok(&plain) {
         return Some(plain);
@@ -57,23 +74,37 @@ pub fn find_cargo() -> Option<PathBuf> {
 
 /// Startet `cmd`, reicht jede Ausgabezeile an `log` weiter und beendet den Prozess bei `cancel`.
 fn run_logged(mut cmd: Command, cancel: &AtomicBool, log: &dyn Fn(&str)) -> Result<(), Error> {
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
+    cmd.stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null());
     // Eigene Prozessgruppe, damit beim Abbruch auch rustc & Co. enden.
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    let mut child = cmd.spawn().map_err(|e| Error::Other(format!("Prozess nicht startbar: {e}")))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| Error::Other(format!("Prozess nicht startbar: {e}")))?;
     let (tx, rx) = mpsc::channel::<String>();
     let mut readers = Vec::new();
     if let Some(o) = child.stdout.take() {
         let tx = tx.clone();
-        readers.push(std::thread::spawn(move || BufReader::new(o).lines().map_while(Result::ok).for_each(|l| drop(tx.send(l)))));
+        readers.push(std::thread::spawn(move || {
+            BufReader::new(o)
+                .lines()
+                .map_while(Result::ok)
+                .for_each(|l| drop(tx.send(l)))
+        }));
     }
     if let Some(e) = child.stderr.take() {
         let tx = tx.clone();
-        readers.push(std::thread::spawn(move || BufReader::new(e).lines().map_while(Result::ok).for_each(|l| drop(tx.send(l)))));
+        readers.push(std::thread::spawn(move || {
+            BufReader::new(e)
+                .lines()
+                .map_while(Result::ok)
+                .for_each(|l| drop(tx.send(l)))
+        }));
     }
     drop(tx);
     let status = loop {
@@ -82,7 +113,9 @@ fn run_logged(mut cmd: Command, cancel: &AtomicBool, log: &dyn Fn(&str)) -> Resu
         }
         if cancel.load(Ordering::Relaxed) {
             #[cfg(unix)]
-            let _ = Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
+            let _ = Command::new("kill")
+                .args(["-KILL", "--", &format!("-{}", child.id())])
+                .status();
             let _ = child.kill();
             let _ = child.wait();
             // Kindprozesse (rustc) enden mit dem Schließen der Pipes; Leser nicht abwarten.
@@ -103,41 +136,64 @@ fn run_logged(mut cmd: Command, cancel: &AtomicBool, log: &dyn Fn(&str)) -> Resu
     if status.success() {
         Ok(())
     } else {
-        Err(Error::Other(format!("Der Bau ist fehlgeschlagen ({status}). Details im Protokoll.")))
+        Err(Error::Other(format!(
+            "Der Bau ist fehlgeschlagen ({status}). Details im Protokoll."
+        )))
     }
 }
 
 /// Baut im Quellbaum `root` und liefert die fertige Datei (AppImage oder Binärdatei).
-pub fn build(root: &Path, spec: &BuildSpec, cargo: &Path, cancel: &AtomicBool, log: &dyn Fn(&str)) -> Result<PathBuf, Error> {
-    log(&format!("$ cargo build --release --locked -p {}", spec.package));
+pub fn build(
+    root: &Path,
+    spec: &BuildSpec,
+    cargo: &Path,
+    cancel: &AtomicBool,
+    log: &dyn Fn(&str),
+) -> Result<PathBuf, Error> {
+    log(&format!(
+        "$ cargo build --release --locked -p {}",
+        spec.package
+    ));
     let mut c = Command::new(cargo);
-    c.current_dir(root).args(["build", "--release", "--locked", "-p", &spec.package]);
+    c.current_dir(root)
+        .args(["build", "--release", "--locked", "-p", &spec.package]);
     // Ein von der laufenden Sitzung geerbtes Zielverzeichnis würde fremde Artefakte vermischen.
     c.env_remove("CARGO_TARGET_DIR");
     run_logged(c, cancel, log)?;
     let bin = root.join("target/release").join(&spec.bin);
     if !bin.is_file() {
-        return Err(Error::Other(format!("Nach dem Bau fehlt {}.", bin.display())));
+        return Err(Error::Other(format!(
+            "Nach dem Bau fehlt {}.",
+            bin.display()
+        )));
     }
     if !spec.appimage_script {
         return Ok(bin);
     }
     let script = root.join("build-appimage.sh");
     if !script.is_file() {
-        return Err(Error::Other("Im Quellbaum fehlt build-appimage.sh zum Packen des AppImage.".into()));
+        return Err(Error::Other(
+            "Im Quellbaum fehlt build-appimage.sh zum Packen des AppImage.".into(),
+        ));
     }
     log("$ ./build-appimage.sh");
     let mut c = Command::new("bash");
     c.current_dir(root).arg(&script);
     c.env_remove("CARGO_TARGET_DIR");
     run_logged(c, cancel, log).map_err(|e| match e {
-        Error::Other(m) => Error::Other(format!("{m} (Das Packen braucht gcc, zlib1g-dev und squashfs-tools.)")),
+        Error::Other(m) => Error::Other(format!(
+            "{m} (Das Packen braucht gcc, zlib1g-dev und squashfs-tools.)"
+        )),
         e => e,
     })?;
     let img = std::fs::read_dir(root)?
         .flatten()
         .map(|e| e.path())
-        .find(|p| p.file_name().map(|n| n.to_string_lossy().ends_with("-x86_64.AppImage")).unwrap_or(false))
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().ends_with("-x86_64.AppImage"))
+                .unwrap_or(false)
+        })
         .ok_or_else(|| Error::Other("build-appimage.sh hat kein AppImage erzeugt.".into()))?;
     Ok(img)
 }

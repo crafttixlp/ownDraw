@@ -34,7 +34,9 @@ pub fn run(s: &Item, sc: f32) -> Option<Item> {
     let st = s.as_stroke()?;
     let hl = st.hl;
     let p = st.p.clone();
-    let g = std::panic::catch_unwind(move || recognize(&p, hl, sc as f64)).ok().flatten()?;
+    let g = std::panic::catch_unwind(move || recognize(&p, hl, sc as f64))
+        .ok()
+        .flatten()?;
     if g.q.iter().any(|v| !v.is_finite()) || !g.ang.is_finite() {
         return None;
     }
@@ -101,7 +103,15 @@ fn recognize(p: &[f32], hl: bool, sc: f64) -> Option<G> {
 
     // S: neu abtasten + glaetten
     let (mut ax, mut ay) = resample(&rx, &ry, m, 192, false);
-    let sr = if m >= 80 { 3 } else if m >= 40 { 2 } else if m >= 24 { 1 } else { 0 };
+    let sr = if m >= 80 {
+        3
+    } else if m >= 40 {
+        2
+    } else if m >= 24 {
+        1
+    } else {
+        0
+    };
     if sr > 0 {
         smooth(&mut ax, &mut ay, sr, 2, false);
     }
@@ -120,7 +130,10 @@ fn recognize(p: &[f32], hl: bool, sc: f64) -> Option<G> {
 
     // Linie: leichtes Zittern und minimaler Bogen sind erlaubt
     if chord > 0.8 * dg && len < 1.12 * chord && dev(&x, &y, 0, N - 1) < 0.075 * chord {
-        return Some(G::new(item::LINE, snap_line(x[0], y[0], x[N - 1], y[N - 1])));
+        return Some(G::new(
+            item::LINE,
+            snap_line(x[0], y[0], x[N - 1], y[N - 1]),
+        ));
     }
     if hl {
         return None;
@@ -330,7 +343,10 @@ fn arrow(x: &[f64], y: &[f64], ux: &[f64], uy: &[f64], sc: f64) -> Option<G> {
         return None;
     }
     let ku = (k1 as f64 * (M - 1) as f64 / (N - 1) as f64 * 0.92) as i64;
-    Some(G::new(item::ARROW, fit_segment(ux, uy, 0, ku.max(2), x[0], y[0], tx, ty)))
+    Some(G::new(
+        item::ARROW,
+        fit_segment(ux, uy, 0, ku.max(2), x[0], y[0], tx, ty),
+    ))
 }
 
 /// Doppelpfeil in einem Strich: Haken – Spitze – Schaft – Spitze – Haken.
@@ -370,14 +386,18 @@ fn arrow2(x: &[f64], y: &[f64], ux: &[f64], uy: &[f64], sc: f64) -> Option<G> {
     let (vx, vy) = ((x[pb] - x[pa]) / far, (y[pb] - y[pa]) / far);
     let (ax0, ay0, bx0, by0) = (x[pa], y[pa], x[pb], y[pb]);
     for i in pa + 1..pb {
-        if hyp(x[i] - ax0, y[i] - ay0) < 0.05 * far && (x[i] - ax0) * vx + (y[i] - ay0) * vy < 0.03 * far {
+        if hyp(x[i] - ax0, y[i] - ay0) < 0.05 * far
+            && (x[i] - ax0) * vx + (y[i] - ay0) * vy < 0.03 * far
+        {
             pa = i;
         }
     }
     let mut i = pb as i64 - 1;
     while i > pa as i64 {
         let iu = i as usize;
-        if hyp(x[iu] - bx0, y[iu] - by0) < 0.05 * far && (bx0 - x[iu]) * vx + (by0 - y[iu]) * vy < 0.03 * far {
+        if hyp(x[iu] - bx0, y[iu] - by0) < 0.05 * far
+            && (bx0 - x[iu]) * vx + (by0 - y[iu]) * vy < 0.03 * far
+        {
             pb = iu;
         }
         i -= 1;
@@ -412,12 +432,29 @@ fn arrow2(x: &[f64], y: &[f64], ux: &[f64], uy: &[f64], sc: f64) -> Option<G> {
         t0 = t0.min(t);
         t1 = t1.max(t);
     }
-    Some(G::new(item::ARROW2, snap_line(ln[0] + dx * t0, ln[1] + dy * t0, ln[0] + dx * t1, ln[1] + dy * t1)))
+    Some(G::new(
+        item::ARROW2,
+        snap_line(
+            ln[0] + dx * t0,
+            ln[1] + dy * t0,
+            ln[0] + dx * t1,
+            ln[1] + dy * t1,
+        ),
+    ))
 }
 
 /// Prueft, ob die Punkte [from, to) einen Pfeilhaken an der Spitze tip bilden. Liefert die Hakenlaenge oder 0.
 #[allow(clippy::too_many_arguments)]
-fn head_at(x: &[f64], y: &[f64], from: usize, to: usize, tip: usize, vx: f64, vy: f64, far: f64) -> f64 {
+fn head_at(
+    x: &[f64],
+    y: &[f64],
+    from: usize,
+    to: usize,
+    tip: usize,
+    vx: f64,
+    vy: f64,
+    far: f64,
+) -> f64 {
     let (tx, ty) = (x[tip], y[tip]);
     let (mut head, mut hx, mut hy, mut pl) = (0.0, 0.0, 0.0, 0.0);
     for i in from..to {
@@ -447,7 +484,15 @@ fn head_at(x: &[f64], y: &[f64], from: usize, to: usize, tip: usize, vx: f64, vy
 
 // ------------------------------------------------------------------ geschlossene Formen
 
-fn closed_shape(x0: &[f64], y0: &[f64], j: usize, ux: &[f64], uy: &[f64], lx: &[f64], ly: &[f64]) -> Option<G> {
+fn closed_shape(
+    x0: &[f64],
+    y0: &[f64],
+    j: usize,
+    ux: &[f64],
+    uy: &[f64],
+    lx: &[f64],
+    ly: &[f64],
+) -> Option<G> {
     let (mut x, mut y) = resample(x0, y0, j + 1, N, true);
     smooth(&mut x, &mut y, 2, 1, true);
     let (mut min_x, mut min_y, mut max_x, mut max_y) = (1e30f64, 1e30f64, -1e30f64, -1e30f64);
@@ -506,7 +551,9 @@ fn closed_shape(x0: &[f64], y0: &[f64], j: usize, ux: &[f64], uy: &[f64], lx: &[
     let mut kb: i32 = -1;
     for k in 3..=6usize {
         e_p[k] = 1e9;
-        let Some(idx) = pick(&pk, &t_a, k, if k <= 4 { M / 10 } else { M / 13 }) else { continue };
+        let Some(idx) = pick(&pk, &t_a, k, if k <= 4 { M / 10 } else { M / 13 }) else {
+            continue;
+        };
         let mut mt: f64 = 1e9;
         for &ii in &idx {
             mt = mt.min(t_a[ii]);
@@ -514,7 +561,9 @@ fn closed_shape(x0: &[f64], y0: &[f64], j: usize, ux: &[f64], uy: &[f64], lx: &[
         if mt < if k <= 4 { 30.0 } else { 26.0 } {
             continue;
         }
-        let Some(v) = fit_poly(ux, uy, &idx, M, true) else { continue };
+        let Some(v) = fit_poly(ux, uy, &idx, M, true) else {
+            continue;
+        };
         if !convex(&v, dg) {
             continue;
         }
@@ -579,7 +628,11 @@ fn closed_shape(x0: &[f64], y0: &[f64], j: usize, ux: &[f64], uy: &[f64], lx: &[
                 (hp[0] + hp[2] / 2.0) as f32,
                 (hp[1] + hp[3] / 2.0) as f32,
             ];
-            return Some(G { kind: item::HEART, q, ang: hp[4] as f32 });
+            return Some(G {
+                kind: item::HEART,
+                q,
+                ang: hp[4] as f32,
+            });
         }
     }
     if cave < -40.0 {
@@ -597,8 +650,20 @@ fn closed_shape(x0: &[f64], y0: &[f64], j: usize, ux: &[f64], uy: &[f64], lx: &[
             continue;
         }
         let r = e_p[ku] / e_e.max(1e-9);
-        let lim = if ku <= 4 { 0.5 } else if ku == 5 { 0.42 } else { 0.36 };
-        let cl = if ku <= 4 { 0.6 } else if ku == 5 { 0.68 } else { 0.75 };
+        let lim = if ku <= 4 {
+            0.5
+        } else if ku == 5 {
+            0.42
+        } else {
+            0.36
+        };
+        let cl = if ku <= 4 {
+            0.6
+        } else if ku == 5 {
+            0.68
+        } else {
+            0.75
+        };
         let mut ok = r <= lim || (r <= 0.8 && conc[ku] >= cl);
         if ku >= 5 && lx.len() < 5 * ku {
             ok = r <= 0.35 || (r <= 0.8 && raw_conc(lx, ly, ku, dg) >= 0.72);
@@ -615,8 +680,17 @@ fn closed_shape(x0: &[f64], y0: &[f64], j: usize, ux: &[f64], uy: &[f64], lx: &[
     }
     if let Some(e) = el {
         if e_e < 0.05 {
-            let q = vec![(e[0] - e[2]) as f32, (e[1] - e[3]) as f32, (e[0] + e[2]) as f32, (e[1] + e[3]) as f32];
-            return Some(G { kind: item::ELLIPSE, q, ang: e[4] as f32 });
+            let q = vec![
+                (e[0] - e[2]) as f32,
+                (e[1] - e[3]) as f32,
+                (e[0] + e[2]) as f32,
+                (e[1] + e[3]) as f32,
+            ];
+            return Some(G {
+                kind: item::ELLIPSE,
+                q,
+                ang: e[4] as f32,
+            });
         }
     }
     None
@@ -869,7 +943,13 @@ fn pick(pk: &[usize], t: &[f64], k: usize, sep: usize) -> Option<Vec<usize>> {
 }
 
 /// Polygon durch die Ecken idx: Seiten = Ausgleichsgeraden der ungeglaetteten Punkte, Ecken = Schnittpunkte.
-fn fit_poly(ux: &[f64], uy: &[f64], idx: &[usize], base: usize, refine: bool) -> Option<Vec<[f64; 2]>> {
+fn fit_poly(
+    ux: &[f64],
+    uy: &[f64],
+    idx: &[usize],
+    base: usize,
+    refine: bool,
+) -> Option<Vec<[f64; 2]>> {
     let (k, n) = (idx.len(), ux.len());
     let nf = n as f64;
     let mut ln: Vec<[f64; 4]> = Vec::with_capacity(k);
@@ -900,7 +980,11 @@ fn fit_poly(ux: &[f64], uy: &[f64], idx: &[usize], base: usize, refine: bool) ->
                 let (a, b) = (v[s], v[(s + 1) % k]);
                 let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
                 let l2 = dx * dx + dy * dy;
-                let t = if l2 == 0.0 { 0.0 } else { ((ux[i] - a[0]) * dx + (uy[i] - a[1]) * dy) / l2 };
+                let t = if l2 == 0.0 {
+                    0.0
+                } else {
+                    ((ux[i] - a[0]) * dx + (uy[i] - a[1]) * dy) / l2
+                };
                 let tc = clamp(t, 0.0, 1.0);
                 let d = hyp(ux[i] - a[0] - tc * dx, uy[i] - a[1] - tc * dy);
                 if d < bd {
@@ -938,7 +1022,14 @@ fn fit_poly(ux: &[f64], uy: &[f64], idx: &[usize], base: usize, refine: bool) ->
 }
 
 /// Ecke i = Schnitt der Seitengeraden i-1 und i; bei fast parallelen Geraden der Eckpunkt des Strichs.
-fn corners_of(ln: &[[f64; 4]], ux: &[f64], uy: &[f64], idx: &[usize], n: usize, base: usize) -> Vec<[f64; 2]> {
+fn corners_of(
+    ln: &[[f64; 4]],
+    ux: &[f64],
+    uy: &[f64],
+    idx: &[usize],
+    n: usize,
+    base: usize,
+) -> Vec<[f64; 2]> {
     let k = ln.len();
     let mut v = vec![[0.0f64; 2]; k];
     for i in 0..k {
@@ -1009,7 +1100,9 @@ fn supported(v: &[[f64; 2]], x: &[f64], y: &[f64], dg: f64) -> bool {
         let mut i = 0;
         while i < n && c < 2 {
             let t = ((x[i] - a[0]) * dx + (y[i] - a[1]) * dy) / l2;
-            if (0.15..=0.85).contains(&t) && ((x[i] - a[0]) * dy - (y[i] - a[1]) * dx).abs() / l2.sqrt() < 0.04 * dg {
+            if (0.15..=0.85).contains(&t)
+                && ((x[i] - a[0]) * dy - (y[i] - a[1]) * dx).abs() / l2.sqrt() < 0.04 * dg
+            {
                 c += 1;
             }
             i += 1;
@@ -1095,7 +1188,10 @@ fn axis_snap(v: &[[f64; 2]]) -> Vec<[f64; 2]> {
     }
     let mut max_l: f64 = 0.0;
     for i in 0..k {
-        max_l = max_l.max(hyp(v[(i + 1) % k][0] - v[i][0], v[(i + 1) % k][1] - v[i][1]));
+        max_l = max_l.max(hyp(
+            v[(i + 1) % k][0] - v[i][0],
+            v[(i + 1) % k][1] - v[i][1],
+        ));
     }
     for i in 0..k {
         let (dx, dy) = (v[(i + 1) % k][0] - v[i][0], v[(i + 1) % k][1] - v[i][1]);
@@ -1213,7 +1309,10 @@ fn quad(v: &[[f64; 2]], ux: &[f64], uy: &[f64]) -> Vec<f32> {
         sc += lu * (4.0 * ang).cos();
         ss += lu * (4.0 * ang).sin();
         if i < 2 {
-            let lo = hyp(v[(i + 3) % 4][0] - v[(i + 2) % 4][0], v[(i + 3) % 4][1] - v[(i + 2) % 4][1]);
+            let lo = hyp(
+                v[(i + 3) % 4][0] - v[(i + 2) % 4][0],
+                v[(i + 3) % 4][1] - v[(i + 2) % 4][1],
+            );
             if lu.min(lo) / lu.max(lo) < 0.6 {
                 rect = false;
             }
@@ -1265,7 +1364,12 @@ fn rect_fit(v: &[[f64; 2]], ux: &[f64], uy: &[f64], th: f64) -> Vec<f32> {
     }
     us.sort_by(|a, b| a.total_cmp(b));
     vs.sort_by(|a, b| a.total_cmp(b));
-    let (mut u0, mut u1, mut v0, mut v1) = ((us[0] + us[1]) / 2.0, (us[2] + us[3]) / 2.0, (vs[0] + vs[1]) / 2.0, (vs[2] + vs[3]) / 2.0);
+    let (mut u0, mut u1, mut v0, mut v1) = (
+        (us[0] + us[1]) / 2.0,
+        (us[2] + us[3]) / 2.0,
+        (vs[0] + vs[1]) / 2.0,
+        (vs[2] + vs[3]) / 2.0,
+    );
     let n = ux.len();
     for _ in 0..3 {
         let mut sum = [0.0f64; 4];
@@ -1274,7 +1378,12 @@ fn rect_fit(v: &[[f64; 2]], ux: &[f64], uy: &[f64], th: f64) -> Vec<f32> {
         for i in 0..n {
             let pu = (ux[i] - cx) * c + (uy[i] - cy) * s;
             let pv = -(ux[i] - cx) * s + (uy[i] - cy) * c;
-            let (d0, d1, d2, d3) = ((pu - u0).abs(), (pu - u1).abs(), (pv - v0).abs(), (pv - v1).abs());
+            let (d0, d1, d2, d3) = (
+                (pu - u0).abs(),
+                (pu - u1).abs(),
+                (pv - v0).abs(),
+                (pv - v1).abs(),
+            );
             let md = d0.min(d1).min(d2.min(d3));
             if md == d0 || md == d1 {
                 if pv < v0 + mv || pv > v1 - mv {
@@ -1407,7 +1516,10 @@ fn pentagram(t_b: &[f64], ux: &[f64], uy: &[f64], dg: f64) -> Option<G> {
     if poly_err(ux, uy, &v) / dg > 0.05 {
         return None;
     }
-    Some(G::new(item::POLY, star_pts(tp[0], tp[1], tp[2], tp[2] * 0.381966, tp[3])))
+    Some(G::new(
+        item::POLY,
+        star_pts(tp[0], tp[1], tp[2], tp[2] * 0.381966, tp[3]),
+    ))
 }
 
 /// Stern-Umriss: 5 starke aeussere und 5 innere Ecken im Wechsel. [cx, cy, R, r, phi, -, rms/dg].
@@ -1482,8 +1594,18 @@ fn star_outline(t_b: &[f64], ux: &[f64], uy: &[f64], dg: f64) -> Option<[f64; 7]
         return None;
     }
     let sq = star_pts(tp[0], tp[1], tp[2], r, tp[3]);
-    let sv: Vec<[f64; 2]> = (0..10).map(|i| [sq[i * 2] as f64, sq[i * 2 + 1] as f64]).collect();
-    Some([tp[0], tp[1], tp[2], r, tp[3], 0.0, poly_err(ux, uy, &sv) / dg])
+    let sv: Vec<[f64; 2]> = (0..10)
+        .map(|i| [sq[i * 2] as f64, sq[i * 2 + 1] as f64])
+        .collect();
+    Some([
+        tp[0],
+        tp[1],
+        tp[2],
+        r,
+        tp[3],
+        0.0,
+        poly_err(ux, uy, &sv) / dg,
+    ])
 }
 
 // ------------------------------------------------------------------ Herz
@@ -1591,7 +1713,12 @@ fn heart(x: &[f64], y: &[f64], t_b: &[f64], ux: &[f64], uy: &[f64], dg: f64) -> 
 
 /// rms-Abstand zur Herzkontur; step > 1 wertet nur jeden step-ten Punkt aus.
 fn heart_err(x: &[f64], y: &[f64], p: &[f64; 6], step: usize) -> f64 {
-    let q = [(p[0] - p[2] / 2.0) as f32, (p[1] - p[3] / 2.0) as f32, (p[0] + p[2] / 2.0) as f32, (p[1] + p[3] / 2.0) as f32];
+    let q = [
+        (p[0] - p[2] / 2.0) as f32,
+        (p[1] - p[3] / 2.0) as f32,
+        (p[0] + p[2] / 2.0) as f32,
+        (p[1] + p[3] / 2.0) as f32,
+    ];
     let hp = item::heart_pts(&q, p[4] as f32, if step > 1 { 16 } else { 24 });
     let k = hp.len() / 2;
     let h = |j: usize| (hp[j * 2] as f64, hp[j * 2 + 1] as f64);
@@ -1656,8 +1783,19 @@ fn tls(x: &[f64], y: &[f64], from: i64, to: i64, n: usize, wrap: bool) -> Option
 
 /// Strecke deckungsgleich zum Strich: Ausgleichsgerade der Punkte from..to, Enden = Projektion von a und b.
 #[allow(clippy::too_many_arguments)]
-fn fit_segment(x: &[f64], y: &[f64], from: i64, to: i64, ax: f64, ay: f64, bx: f64, by: f64) -> Vec<f32> {
-    let Some(ln) = tls(x, y, from, to, x.len(), false) else { return snap_line(ax, ay, bx, by) };
+fn fit_segment(
+    x: &[f64],
+    y: &[f64],
+    from: i64,
+    to: i64,
+    ax: f64,
+    ay: f64,
+    bx: f64,
+    by: f64,
+) -> Vec<f32> {
+    let Some(ln) = tls(x, y, from, to, x.len(), false) else {
+        return snap_line(ax, ay, bx, by);
+    };
     let (mut dx, mut dy) = (ln[2], ln[3]);
     if (bx - ax) * dx + (by - ay) * dy < 0.0 {
         dx = -dx;
@@ -1665,7 +1803,12 @@ fn fit_segment(x: &[f64], y: &[f64], from: i64, to: i64, ax: f64, ay: f64, bx: f
     }
     let t0 = (ax - ln[0]) * dx + (ay - ln[1]) * dy;
     let t1 = (bx - ln[0]) * dx + (by - ln[1]) * dy;
-    snap_line(ln[0] + dx * t0, ln[1] + dy * t0, ln[0] + dx * t1, ln[1] + dy * t1)
+    snap_line(
+        ln[0] + dx * t0,
+        ln[1] + dy * t0,
+        ln[0] + dx * t1,
+        ln[1] + dy * t1,
+    )
 }
 
 /// Gauss-Jordan mit Pivotsuche auf der erweiterten Matrix (n x n+1).
@@ -1713,12 +1856,20 @@ fn resample(x: &[f64], y: &[f64], m: usize, cnt: usize, closed: bool) -> (Vec<f6
     }
     let mut sgi = 0usize;
     for i in 0..cnt {
-        let d = if closed { tot * i as f64 / cnt as f64 } else { tot * i as f64 / (cnt - 1) as f64 };
+        let d = if closed {
+            tot * i as f64 / cnt as f64
+        } else {
+            tot * i as f64 / (cnt - 1) as f64
+        };
         while sgi + 1 < segs && cum[sgi + 1] < d {
             sgi += 1;
         }
         let k = (sgi + 1) % m;
-        let f = if cum[sgi + 1] > cum[sgi] { (d - cum[sgi]) / (cum[sgi + 1] - cum[sgi]) } else { 0.0 };
+        let f = if cum[sgi + 1] > cum[sgi] {
+            (d - cum[sgi]) / (cum[sgi + 1] - cum[sgi])
+        } else {
+            0.0
+        };
         let f = clamp(f, 0.0, 1.0);
         ox[i] = x[sgi] + (x[k] - x[sgi]) * f;
         oy[i] = y[sgi] + (y[k] - y[sgi]) * f;
@@ -1741,7 +1892,11 @@ fn smooth(x: &mut [f64], y: &mut [f64], r: usize, passes: usize, closed: bool) {
             let (mut sx, mut sy, mut c) = (0.0, 0.0, 0.0);
             let rr = if closed { r } else { r.min(i.min(n - 1 - i)) } as i64;
             for d in -rr..=rr {
-                let k = if closed { ((i as i64 + d + n as i64 * 8) % n as i64) as usize } else { (i as i64 + d) as usize };
+                let k = if closed {
+                    ((i as i64 + d + n as i64 * 8) % n as i64) as usize
+                } else {
+                    (i as i64 + d) as usize
+                };
                 sx += x[k];
                 sy += y[k];
                 c += 1.0;
@@ -1757,7 +1912,11 @@ fn smooth(x: &mut [f64], y: &mut [f64], r: usize, passes: usize, closed: bool) {
 fn seg_d(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
     let (dx, dy) = (bx - ax, by - ay);
     let l = dx * dx + dy * dy;
-    let t = if l == 0.0 { 0.0 } else { ((px - ax) * dx + (py - ay) * dy) / l };
+    let t = if l == 0.0 {
+        0.0
+    } else {
+        ((px - ax) * dx + (py - ay) * dy) / l
+    };
     let t = clamp(t, 0.0, 1.0);
     hyp(px - ax - t * dx, py - ay - t * dy)
 }
@@ -1780,7 +1939,10 @@ fn snap_line(mut x0: f64, mut y0: f64, mut x1: f64, mut y1: f64) -> Vec<f32> {
         let snap = jround(ang / 45.0) as f64 * 45.0;
         if (ang - snap).abs() < 6.0 {
             let (mx, my) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-            let (cx, cy) = (snap.to_radians().cos() * l / 2.0, snap.to_radians().sin() * l / 2.0);
+            let (cx, cy) = (
+                snap.to_radians().cos() * l / 2.0,
+                snap.to_radians().sin() * l / 2.0,
+            );
             x0 = mx - cx;
             y0 = my - cy;
             x1 = mx + cx;
@@ -1829,7 +1991,9 @@ mod tests {
 
     #[test]
     fn line() {
-        let pts: Vec<_> = (0..40).map(|i| (100.0 + i as f64 * 5.0, 100.0 + (i % 3) as f64 * 0.5)).collect();
+        let pts: Vec<_> = (0..40)
+            .map(|i| (100.0 + i as f64 * 5.0, 100.0 + (i % 3) as f64 * 0.5))
+            .collect();
         let r = run(&stroke(&pts), 1.0).expect("Linie");
         assert_eq!(kind_of(&r).0, item::LINE);
     }
@@ -1848,7 +2012,15 @@ mod tests {
 
     #[test]
     fn rectangle() {
-        let pts = poly_path(&[(100.0, 100.0), (400.0, 100.0), (400.0, 300.0), (100.0, 300.0)], 25);
+        let pts = poly_path(
+            &[
+                (100.0, 100.0),
+                (400.0, 100.0),
+                (400.0, 300.0),
+                (100.0, 300.0),
+            ],
+            25,
+        );
         let r = run(&stroke(&pts), 1.0).expect("Rechteck");
         assert_eq!(kind_of(&r), (item::POLY, 8));
     }
@@ -1875,7 +2047,10 @@ mod tests {
         let pts: Vec<_> = (0..120)
             .map(|i| {
                 let t = i as f64 * 0.31;
-                (200.0 + 80.0 * (t * 1.7).sin() + 30.0 * (t * 5.3).cos(), 200.0 + 60.0 * (t * 2.9).cos() + i as f64)
+                (
+                    200.0 + 80.0 * (t * 1.7).sin() + 30.0 * (t * 5.3).cos(),
+                    200.0 + 60.0 * (t * 2.9).cos() + i as f64,
+                )
             })
             .collect();
         assert!(run(&stroke(&pts), 1.0).is_none());

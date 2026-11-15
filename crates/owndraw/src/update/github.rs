@@ -48,7 +48,11 @@ pub fn parse_release(v: &Value) -> Option<Release> {
         .and_then(Value::as_array)
         .map(|a| {
             a.iter()
-                .map(|x| Asset { name: s(x, "name"), url: s(x, "browser_download_url"), size: x.get("size").and_then(Value::as_u64).unwrap_or(0) })
+                .map(|x| Asset {
+                    name: s(x, "name"),
+                    url: s(x, "browser_download_url"),
+                    size: x.get("size").and_then(Value::as_u64).unwrap_or(0),
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -57,7 +61,10 @@ pub fn parse_release(v: &Value) -> Option<Release> {
         title: s(v, "name"),
         body: s(v, "body"),
         date: date.chars().take(10).collect(),
-        prerelease: v.get("prerelease").and_then(Value::as_bool).unwrap_or(false),
+        prerelease: v
+            .get("prerelease")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         tag,
         version,
         assets,
@@ -73,10 +80,21 @@ pub struct Api<'a> {
 
 impl Api<'_> {
     fn url(&self, tail: &str) -> Result<String, Error> {
-        if self.repo.split('/').count() != 2 || self.repo.contains(char::is_whitespace) || self.repo.contains("..") {
-            return Err(Error::Other(format!("Ungültiges Repository „{}“ (erwartet owner/name)", self.repo)));
+        if self.repo.split('/').count() != 2
+            || self.repo.contains(char::is_whitespace)
+            || self.repo.contains("..")
+        {
+            return Err(Error::Other(format!(
+                "Ungültiges Repository „{}“ (erwartet owner/name)",
+                self.repo
+            )));
         }
-        Ok(format!("{}/repos/{}/releases{}", self.base.trim_end_matches('/'), self.repo, tail))
+        Ok(format!(
+            "{}/repos/{}/releases{}",
+            self.base.trim_end_matches('/'),
+            self.repo,
+            tail
+        ))
     }
 
     /// `/releases/latest`; `None`, wenn es (noch) kein Release gibt.
@@ -86,15 +104,20 @@ impl Api<'_> {
             Err(Error::Other(m)) if m.contains("404") => return Ok(None),
             Err(e) => return Err(e),
         };
-        let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
+        let v: Value = serde_json::from_str(&t)
+            .map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
         Ok(parse_release(&v))
     }
 
     /// `/releases` (Liste), neueste Version zuerst.
     pub fn list(&self) -> Result<Vec<Release>, Error> {
         let t = self.http.get_text(&self.url("?per_page=50")?)?;
-        let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
-        let mut r: Vec<Release> = v.as_array().map(|a| a.iter().filter_map(parse_release).collect()).unwrap_or_default();
+        let v: Value = serde_json::from_str(&t)
+            .map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
+        let mut r: Vec<Release> = v
+            .as_array()
+            .map(|a| a.iter().filter_map(parse_release).collect())
+            .unwrap_or_default();
         r.sort_by(|a, b| b.version.cmp(&a.version));
         Ok(r)
     }

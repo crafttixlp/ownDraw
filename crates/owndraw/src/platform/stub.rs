@@ -30,8 +30,13 @@ impl StubPlatform {
     }
 
     fn answer(&self, tag: Tag) {
-        let file = std::env::var("OWNDRAW_PICK").ok().filter(|s| !s.is_empty()).map(|p| FileRef::Path(PathBuf::from(p)));
-        self.events.borrow_mut().push(PlatformEvent::Picked { tag, file });
+        let file = std::env::var("OWNDRAW_PICK")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|p| FileRef::Path(PathBuf::from(p)));
+        self.events
+            .borrow_mut()
+            .push(PlatformEvent::Picked { tag, file });
     }
 
     /// Ordner für Konfiguration/Cache im Stub: `OWNDRAW_DATA` bzw. `~/.local/share/OwnDraw`.
@@ -57,12 +62,20 @@ impl Platform for StubPlatform {
     fn read(&self, f: &FileRef) -> io::Result<Vec<u8>> {
         match f {
             FileRef::Path(p) => std::fs::read(p),
-            FileRef::Uri(_) => Err(io::Error::new(io::ErrorKind::Unsupported, "URI nicht unterstützt")),
+            FileRef::Uri(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "URI nicht unterstützt",
+            )),
         }
     }
     fn write_atomic(&self, f: &FileRef, data: &[u8]) -> io::Result<()> {
         use std::io::Write;
-        let FileRef::Path(p) = f else { return Err(io::Error::new(io::ErrorKind::Unsupported, "URI nicht unterstützt")) };
+        let FileRef::Path(p) = f else {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "URI nicht unterstützt",
+            ));
+        };
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d)?;
         }
@@ -75,7 +88,12 @@ impl Platform for StubPlatform {
         std::fs::rename(&t, p)
     }
     fn create_in(&self, dir: &FileRef, name: &str, _kind: FileKind) -> io::Result<FileRef> {
-        let FileRef::Path(d) = dir else { return Err(io::Error::new(io::ErrorKind::Unsupported, "URI nicht unterstützt")) };
+        let FileRef::Path(d) = dir else {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "URI nicht unterstützt",
+            ));
+        };
         std::fs::create_dir_all(d)?;
         let (stem, ext) = match name.rsplit_once('.') {
             Some((s, e)) => (s.to_string(), format!(".{e}")),
@@ -118,7 +136,10 @@ impl Platform for StubPlatform {
                 .map(|f| {
                     let path = f.path().to_path_buf();
                     Drop {
-                        name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                        name: path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
                         bytes: None,
                         file: Some(FileRef::Path(path)),
                         pos,
@@ -135,6 +156,8 @@ impl Platform for StubPlatform {
         let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
     fn is_touch(&self) -> bool {
-        std::env::var("OWNDRAW_TOUCH").map(|v| v == "1").unwrap_or(false)
+        std::env::var("OWNDRAW_TOUCH")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     }
 }

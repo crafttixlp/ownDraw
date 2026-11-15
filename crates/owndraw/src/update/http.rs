@@ -10,7 +10,13 @@ pub trait Http: Send + Sync {
     fn get_text(&self, url: &str) -> Result<String, Error>;
     /// Lädt nach `dest` (wird überschrieben). `progress(bytes, gesamt)`; bei gesetztem `cancel` wird mit
     /// `Error::Cancelled` abgebrochen und `dest` gelöscht.
-    fn download(&self, url: &str, dest: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error>;
+    fn download(
+        &self,
+        url: &str,
+        dest: &Path,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(u64, Option<u64>),
+    ) -> Result<(), Error>;
 }
 
 /// Standard-Implementierung der Plattform. `allow_http` nur für Tests mit lokalem Server.
@@ -55,13 +61,32 @@ mod desktop {
 
     impl Http for Ureq {
         fn get_text(&self, url: &str) -> Result<String, Error> {
-            let mut r = self.agent().get(url).header("Accept", "application/vnd.github+json").call().map_err(net)?;
-            r.body_mut().with_config().limit(8 * 1024 * 1024).read_to_string().map_err(net)
+            let mut r = self
+                .agent()
+                .get(url)
+                .header("Accept", "application/vnd.github+json")
+                .call()
+                .map_err(net)?;
+            r.body_mut()
+                .with_config()
+                .limit(8 * 1024 * 1024)
+                .read_to_string()
+                .map_err(net)
         }
 
-        fn download(&self, url: &str, dest: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error> {
+        fn download(
+            &self,
+            url: &str,
+            dest: &Path,
+            cancel: &AtomicBool,
+            progress: &mut dyn FnMut(u64, Option<u64>),
+        ) -> Result<(), Error> {
             let mut r = self.agent().get(url).call().map_err(net)?;
-            let total = r.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<u64>().ok());
+            let total = r
+                .headers()
+                .get("content-length")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
             let mut body = r.body_mut().as_reader();
             let res = (|| -> Result<(), Error> {
                 let mut f = std::fs::File::create(dest)?;
@@ -71,7 +96,9 @@ mod desktop {
                     if cancel.load(Ordering::Relaxed) {
                         return Err(Error::Cancelled);
                     }
-                    let n = body.read(&mut buf).map_err(|e| Error::Other(format!("Download unterbrochen: {e}")))?;
+                    let n = body
+                        .read(&mut buf)
+                        .map_err(|e| Error::Other(format!("Download unterbrochen: {e}")))?;
                     if n == 0 {
                         break;
                     }
@@ -82,7 +109,9 @@ mod desktop {
                 f.sync_all()?;
                 if let Some(t) = total {
                     if t != got {
-                        return Err(Error::Other(format!("Download unvollständig ({got} von {t} Bytes)")));
+                        return Err(Error::Other(format!(
+                            "Download unvollständig ({got} von {t} Bytes)"
+                        )));
                     }
                 }
                 Ok(())
@@ -109,14 +138,26 @@ mod android {
             if !self.allow_http && !url.starts_with("https://") {
                 return Err(Error::Other("Nur HTTPS erlaubt".into()));
             }
-            crate::platform::android::http_get(url).map_err(|e| Error::Other(format!("Netzwerkfehler: {e}")))
+            crate::platform::android::http_get(url)
+                .map_err(|e| Error::Other(format!("Netzwerkfehler: {e}")))
         }
 
-        fn download(&self, url: &str, dest: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error> {
+        fn download(
+            &self,
+            url: &str,
+            dest: &Path,
+            cancel: &AtomicBool,
+            progress: &mut dyn FnMut(u64, Option<u64>),
+        ) -> Result<(), Error> {
             if !self.allow_http && !url.starts_with("https://") {
                 return Err(Error::Other("Nur HTTPS erlaubt".into()));
             }
-            let r = crate::platform::android::http_download(url, dest, &|| cancel.load(Ordering::Relaxed), progress);
+            let r = crate::platform::android::http_download(
+                url,
+                dest,
+                &|| cancel.load(Ordering::Relaxed),
+                progress,
+            );
             if r.is_err() {
                 let _ = std::fs::remove_file(dest);
             }

@@ -52,7 +52,11 @@ impl Env {
             FormFactor::Medium => 44.0,
             FormFactor::Expanded => 40.0,
         };
-        Env { ff, touch, btn: want.max(min) }
+        Env {
+            ff,
+            touch,
+            btn: want.max(min),
+        }
     }
 
     /// Tastaturkürzel-Hinweise nur bei großer Oberfläche.
@@ -106,7 +110,10 @@ mod tests {
         assert_eq!(toolbar_pos(FormFactor::Compact, None), BarPos::Bottom);
         assert_eq!(toolbar_pos(FormFactor::Medium, None), BarPos::Left);
         assert_eq!(toolbar_pos(FormFactor::Expanded, None), BarPos::Top);
-        assert_eq!(toolbar_pos(FormFactor::Compact, Some(BarPos::Right)), BarPos::Right);
+        assert_eq!(
+            toolbar_pos(FormFactor::Compact, Some(BarPos::Right)),
+            BarPos::Right
+        );
     }
 
     #[test]

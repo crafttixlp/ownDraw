@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -26,7 +26,14 @@ pub struct Shot {
 
 impl Shot {
     pub fn from_env() -> Option<Shot> {
-        std::env::var("OWNDRAW_SCREENSHOT").ok().filter(|s| !s.is_empty()).map(|p| Shot { path: PathBuf::from(p), frames: 0, done: false })
+        std::env::var("OWNDRAW_SCREENSHOT")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|p| Shot {
+                path: PathBuf::from(p),
+                frames: 0,
+                done: false,
+            })
     }
 
     /// Pro Frame aufrufen.
@@ -56,7 +63,11 @@ fn stroke(b: &mut Board, col: u32, w: f32, hl: bool, pts: &[(f32, f32)]) {
     for win in pts.windows(2) {
         for k in 0..8 {
             let t = k as f32 / 8.0;
-            it.add_point(win[0].0 + (win[1].0 - win[0].0) * t, win[0].1 + (win[1].1 - win[0].1) * t, 0.5);
+            it.add_point(
+                win[0].0 + (win[1].0 - win[0].0) * t,
+                win[0].1 + (win[1].1 - win[0].1) * t,
+                0.5,
+            );
         }
     }
     if let Some(l) = pts.last() {
@@ -72,26 +83,152 @@ fn demo_board(variant: u32, ox: f32, oy: f32) -> Board {
     match variant % 3 {
         0 => {
             let (a, c1) = (p(60.0, 80.0), p(260.0, 200.0));
-            b.items.push(Rc::new(Item::shape(item::POLY, vec![a.0, a.1, c1.0, a.1, c1.0, c1.1, a.0, c1.1], 0xFF3E63DD, 3.0)));
-            b.items.push(Rc::new(Item::shape(item::ELLIPSE, vec![p(300.0, 90.0).0, p(300.0, 90.0).1, p(440.0, 90.0).0, p(300.0, 190.0).1], 0xFFE5484D, 3.0)));
-            b.items.push(Rc::new(Item::shape(item::ARROW, vec![p(260.0, 140.0).0, p(260.0, 140.0).1, p(300.0, 140.0).0, p(300.0, 140.0).1], 0xFF111111, 3.0)));
-            b.items.push(Rc::new(Item::shape(item::ARROW_ENG, vec![p(100.0, 260.0).0, p(100.0, 260.0).1, p(400.0, 260.0).0, p(330.0, 260.0).1], 0xFF111111, 3.0)));
-            stroke(&mut b, 0xFF111111, 3.0, false, &[p(70.0, 300.0), p(120.0, 330.0), p(180.0, 290.0), p(240.0, 335.0), p(300.0, 295.0), p(360.0, 330.0)]);
-            stroke(&mut b, 0xFFFFC53D, 14.0, true, &[p(60.0, 380.0), p(300.0, 384.0)]);
-            b.items.push(Rc::new(Item::note("Welle 2: Speichern", 0xFF1F2025, 40.0, p(80.0, 420.0).0, p(80.0, 420.0).1, 280.0, 400.0, 0xFFFFE08A)));
+            b.items.push(Rc::new(Item::shape(
+                item::POLY,
+                vec![a.0, a.1, c1.0, a.1, c1.0, c1.1, a.0, c1.1],
+                0xFF3E63DD,
+                3.0,
+            )));
+            b.items.push(Rc::new(Item::shape(
+                item::ELLIPSE,
+                vec![
+                    p(300.0, 90.0).0,
+                    p(300.0, 90.0).1,
+                    p(440.0, 90.0).0,
+                    p(300.0, 190.0).1,
+                ],
+                0xFFE5484D,
+                3.0,
+            )));
+            b.items.push(Rc::new(Item::shape(
+                item::ARROW,
+                vec![
+                    p(260.0, 140.0).0,
+                    p(260.0, 140.0).1,
+                    p(300.0, 140.0).0,
+                    p(300.0, 140.0).1,
+                ],
+                0xFF111111,
+                3.0,
+            )));
+            b.items.push(Rc::new(Item::shape(
+                item::ARROW_ENG,
+                vec![
+                    p(100.0, 260.0).0,
+                    p(100.0, 260.0).1,
+                    p(400.0, 260.0).0,
+                    p(330.0, 260.0).1,
+                ],
+                0xFF111111,
+                3.0,
+            )));
+            stroke(
+                &mut b,
+                0xFF111111,
+                3.0,
+                false,
+                &[
+                    p(70.0, 300.0),
+                    p(120.0, 330.0),
+                    p(180.0, 290.0),
+                    p(240.0, 335.0),
+                    p(300.0, 295.0),
+                    p(360.0, 330.0),
+                ],
+            );
+            stroke(
+                &mut b,
+                0xFFFFC53D,
+                14.0,
+                true,
+                &[p(60.0, 380.0), p(300.0, 384.0)],
+            );
+            b.items.push(Rc::new(Item::note(
+                "Welle 2: Speichern",
+                0xFF1F2025,
+                40.0,
+                p(80.0, 420.0).0,
+                p(80.0, 420.0).1,
+                280.0,
+                400.0,
+                0xFFFFE08A,
+            )));
         }
         1 => {
             for i in 0..6 {
                 let y = 100.0 + i as f32 * 28.0;
-                stroke(&mut b, 0xFF3E63DD, 2.4, false, &[p(60.0, y), p(110.0, y - 8.0), p(170.0, y + 5.0), p(240.0, y - 6.0), p(330.0 - (i as f32) * 20.0, y)]);
+                stroke(
+                    &mut b,
+                    0xFF3E63DD,
+                    2.4,
+                    false,
+                    &[
+                        p(60.0, y),
+                        p(110.0, y - 8.0),
+                        p(170.0, y + 5.0),
+                        p(240.0, y - 6.0),
+                        p(330.0 - (i as f32) * 20.0, y),
+                    ],
+                );
             }
-            b.items.push(Rc::new(Item::shape(item::ELLIPSE, vec![p(300.0, 300.0).0, p(300.0, 300.0).1, p(420.0, 300.0).0, p(380.0, 300.0).1], 0xFF30A46C, 3.0)));
-            stroke(&mut b, 0xFFE5484D, 4.0, false, &[p(80.0, 300.0), p(140.0, 380.0), p(200.0, 300.0), p(260.0, 380.0)]);
+            b.items.push(Rc::new(Item::shape(
+                item::ELLIPSE,
+                vec![
+                    p(300.0, 300.0).0,
+                    p(300.0, 300.0).1,
+                    p(420.0, 300.0).0,
+                    p(380.0, 300.0).1,
+                ],
+                0xFF30A46C,
+                3.0,
+            )));
+            stroke(
+                &mut b,
+                0xFFE5484D,
+                4.0,
+                false,
+                &[
+                    p(80.0, 300.0),
+                    p(140.0, 380.0),
+                    p(200.0, 300.0),
+                    p(260.0, 380.0),
+                ],
+            );
         }
         _ => {
-            b.items.push(Rc::new(Item::note("Ideen sammeln", 0xFF1F2025, 40.0, p(60.0, 80.0).0, p(60.0, 80.0).1, 220.0, 300.0, 0xFFA5D8FF)));
-            b.items.push(Rc::new(Item::note("Logo?", 0xFF1F2025, 40.0, p(320.0, 140.0).0, p(320.0, 140.0).1, 180.0, 300.0, 0xFFFFE08A)));
-            stroke(&mut b, 0xFF8E4EC6, 5.5, false, &[p(80.0, 300.0), p(160.0, 260.0), p(240.0, 340.0), p(320.0, 280.0), p(400.0, 360.0)]);
+            b.items.push(Rc::new(Item::note(
+                "Ideen sammeln",
+                0xFF1F2025,
+                40.0,
+                p(60.0, 80.0).0,
+                p(60.0, 80.0).1,
+                220.0,
+                300.0,
+                0xFFA5D8FF,
+            )));
+            b.items.push(Rc::new(Item::note(
+                "Logo?",
+                0xFF1F2025,
+                40.0,
+                p(320.0, 140.0).0,
+                p(320.0, 140.0).1,
+                180.0,
+                300.0,
+                0xFFFFE08A,
+            )));
+            stroke(
+                &mut b,
+                0xFF8E4EC6,
+                5.5,
+                false,
+                &[
+                    p(80.0, 300.0),
+                    p(160.0, 260.0),
+                    p(240.0, 340.0),
+                    p(320.0, 280.0),
+                    p(400.0, 360.0),
+                ],
+            );
         }
     }
     b.board_mode = Default::default();
@@ -100,7 +237,10 @@ fn demo_board(variant: u32, ox: f32, oy: f32) -> Board {
 
 fn thumb_texture(ctx: &egui::Context, b: &Board, name: &str) -> egui::TextureHandle {
     let pm = b.thumb();
-    let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
+    let img = egui::ColorImage::from_rgba_premultiplied(
+        [pm.width() as usize, pm.height() as usize],
+        pm.data(),
+    );
     ctx.load_texture(name, img, egui::TextureOptions::LINEAR)
 }
 
@@ -110,14 +250,50 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     if has("light") {
         app.sh.settings.theme = Theme::Light;
     }
+    // Andocken: Werkzeugleiste links, Rückgängig-Leiste rechts, Auswahlleiste rechts (senkrecht)
+    if has("dock") {
+        use crate::settings::{BarPos, Dock};
+        for ff in ["Expanded", "Medium", "Compact"] {
+            for (id, e, f) in [
+                ("bar-tools", BarPos::Left, [0.0, 0.3]),
+                ("bar-tr", BarPos::Right, [0.0, 0.0]),
+                ("bar-sel", BarPos::Right, [0.0, 1.0]),
+            ] {
+                let key = format!("{id}@{ff}");
+                app.sh.settings.tile_pos.insert(key.clone(), f);
+                app.sh.settings.tile_dock.insert(
+                    key,
+                    Dock {
+                        edge: Some(e),
+                        vert: true,
+                    },
+                );
+            }
+        }
+    }
     let ms = owndraw_core::store::now_ms();
     if has("start") {
-        let names = [("Maschinenbau Skizze", false), ("Analysis Vorlesung", true), ("Ideen", false), ("Einkaufsliste", true), ("Logo-Entwurf", false), ("Statik Übung 3", true), ("Whiteboard Montag", false)];
+        let names = [
+            ("Maschinenbau Skizze", false),
+            ("Analysis Vorlesung", true),
+            ("Ideen", false),
+            ("Einkaufsliste", true),
+            ("Logo-Entwurf", false),
+            ("Statik Übung 3", true),
+            ("Whiteboard Montag", false),
+        ];
         let (sh, start, recent) = app.parts();
         let _ = sh;
         for (i, (n, pages)) in names.iter().enumerate().rev() {
-            let f = FileRef::Path(PathBuf::from(format!("/home/demo/Dokumente/OwnDraw/{n}.owndraw")));
-            recent.add(RecentEntry { file: f.clone(), name: n.to_string(), modified_ms: ms - (i as i64) * 86_400_000 - 3_600_000, pages: *pages });
+            let f = FileRef::Path(PathBuf::from(format!(
+                "/home/demo/Dokumente/OwnDraw/{n}.owndraw"
+            )));
+            recent.add(RecentEntry {
+                file: f.clone(),
+                name: n.to_string(),
+                modified_ms: ms - (i as i64) * 86_400_000 - 3_600_000,
+                pages: *pages,
+            });
             if i != 4 {
                 let b = demo_board(i as u32, 0.0, 0.0);
                 start.set_thumb(&f, thumb_texture(ctx, &b, &format!("demo-thumb-{i}")));
@@ -126,7 +302,15 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     }
     if has("editor") || has("pages") {
         let pages = has("pages");
-        let params = NewParams { name: if pages { "Analysis Vorlesung".into() } else { "Maschinenbau Skizze".into() }, pages, ..NewParams::default() };
+        let params = NewParams {
+            name: if pages {
+                "Analysis Vorlesung".into()
+            } else {
+                "Maschinenbau Skizze".into()
+            },
+            pages,
+            ..NewParams::default()
+        };
         let mut doc = session::new_document(&params);
         let mut b = demo_board(if pages { 1 } else { 0 }, 0.0, 0.0);
         b.board_mode = doc.mode.clone();
@@ -157,7 +341,16 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         // Texteingabe auf dem Blatt: neuer freier Text (textnew), Haftnotiz bearbeiten (textedit),
         // Text ausgewählt mit erweitertem Menü (textsel)
         if has("textnew") || has("textsel") {
-            ed.board.items.push(Rc::new(Item::note("Freier Text\nzweite Zeile", 0xFFE5484D, 34.0, 520.0, 260.0, 0.0, 0.0, 0)));
+            ed.board.items.push(Rc::new(Item::note(
+                "Freier Text\nzweite Zeile",
+                0xFFE5484D,
+                34.0,
+                520.0,
+                260.0,
+                0.0,
+                0.0,
+                0,
+            )));
         }
         if has("textnew") {
             ed.board.set_tool(board::TEXT);
@@ -165,7 +358,13 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         }
         if has("textedit") {
             ed.board.set_tool(board::TEXT);
-            if let Some(id) = ed.board.items.iter().find(|i| i.as_note().map(|n| n.bg != 0).unwrap_or(false)).map(|i| i.id) {
+            if let Some(id) = ed
+                .board
+                .items
+                .iter()
+                .find(|i| i.as_note().map(|n| n.bg != 0).unwrap_or(false))
+                .map(|i| i.id)
+            {
                 ed.edit_note(id);
                 ed.demo_append("\nmit Cursor am Ort");
             }
@@ -193,13 +392,27 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     }
     if has("autosave") {
         // Abnahme Autosave: neues Board im Standard-Ort, danach ein Strich → Datei muss nach > 2 s aktualisiert sein.
-        let params = NewParams { name: "Autosave-Test".into(), pages: false, ..NewParams::default() };
+        let params = NewParams {
+            name: "Autosave-Test".into(),
+            pages: false,
+            ..NewParams::default()
+        };
         let doc = session::new_document(&params);
         let sh = app.parts().0;
-        if let Ok(f) = sh.platform.create_in(&sh.platform.default_dir(), "Autosave-Test.owndraw", crate::platform::FileKind::Owndraw) {
+        if let Ok(f) = sh.platform.create_in(
+            &sh.platform.default_dir(),
+            "Autosave-Test.owndraw",
+            crate::platform::FileKind::Owndraw,
+        ) {
             let _ = session::write_document(&*sh.platform, &f, &doc);
             let mut ed = Editor::open(sh, doc, Some(f));
-            stroke(&mut ed.board, 0xFF111111, 3.0, false, &[(60.0, 80.0), (200.0, 160.0), (320.0, 90.0)]);
+            stroke(
+                &mut ed.board,
+                0xFF111111,
+                3.0,
+                false,
+                &[(60.0, 80.0), (200.0, 160.0), (320.0, 90.0)],
+            );
             ed.board.modified = true;
             app.open_editor(ctx, ed);
         }

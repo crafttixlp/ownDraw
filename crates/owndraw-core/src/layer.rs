@@ -39,12 +39,27 @@ pub struct Layer {
 
 impl Layer {
     pub fn new(id: i32, name: &str) -> Layer {
-        Layer { id, name: name.to_string(), visible: true, locked: false, opacity: 1.0, anim: A_NONE, speed: 1.0, hover: false }
+        Layer {
+            id,
+            name: name.to_string(),
+            visible: true,
+            locked: false,
+            opacity: 1.0,
+            anim: A_NONE,
+            speed: 1.0,
+            hover: false,
+        }
     }
 
     /// Dateiname ohne Leerzeichen/Umlaute, z. B. "02-berge-hinten".
     pub fn file_name(&self) -> String {
-        let s = self.name.to_lowercase().replace('ä', "ae").replace('ö', "oe").replace('ü', "ue").replace('ß', "ss");
+        let s = self
+            .name
+            .to_lowercase()
+            .replace('ä', "ae")
+            .replace('ö', "oe")
+            .replace('ü', "ue")
+            .replace('ß', "ss");
         let mut out = String::new();
         for ch in s.chars() {
             if ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-' {
@@ -78,7 +93,11 @@ impl Layer {
     pub fn from_json(o: &Value) -> Layer {
         Layer {
             id: o.get("id").and_then(jint).unwrap_or(1),
-            name: o.get("n").and_then(Value::as_str).unwrap_or("Ebene").to_string(),
+            name: o
+                .get("n")
+                .and_then(Value::as_str)
+                .unwrap_or("Ebene")
+                .to_string(),
             visible: o.get("v").and_then(Value::as_bool).unwrap_or(true),
             locked: jbool(o, "l"),
             opacity: jf(o, "o").unwrap_or(1.0),

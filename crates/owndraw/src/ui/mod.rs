@@ -12,7 +12,13 @@ use std::path::Path;
 /// Kürzt Text mit „…“ auf höchstens `max_w` Breite.
 pub fn elide(s: &str, size: f32, max_w: f32, ui: &egui::Ui) -> String {
     let font = egui::FontId::proportional(size);
-    let w = |t: &str| ui.fonts_mut(|f| f.layout_no_wrap(t.to_string(), font.clone(), Color32::WHITE).size().x);
+    let w = |t: &str| {
+        ui.fonts_mut(|f| {
+            f.layout_no_wrap(t.to_string(), font.clone(), Color32::WHITE)
+                .size()
+                .x
+        })
+    };
     if w(s) <= max_w {
         return s.to_string();
     }
@@ -43,7 +49,11 @@ pub fn fmt_time(ms: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{d:02}.{m:02}.{y} · {:02}:{:02}", sod / 3600, sod % 3600 / 60)
+    format!(
+        "{d:02}.{m:02}.{y} · {:02}:{:02}",
+        sod / 3600,
+        sod % 3600 / 60
+    )
 }
 
 /// Zeitzonen-Versatz aus /etc/localtime bzw. TZ (nur aktueller Versatz, ohne Abhängigkeit).
@@ -55,7 +65,9 @@ fn local_offset_secs() -> i64 {
         let data = std::env::var("TZ")
             .ok()
             .filter(|t| !t.is_empty())
-            .and_then(|t| std::fs::read(Path::new("/usr/share/zoneinfo").join(t.trim_start_matches(':'))).ok())
+            .and_then(|t| {
+                std::fs::read(Path::new("/usr/share/zoneinfo").join(t.trim_start_matches(':'))).ok()
+            })
             .or_else(|| std::fs::read("/etc/localtime").ok());
         data.and_then(|d| tzif_offset(&d, now)).unwrap_or(0)
     })
@@ -66,7 +78,9 @@ fn tzif_offset(d: &[u8], t: i64) -> Option<i64> {
     if d.len() < 44 || &d[0..4] != b"TZif" {
         return None;
     }
-    let be = |o: usize| -> Option<i64> { Some(i32::from_be_bytes(d.get(o..o + 4)?.try_into().ok()?) as i64) };
+    let be = |o: usize| -> Option<i64> {
+        Some(i32::from_be_bytes(d.get(o..o + 4)?.try_into().ok()?) as i64)
+    };
     let (timecnt, typecnt) = (be(32)? as usize, be(36)? as usize);
     let trans = 44;
     let idx = trans + timecnt * 4;

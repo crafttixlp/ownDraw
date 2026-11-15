@@ -33,20 +33,28 @@ pub fn data_dir() -> PathBuf {
             return PathBuf::from(x).join("OwnDraw");
         }
     }
-    let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("."));
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
     home.join(".local/share/OwnDraw")
 }
 
 #[cfg_attr(target_os = "android", allow(dead_code))]
 fn icon() -> Option<egui::IconData> {
-    let pm = owndraw_core::tiny_skia::Pixmap::decode_png(include_bytes!("../../../assets/owndraw.png")).ok()?;
+    let pm =
+        owndraw_core::tiny_skia::Pixmap::decode_png(include_bytes!("../../../assets/owndraw.png"))
+            .ok()?;
     let (w, h) = (pm.width(), pm.height());
     let mut rgba = Vec::with_capacity((w * h * 4) as usize);
     for p in pm.pixels() {
         let c = p.demultiply();
         rgba.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
     }
-    Some(egui::IconData { rgba, width: w, height: h })
+    Some(egui::IconData {
+        rgba,
+        width: w,
+        height: h,
+    })
 }
 
 /// Fenstergröße aus `OWNDRAW_WINDOW=BxH` (für Tests und Screenshots), sonst 1280 × 820.
@@ -68,7 +76,10 @@ pub fn run_desktop() -> eframe::Result<()> {
         println!("OwnDraw {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    let open_file = args.iter().find(|a| !a.starts_with('-')).map(|p| platform::FileRef::Path(PathBuf::from(p)));
+    let open_file = args
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .map(|p| platform::FileRef::Path(PathBuf::from(p)));
     let size = window_size();
     let mut vp = egui::ViewportBuilder::default()
         .with_title("OwnDraw")
@@ -79,7 +90,11 @@ pub fn run_desktop() -> eframe::Result<()> {
     if let Some(i) = icon() {
         vp = vp.with_icon(i);
     }
-    let opts = eframe::NativeOptions { viewport: vp, centered: true, ..Default::default() };
+    let opts = eframe::NativeOptions {
+        viewport: vp,
+        centered: true,
+        ..Default::default()
+    };
     eframe::run_native(
         "OwnDraw",
         opts,
@@ -88,9 +103,15 @@ pub fn run_desktop() -> eframe::Result<()> {
             let settings = app::load_settings(&*platform);
             style::apply(&cc.egui_ctx, &settings);
             // Einmalige Migration der alten Ablage (index.json + Board-Ordner) in den Standard-Ort.
-            let target = settings.default_dir.as_deref().and_then(platform::FileRef::from_key).unwrap_or_else(|| platform::Platform::default_dir(&*platform));
+            let target = settings
+                .default_dir
+                .as_deref()
+                .and_then(platform::FileRef::from_key)
+                .unwrap_or_else(|| platform::Platform::default_dir(&*platform));
             let migrated = match target {
-                platform::FileRef::Path(dir) => owndraw_core::migrate::migrate_store(&data_dir(), &dir),
+                platform::FileRef::Path(dir) => {
+                    owndraw_core::migrate::migrate_store(&data_dir(), &dir)
+                }
                 platform::FileRef::Uri(_) => Vec::new(),
             };
             let mut app = app::App::new(platform, settings, open_file);
@@ -104,10 +125,15 @@ pub fn run_desktop() -> eframe::Result<()> {
 /// Datenordner = App-interner Speicher, Plattform = [`platform::android::AndroidPlatform`].
 #[cfg(target_os = "android")]
 pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
-    let data = app.internal_data_path().unwrap_or_else(|| PathBuf::from("/data/local/tmp/owndraw"));
+    let data = app
+        .internal_data_path()
+        .unwrap_or_else(|| PathBuf::from("/data/local/tmp/owndraw"));
     let _ = std::fs::create_dir_all(&data);
     let platform = platform::android::AndroidPlatform::new(data);
-    let opts = eframe::NativeOptions { android_app: Some(app), ..Default::default() };
+    let opts = eframe::NativeOptions {
+        android_app: Some(app),
+        ..Default::default()
+    };
     eframe::run_native(
         "OwnDraw",
         opts,

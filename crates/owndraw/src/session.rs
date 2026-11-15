@@ -23,7 +23,12 @@ pub fn rfc3339_now() -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", sod / 3600, sod % 3600 / 60, sod % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        sod / 3600,
+        sod % 3600 / 60,
+        sod % 60
+    )
 }
 
 /// Parameter des Neu-Dialogs (Abschnitt 5 des Konzepts).
@@ -38,7 +43,13 @@ pub struct NewParams {
 
 impl Default for NewParams {
     fn default() -> Self {
-        NewParams { name: String::new(), pages: true, format: PageFormat::A4, landscape: false, bg: PageBg::Lined }
+        NewParams {
+            name: String::new(),
+            pages: true,
+            format: PageFormat::A4,
+            landscape: false,
+            bg: PageBg::Lined,
+        }
     }
 }
 
@@ -51,7 +62,18 @@ impl NewParams {
         if self.landscape {
             std::mem::swap(&mut w, &mut h);
         }
-        BoardMode::Pages(PageSetup { w, h, bg: self.bg, pages: vec![Page { id: owndraw_core::store::random_hex(8), w, h, bg: self.bg, extra: serde_json::Value::Null }] })
+        BoardMode::Pages(PageSetup {
+            w,
+            h,
+            bg: self.bg,
+            pages: vec![Page {
+                id: owndraw_core::store::random_hex(8),
+                w,
+                h,
+                bg: self.bg,
+                extra: serde_json::Value::Null,
+            }],
+        })
     }
 }
 
@@ -62,11 +84,15 @@ pub fn new_document(p: &NewParams) -> Document {
 
 /// Liest eine `.owndraw` (oder `.xopp` per Import) vollständig.
 pub fn open_document(platform: &dyn Platform, f: &FileRef) -> Result<Document, String> {
-    let bytes = platform.read(f).map_err(|e| format!("Datei konnte nicht gelesen werden: {e}"))?;
+    let bytes = platform
+        .read(f)
+        .map_err(|e| format!("Datei konnte nicht gelesen werden: {e}"))?;
     if FileKind::of_name(&f.display_name()) == FileKind::Xopp {
-        owndraw_core::xopp::import_xopp(&bytes).map_err(|e| format!("Xournal++-Datei konnte nicht importiert werden: {e}"))
+        owndraw_core::xopp::import_xopp(&bytes)
+            .map_err(|e| format!("Xournal++-Datei konnte nicht importiert werden: {e}"))
     } else {
-        owndraw_core::doc::read_owndraw(&bytes).map_err(|e| format!("Board konnte nicht gelesen werden: {e}"))
+        owndraw_core::doc::read_owndraw(&bytes)
+            .map_err(|e| format!("Board konnte nicht gelesen werden: {e}"))
     }
 }
 
@@ -79,7 +105,9 @@ pub fn serialize(doc: &Document) -> Result<Vec<u8>, String> {
 pub fn serialize_as(doc: &Document, fmt: SaveFormat) -> Result<Vec<u8>, String> {
     match fmt {
         SaveFormat::Owndraw => serialize(doc),
-        SaveFormat::Xopp => owndraw_core::xopp::export_xopp(doc, Default::default()).map_err(|e| e.to_string()),
+        SaveFormat::Xopp => {
+            owndraw_core::xopp::export_xopp(doc, Default::default()).map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -92,7 +120,9 @@ pub fn write_document(platform: &dyn Platform, f: &FileRef, doc: &Document) -> R
         return Err(READ_ONLY_HINT.into());
     }
     let bytes = serialize(doc)?;
-    platform.write_atomic(f, &bytes).map_err(|e| crate::autosave::describe_error(&e, &f.display_name()))
+    platform
+        .write_atomic(f, &bytes)
+        .map_err(|e| crate::autosave::describe_error(&e, &f.display_name()))
 }
 
 /// „Kopie speichern unter …“: gleiches Format, neue Board-ID; das geöffnete Dokument bleibt unverändert.
@@ -109,7 +139,9 @@ pub fn save_copy_as(platform: &dyn Platform, doc: &Document, f: &FileRef) -> Res
 /// Exportiert das Dokument als Xournal++-Datei (`.xopp`).
 pub fn export_xopp(platform: &dyn Platform, doc: &Document, f: &FileRef) -> Result<(), String> {
     let bytes = serialize_as(doc, SaveFormat::Xopp)?;
-    platform.write_atomic(f, &bytes).map_err(|e| crate::autosave::describe_error(&e, &f.display_name()))
+    platform
+        .write_atomic(f, &bytes)
+        .map_err(|e| crate::autosave::describe_error(&e, &f.display_name()))
 }
 
 /// Legt die Bilder des Dokuments im Bildordner `dir` ab (für das Rendern, `item::set_img_dir`).
@@ -119,8 +151,13 @@ pub fn prepare_images(doc: &Document, dir: &Path) -> Result<(), String> {
 
 /// Bild importieren (png/jpg/gif/bmp/webp): auf höchstens 2048 px verkleinern, als PNG ins Dokument und in den
 /// Bildordner legen. Liefert (Dateiname, Breite, Höhe).
-pub fn import_image(images: &mut ImageStore, dir: &Path, bytes: &[u8]) -> Result<(String, u32, u32), String> {
-    let img = image::load_from_memory(bytes).map_err(|e| format!("Bild konnte nicht geladen werden: {e}"))?;
+pub fn import_image(
+    images: &mut ImageStore,
+    dir: &Path,
+    bytes: &[u8],
+) -> Result<(String, u32, u32), String> {
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| format!("Bild konnte nicht geladen werden: {e}"))?;
     let (w, h) = (img.width(), img.height());
     if w == 0 || h == 0 {
         return Err("Leeres Bild".into());
@@ -129,11 +166,21 @@ pub fn import_image(images: &mut ImageStore, dir: &Path, bytes: &[u8]) -> Result
     while mx.div_ceil(ss) > 2048 {
         ss *= 2;
     }
-    let img = if ss > 1 { img.resize_exact(w.div_ceil(ss), h.div_ceil(ss), image::imageops::FilterType::Triangle) } else { img };
+    let img = if ss > 1 {
+        img.resize_exact(
+            w.div_ceil(ss),
+            h.div_ceil(ss),
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        img
+    };
     let rgba = img.into_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     let mut png = Vec::new();
-    image::DynamicImage::ImageRgba8(rgba).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
+    image::DynamicImage::ImageRgba8(rgba)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
     let name = images.add(png.clone(), "png");
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(&name), &png).map_err(|e| e.to_string())?;
@@ -159,7 +206,11 @@ fn read_zip_entry(platform: &dyn Platform, f: &FileRef, name: &str, max: u64) ->
         return None;
     }
     match f {
-        FileRef::Path(p) => zip_entry(std::io::BufReader::new(std::fs::File::open(p).ok()?), name, max),
+        FileRef::Path(p) => zip_entry(
+            std::io::BufReader::new(std::fs::File::open(p).ok()?),
+            name,
+            max,
+        ),
         uri => zip_entry(std::io::Cursor::new(platform.read(uri).ok()?), name, max),
     }
 }
@@ -171,9 +222,18 @@ pub fn read_thumb(platform: &dyn Platform, f: &FileRef) -> Option<Vec<u8>> {
 
 /// Name und Seitenmodus einer `.owndraw` aus dem Manifest (ohne die ganze Datei zu dekodieren).
 pub fn read_summary(platform: &dyn Platform, f: &FileRef) -> Option<(String, bool)> {
-    let m: serde_json::Value = serde_json::from_slice(&read_zip_entry(platform, f, "manifest.json", 4 << 20)?).ok()?;
-    let name = m.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(|| f.display_name().trim_end_matches(".owndraw").to_string());
-    Some((name, m.get("mode").and_then(|v| v.as_str()) == Some("pages")))
+    let m: serde_json::Value =
+        serde_json::from_slice(&read_zip_entry(platform, f, "manifest.json", 4 << 20)?).ok()?;
+    let name = m
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| f.display_name().trim_end_matches(".owndraw").to_string());
+    Some((
+        name,
+        m.get("mode").and_then(|v| v.as_str()) == Some("pages"),
+    ))
 }
 
 #[cfg(test)]
@@ -182,7 +242,13 @@ mod tests {
 
     #[test]
     fn neu_parameter_und_dokument() {
-        let p = NewParams { name: "T".into(), pages: true, format: PageFormat::A5, landscape: true, bg: PageBg::Grid };
+        let p = NewParams {
+            name: "T".into(),
+            pages: true,
+            format: PageFormat::A5,
+            landscape: true,
+            bg: PageBg::Grid,
+        };
         match p.mode() {
             BoardMode::Pages(s) => {
                 assert_eq!((s.w, s.h), (595.0, 420.0));
@@ -191,7 +257,11 @@ mod tests {
             }
             BoardMode::Infinite => panic!("Seitenmodus erwartet"),
         }
-        let d = new_document(&NewParams { name: "Frei".into(), pages: false, ..NewParams::default() });
+        let d = new_document(&NewParams {
+            name: "Frei".into(),
+            pages: false,
+            ..NewParams::default()
+        });
         assert_eq!(d.mode, BoardMode::Infinite);
         assert_eq!(d.meta.name, "Frei");
         assert!(!d.meta.id.is_empty());
@@ -205,7 +275,10 @@ mod tests {
     }
 
     fn tmpdir(n: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("owndraw-se-{n}-{}", owndraw_core::store::random_hex(6)));
+        let d = std::env::temp_dir().join(format!(
+            "owndraw-se-{n}-{}",
+            owndraw_core::store::random_hex(6)
+        ));
         std::fs::create_dir_all(&d).unwrap();
         d
     }
@@ -215,10 +288,14 @@ mod tests {
         let d = tmpdir("rt");
         let pf = crate::platform::stub::StubPlatform::new();
         let f = FileRef::Path(d.join("t.owndraw"));
-        let mut doc = new_document(&NewParams { name: "RT".into(), ..NewParams::default() });
+        let mut doc = new_document(&NewParams {
+            name: "RT".into(),
+            ..NewParams::default()
+        });
         let png = vec![0x89, b'P', b'N', b'G', 1, 2, 3];
         let img = doc.images.add(png.clone(), "png");
-        doc.board["items"] = serde_json::json!([{"t": "i", "f": img, "x": 0, "y": 0, "w": 10, "h": 10}]);
+        doc.board["items"] =
+            serde_json::json!([{"t": "i", "f": img, "x": 0, "y": 0, "w": 10, "h": 10}]);
         doc.thumb = Some(b"\x89PNGthumb".to_vec());
         write_document(&pf, &f, &doc).unwrap();
         let back = open_document(&pf, &f).unwrap();
@@ -240,11 +317,18 @@ mod tests {
         let d = tmpdir("th");
         let pf = crate::platform::stub::StubPlatform::new();
         let f = FileRef::Path(d.join("t.owndraw"));
-        let mut doc = new_document(&NewParams { name: "Mit Vorschau".into(), pages: true, ..NewParams::default() });
+        let mut doc = new_document(&NewParams {
+            name: "Mit Vorschau".into(),
+            pages: true,
+            ..NewParams::default()
+        });
         doc.thumb = Some(b"PNGDATA".to_vec());
         write_document(&pf, &f, &doc).unwrap();
         assert_eq!(read_thumb(&pf, &f).unwrap(), b"PNGDATA");
-        assert_eq!(read_summary(&pf, &f).unwrap(), ("Mit Vorschau".to_string(), true));
+        assert_eq!(
+            read_summary(&pf, &f).unwrap(),
+            ("Mit Vorschau".to_string(), true)
+        );
         // ohne Vorschau, falsche Endung, kaputte Datei
         doc.thumb = None;
         write_document(&pf, &f, &doc).unwrap();
@@ -278,7 +362,10 @@ mod tests {
         let d = tmpdir("xo");
         let pf = crate::platform::stub::StubPlatform::new();
         let f = FileRef::Path(d.join("t.xopp"));
-        let doc = new_document(&NewParams { name: "X".into(), ..NewParams::default() });
+        let doc = new_document(&NewParams {
+            name: "X".into(),
+            ..NewParams::default()
+        });
         export_xopp(&pf, &doc, &f).unwrap();
         let back = open_document(&pf, &f).unwrap();
         assert!(matches!(back.mode, BoardMode::Pages(_)));

@@ -68,6 +68,45 @@ pub struct Snapping {
     pub handle_step: u32,
     /// Größte Abweichung der Griffe (Grad, 0–15).
     pub handle_tol: u32,
+    /// Taste, die beim Gedrückthalten das Einrasten umkehrt (Desktop).
+    pub key: SnapKey,
+}
+
+/// Taste zum vorübergehenden Umkehren des Einrastens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SnapKey {
+    /// Keine Taste.
+    Off,
+    /// Umschalt (Shift).
+    #[default]
+    Shift,
+    /// Alt.
+    Alt,
+    /// Strg/Cmd.
+    Ctrl,
+}
+
+impl SnapKey {
+    pub const ALL: [SnapKey; 4] = [SnapKey::Shift, SnapKey::Alt, SnapKey::Ctrl, SnapKey::Off];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SnapKey::Off => "Keine",
+            SnapKey::Shift => "Umschalt",
+            SnapKey::Alt => "Alt",
+            SnapKey::Ctrl => "Strg",
+        }
+    }
+
+    /// Ist die Taste gerade gedrückt?
+    pub fn held(self, m: &egui::Modifiers) -> bool {
+        match self {
+            SnapKey::Off => false,
+            SnapKey::Shift => m.shift,
+            SnapKey::Alt => m.alt,
+            SnapKey::Ctrl => m.ctrl || m.command,
+        }
+    }
 }
 
 /// Wählbare Winkelraster (Grad).
@@ -75,7 +114,7 @@ pub const SNAP_STEPS: [u32; 5] = [5, 15, 30, 45, 90];
 
 impl Default for Snapping {
     fn default() -> Self {
-        Snapping { lines: true, line_step: 45, line_tol: 6, shapes: true, handles: true, handle_step: 15, handle_tol: 4 }
+        Snapping { lines: true, line_step: 45, line_tol: 6, shapes: true, handles: true, handle_step: 15, handle_tol: 4, key: SnapKey::Shift }
     }
 }
 
@@ -337,6 +376,11 @@ mod tests {
         assert_eq!(s.snap, Snapping::default());
         let s = Settings::parse(br#"{"snap":{"line_step":7,"line_tol":99,"handles":false}}"#).unwrap();
         assert_eq!((s.snap.line_step, s.snap.line_tol, s.snap.handles, s.snap.handle_step), (45, 15, false, 15));
+        assert_eq!(s.snap.key, SnapKey::Shift);
+        let s = Settings::parse(br#"{"snap":{"key":"Alt"}}"#).unwrap();
+        assert_eq!(s.snap.key, SnapKey::Alt);
+        let m = egui::Modifiers { alt: true, ..Default::default() };
+        assert!(SnapKey::Alt.held(&m) && !SnapKey::Shift.held(&m) && !SnapKey::Off.held(&m));
     }
 
     #[test]

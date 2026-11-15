@@ -1517,6 +1517,20 @@ impl Board {
         }
     }
 
+    /// Einrast-Einstellung setzen; eine schon erkannte Form wird neu berechnet.
+    pub fn set_snap_cfg(&mut self, c: recognizer::SnapCfg) {
+        if self.snap_cfg == c {
+            return;
+        }
+        self.snap_cfg = c;
+        if self.mode == 1 && self.snap.is_some() {
+            if let Some(s) = self.cur.as_ref().and_then(|cur| recognizer::run_cfg(cur, self.sc, c)) {
+                self.snap = Some(self.style_arrow(s));
+                self.invalidate();
+            }
+        }
+    }
+
     fn hold_fire(&mut self) {
         if self.mode != 1 || self.snap.is_some() {
             return;

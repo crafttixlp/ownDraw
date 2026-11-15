@@ -251,6 +251,15 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
                 ui.add(egui::Slider::new(&mut sn.handle_tol, 0..=15).suffix("°"));
             });
         });
+        if !platform.is_touch() {
+            row(ui, env, "Taste", Some("Gedrückt halten: Einrasten aus (oder ein, wenn es oben ausgeschaltet ist)."), |ui| {
+                for k in crate::settings::SnapKey::ALL {
+                    if style::chip(ui, k.label(), sn.key == k, btn).clicked() {
+                        sn.key = k;
+                    }
+                }
+            });
+        }
         row(ui, env, "", None, |ui| {
             let d = crate::settings::Snapping::default();
             if ui.add_enabled(*sn != d, egui::Button::new("Einrasten zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {

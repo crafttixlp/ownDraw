@@ -55,6 +55,11 @@ impl Default for SnapCfg {
 }
 
 impl SnapCfg {
+    /// Einrasten umgekehrt (Taste gedrückt): Ein wird aus, Aus wird ein.
+    pub fn inverted(self) -> SnapCfg {
+        SnapCfg { lines: !self.lines, shapes: !self.shapes, handles: !self.handles, ..self }
+    }
+
     /// Rastet `deg` auf das Raster `step` ein, wenn die Abweichung höchstens `tol` beträgt.
     pub fn snap_deg(deg: f32, step: f32, tol: f32) -> Option<f32> {
         if step <= 0.0 || tol <= 0.0 {
@@ -1855,6 +1860,8 @@ mod tests {
     #[test]
     fn einrasten_einstellbar() {
         assert_eq!(SnapCfg::snap_deg(13.0, 15.0, 4.0), Some(15.0));
+        let i = SnapCfg { shapes: false, ..SnapCfg::default() }.inverted();
+        assert!(!i.lines && i.shapes && !i.handles && i.line_step == 45.0);
         assert_eq!(SnapCfg::snap_deg(10.0, 15.0, 4.0), None);
         assert_eq!(SnapCfg::snap_deg(10.0, 15.0, 0.0), None);
         let ang = |q: &[f32]| ((q[3] - q[1]) as f64).atan2((q[2] - q[0]) as f64).to_degrees();

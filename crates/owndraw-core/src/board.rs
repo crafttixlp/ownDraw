@@ -1113,8 +1113,10 @@ impl Board {
     /// zum Auswahlwerkzeug (Rueckkehr beim Abwaehlen). Liefert true, wenn ein Objekt getroffen wurde.
     pub fn select_at_screen(&mut self, x: f32, y: f32, notes_only: bool) -> bool {
         let (wx, wy) = self.screen_to_world(x, y);
-        let r = 6.0 * self.dp / self.sc;
-        let Some(id) = self.top_at(wx, wy, r) else { return false };
+        let r = (if notes_only { 6.0 } else { 10.0 }) * self.dp / self.sc;
+        // Mittelklick: auch innerhalb ungefuellter Formen/Striche treffen (kleinster umschliessender Rahmen)
+        let hit = self.top_at(wx, wy, r).or_else(|| if notes_only { None } else { self.bounds_at(wx, wy) });
+        let Some(id) = hit else { return false };
         if notes_only && !self.items.iter().any(|it| it.id == id && it.as_note().is_some()) {
             return false;
         }
@@ -2302,6 +2304,25 @@ impl Board {
         (x * self.sc + self.tx, y * self.sc + self.ty)
     }
 
+    /// Objekt mit dem kleinsten Rahmen, der den Punkt enthaelt (sichtbare, entsperrte Ebenen).
+    fn bounds_at(&self, wx: f32, wy: f32) -> Option<u64> {
+        let mut best: Option<(f32, u64)> = None;
+        for it in self.items.iter().rev() {
+            let l = &self.layers[self.layer_idx(it.layer)];
+            if !l.visible || l.locked {
+                continue;
+            }
+            let b = it.bounds();
+            if wx >= b.left && wx <= b.right && wy >= b.top && wy <= b.bottom {
+                let a = (b.right - b.left) * (b.bottom - b.top);
+                if best.map(|(ba, _)| a < ba).unwrap_or(true) {
+                    best = Some((a, it.id));
+                }
+            }
+        }
+        best.map(|(_, id)| id)
+    }
+
     fn top_at(&self, wx: f32, wy: f32, r: f32) -> Option<u64> {
         let (mut best_i, mut best_l): (Option<usize>, Option<usize>) = (None, None);
         for i in (0..self.items.len()).rev() {
@@ -3347,6 +3368,21 @@ mod tests {
         drag(&mut b, &[(500.0, 400.0)], ToolType::Stylus);
         assert!(b.sel.is_empty());
         assert_eq!(b.tool, TEXT);
+    }
+
+    #[test]
+    fn mittelklick_trifft_innerhalb_einer_form() {
+        let mut b = board();
+        b.items.push(Rc::new(Item::shape(item::POLY, vec![100.0, 100.0, 300.0, 100.0, 300.0, 200.0, 100.0, 200.0], INK, 2.0)));
+        let id = b.items[0].id;
+        // Textwerkzeug trifft nur Texte
+        assert!(!b.select_at_screen(200.0, 150.0, true));
+        b.set_tool(PEN);
+        assert!(b.select_at_screen(200.0, 150.0, false));
+        assert_eq!((b.sel.clone(), b.tool), (vec![id], SELECT));
+        b.deselect();
+        assert_eq!(b.tool, PEN);
+        assert!(!b.select_at_screen(500.0, 400.0, false));
     }
 
     #[test]

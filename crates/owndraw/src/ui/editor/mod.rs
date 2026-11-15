@@ -770,7 +770,7 @@ impl Editor {
                     } else if self.panning.map(|(_, b)| b == button).unwrap_or(false) {
                         self.panning = None;
                         // Mittlere Maustaste ohne Verschieben: Objekt darunter auswählen (erweitertes Menü)
-                        let still = self.pan_start.take().map(|s| s.distance(pos) < 5.0).unwrap_or(false);
+                        let still = self.pan_start.take().map(|s| s.distance(pos) < 10.0).unwrap_or(false);
                         if button == PointerButton::Middle && still && !self.board.select_at_screen(r.x, r.y, false) && self.board.tool == board::SELECT {
                             self.board.deselect();
                         }

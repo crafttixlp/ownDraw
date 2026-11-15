@@ -1556,7 +1556,7 @@ mod tests {
         assert_eq!(r.as_shape().unwrap().q, vec![0.0, 0.0, 100.0, 100.0]);
         let mut p = Item::shape(POLY, vec![0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0], INK, 2.0);
         p.xf_axis(3.0, 1.0, 0.0, 0.0, 0.0);
-        assert_eq!(p.bounds().width() > 29.0, true);
+        assert!(p.bounds().width() > 29.0);
         assert!(is_linear(ARROW) && is_linear(8) && !is_linear(ELLIPSE));
     }
 

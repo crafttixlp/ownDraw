@@ -2387,7 +2387,7 @@ impl Board {
     /// Kanten-Griffe (Mitte jeder Seite, 0 oben, 1 rechts, 2 unten, 3 links) sind nur sichtbar/greifbar,
     /// wenn die Seite am Bildschirm lang genug ist (>= 3 Grifflaengen), damit die Ecken greifbar bleiben.
     fn edge_visible(&self, k: usize) -> bool {
-        let (len, sep) = if k % 2 == 0 { (self.sel_w, self.sel_h) } else { (self.sel_h, self.sel_w) };
+        let (len, sep) = if k.is_multiple_of(2) { (self.sel_w, self.sel_h) } else { (self.sel_h, self.sel_w) };
         // zusaetzlich: gegenueberliegende Griffe muessen so weit auseinander liegen, dass die Mitte frei zum Verschieben bleibt
         len * self.sc >= 3.0 * 14.0 * self.dp && sep * self.sc >= 44.0 * self.dp
     }

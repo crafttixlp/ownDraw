@@ -119,7 +119,7 @@ impl Default for Snapping {
 }
 
 impl Snapping {
-    pub fn to_core(&self) -> owndraw_core::recognizer::SnapCfg {
+    pub fn to_core(self) -> owndraw_core::recognizer::SnapCfg {
         owndraw_core::recognizer::SnapCfg {
             lines: self.lines,
             line_step: self.line_step as f32,
@@ -414,20 +414,20 @@ mod tests {
         assert_eq!(tools_from_edit(&l), vec!["pen", "eraser"]);
     }
 
-    /// Alle Plattform-Tests in einem Test, weil `OWNDRAW_DATA` prozessweit gilt.
+    /// Eigener Datenordner über `StubPlatform::with_base` (nicht `OWNDRAW_DATA` setzen: die Variable gilt
+    /// prozessweit und würde parallel laufende Tests, z. B. `clip::tests`, in einen gelöschten Ordner umleiten).
     #[test]
     fn ueberlebt_neustart_und_kaputte_datei() {
         let dir = std::env::temp_dir().join(format!("owndraw-wp9-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::env::set_var("OWNDRAW_DATA", &dir);
-        let p = StubPlatform::new();
+        let p = StubPlatform::with_base(dir.clone());
         // fehlt: Vorgaben
         assert_eq!(Settings::load(&p), Settings::default());
         // Round-Trip
         let mut s = Settings { theme: Theme::Dark, accent: ACCENTS[3].1, ui_scale: 130, toolbar_pos: Some(BarPos::Right), save_choice: SaveChoice::AlwaysDefault, default_dir: Some("/tmp/x".into()), xopp_autosave_direct: true, tools: vec!["eraser".into(), "pen".into()], ..Settings::default() };
         s.extra.insert("w".into(), serde_json::json!(5.0));
         s.save(&p).unwrap();
-        let neu = Settings::load(&StubPlatform::new());
+        let neu = Settings::load(&StubPlatform::with_base(dir.clone()));
         assert_eq!(neu, s);
         // kaputt: Vorgaben + Sicherung
         let file = p.config_dir().join(FILE_NAME);

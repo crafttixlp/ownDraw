@@ -191,6 +191,18 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
 
     // ---- Leisten
     section(ui, "Leisten anpassen", |ui| {
+        row(ui, env, "Abrundung der Kacheln", Some("0 = eckig, 26 = Standard, 40 = ganz rund."), |ui| {
+            let cur = style::tile_radius_setting(settings);
+            let mut v = cur;
+            ui.spacing_mut().slider_width = if env.ff == FormFactor::Compact { (ui.available_width() - 100.0).clamp(80.0, 300.0) } else { 220.0 };
+            ui.add(egui::Slider::new(&mut v, 0.0..=40.0).step_by(1.0).fixed_decimals(0).suffix(" px"));
+            if style::chip(ui, "Standard", cur == style::TILE_RADIUS_DEFAULT, btn).clicked() {
+                v = style::TILE_RADIUS_DEFAULT;
+            }
+            if v != cur {
+                settings.extra.insert("tile_radius".into(), serde_json::json!(v));
+            }
+        });
         row(ui, env, "Werkzeugleiste", None, |ui| bar_chips(ui, env, &mut settings.toolbar_pos));
         row(ui, env, "Optionsleiste", None, |ui| bar_chips(ui, env, &mut settings.options_pos));
         row(ui, env, "Leisten-Positionen", Some("Mit dem Griff verschobene Leisten zurück an den Standardplatz."), |ui| {

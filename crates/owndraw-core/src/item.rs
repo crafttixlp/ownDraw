@@ -375,7 +375,8 @@ pub struct Note {
 const NOTE_BASE: f32 = 40.0;
 
 impl Note {
-    fn pad(&self) -> f32 {
+    /// Innenabstand (Haftnotiz) in Weltkoordinaten.
+    pub fn pad(&self) -> f32 {
         if self.bg != 0 {
             self.size * 0.7
         } else {

@@ -33,6 +33,8 @@ pub const PAGE_LINE: f32 = 24.0;
 pub enum Event {
     Changed,
     AskText { wx: f32, wy: f32, note: bool },
+    /// Text/Notiz direkt auf dem Blatt bearbeiten (erneutes Tippen auf eine ausgewaehlte Notiz).
+    EditNote(u64),
     /// Kurzer Hinweis (Toast).
     Notice(String),
     /// Haptische Rueckmeldung (Form erkannt).
@@ -134,6 +136,10 @@ pub struct Board {
     /// Radierer-Modus: 0 = ganze Objekte, 1 = nur ueberstrichene Stellen.
     pub erase_mode: i32,
     pub events: Vec<Event>,
+    /// Objekt, das gerade direkt auf dem Blatt bearbeitet wird (wird nicht gezeichnet).
+    pub hidden: Option<u64>,
+    /// Werkzeug, zu dem nach dem Abwaehlen zurueckgekehrt wird (Text antippen, mittlere Maustaste).
+    back_tool: Option<i32>,
     /// Unendlich oder Seiten (WP2).
     pub board_mode: BoardMode,
     /// Neu zeichnen noetig (invalidate).
@@ -241,6 +247,8 @@ impl Board {
             sel_mode: 0,
             erase_mode: 0,
             events: Vec::new(),
+            hidden: None,
+            back_tool: None,
             board_mode: BoardMode::Infinite,
             needs_redraw: true,
             width: 0.0,
@@ -585,7 +593,7 @@ impl Board {
         let mut bk: Vec<Vec<&Item>> = vec![Vec::new(); n];
         let (mut last_id, mut last_k) = (i32::MIN, 0usize);
         for it in &self.items {
-            if skip_lift && it.lift {
+            if (skip_lift && it.lift) || self.hidden == Some(it.id) {
                 continue;
             }
             if let Some(v) = vis {
@@ -631,6 +639,7 @@ impl Board {
         if t != SELECT {
             self.sel_clear();
         }
+        self.back_tool = None;
         self.tool = t;
         self.invalidate();
     }
@@ -766,15 +775,29 @@ impl Board {
         self.items.push(Rc::new(it));
     }
 
-    pub fn add_note(&mut self, wx: f32, wy: f32, text: &str, note: bool) {
+    /// Rechteck (x, y, Schriftgroesse, Breite, Mindesthoehe) eines neuen Texts bzw. einer neuen Haftnotiz
+    /// am Weltpunkt bei aktuellem Zoom.
+    pub fn new_note_rect(&self, wx: f32, wy: f32, note: bool) -> (f32, f32, f32, f32, f32) {
         let size = 18.0 * self.dp / self.sc;
-        let it = if note {
+        if note {
             let w = 210.0 * self.dp / self.sc;
             let mh = w * 0.72;
-            Item::note(text, self.color, size, wx - w / 2.0, wy - mh / 2.0, w, mh, note_bg(self.color))
+            (wx - w / 2.0, wy - mh / 2.0, size, w, mh)
         } else {
-            Item::note(text, self.color, size, wx, wy - size / 2.0, 0.0, 0.0, 0)
-        };
+            (wx, wy - size / 2.0, size, 0.0, 0.0)
+        }
+    }
+
+    pub fn add_note(&mut self, wx: f32, wy: f32, text: &str, note: bool) {
+        let r = self.new_note_rect(wx, wy, note);
+        self.add_note_rect(text, r, note);
+    }
+
+    /// Fuegt Text/Haftnotiz mit festem Rechteck aus `new_note_rect` hinzu.
+    pub fn add_note_rect(&mut self, text: &str, r: (f32, f32, f32, f32, f32), note: bool) {
+        let (x, y, size, w, mh) = r;
+        let bg = if note { note_bg(self.color) } else { 0 };
+        let it = Item::note(text, self.color, size, x, y, w, mh, bg);
         self.add_top(it);
         self.invalidate();
         self.changed();
@@ -798,6 +821,99 @@ impl Board {
         self.sel.push(id);
         self.frame_ok = false;
         self.refresh();
+    }
+
+    /// Blendet ein Objekt beim Bearbeiten auf dem Blatt aus (None = wieder zeigen).
+    pub fn set_hidden(&mut self, id: Option<u64>) {
+        if self.hidden != id {
+            self.hidden = id;
+            if id.is_some() {
+                self.sel_clear();
+            }
+            self.refresh();
+        }
+    }
+
+    /// Loescht ein Objekt (z. B. Text, der beim Bearbeiten leer wurde).
+    pub fn delete_item(&mut self, id: u64) {
+        let Some(i) = self.idx_of(id) else { return };
+        self.checkpoint();
+        self.items.remove(i);
+        self.sel.retain(|s| *s != id);
+        self.frame_ok = false;
+        self.refresh();
+        self.changed();
+    }
+
+    /// Waehlt das oberste Objekt unter dem Bildschirmpunkt aus und wechselt dafuer vorruebergehend
+    /// zum Auswahlwerkzeug (Rueckkehr beim Abwaehlen). Liefert true, wenn ein Objekt getroffen wurde.
+    pub fn select_at_screen(&mut self, x: f32, y: f32, notes_only: bool) -> bool {
+        let (wx, wy) = self.screen_to_world(x, y);
+        let r = 6.0 * self.dp / self.sc;
+        let Some(id) = self.top_at(wx, wy, r) else { return false };
+        if notes_only && !self.items.iter().any(|it| it.id == id && it.as_note().is_some()) {
+            return false;
+        }
+        if self.tool != SELECT {
+            let back = self.back_tool.or(Some(self.tool));
+            self.set_tool(SELECT);
+            self.back_tool = back;
+        }
+        self.select_only(id);
+        true
+    }
+
+    /// Waehlt genau dieses Objekt aus.
+    pub fn select_only(&mut self, id: u64) {
+        self.sel_clear();
+        self.sel.push(id);
+        self.ensure_frame();
+        self.invalidate();
+    }
+
+    /// Hebt die Auswahl auf (und kehrt ggf. zum vorherigen Werkzeug zurueck).
+    pub fn deselect(&mut self) {
+        self.sel_clear();
+        if let Some(t) = self.back_tool.take() {
+            self.tool = t;
+        }
+        self.invalidate();
+    }
+
+    /// Schriftgroesse der ausgewaehlten Texte/Notizen (Welt), None ohne Notiz in der Auswahl.
+    pub fn sel_note_size(&self) -> Option<f32> {
+        let v: Vec<f32> = self.sel_items().iter().filter_map(|it| it.as_note().map(|n| n.size)).collect();
+        if v.is_empty() {
+            return None;
+        }
+        Some(v.iter().sum::<f32>() / v.len() as f32)
+    }
+
+    /// Setzt die Schriftgroesse der ausgewaehlten Texte/Notizen (Haftnotizen wachsen mit).
+    pub fn set_sel_note_size(&mut self, size: f32, undo_step: bool) {
+        if self.sel_note_size().is_none() {
+            return;
+        }
+        if undo_step {
+            self.checkpoint();
+        }
+        let size = size.clamp(1.0, 2000.0);
+        self.sel_mut(|it| {
+            if let Kind::Note(n) = &mut it.kind {
+                if n.bg != 0 && n.size > 0.0 {
+                    let k = size / n.size;
+                    n.w *= k;
+                    n.mh *= k;
+                }
+                n.size = size;
+                n.layout();
+                it.touch();
+            }
+        });
+        self.frame_ok = false;
+        self.ensure_frame();
+        self.refresh();
+        self.changed();
     }
 
     pub fn delete_sel(&mut self) {
@@ -2319,7 +2435,14 @@ impl Board {
                     if let Some(p) = self.pend {
                         self.sel.push(p);
                         self.frame_ok = false;
+                    } else if self.back_tool.is_some() {
+                        self.deselect();
                     }
+                }
+            } else if matches!(self.drag, 1 | 2 | 7) && !self.moved {
+                // Erneutes Tippen auf einen ausgewaehlten Text (auch auf einen Griff kleiner Texte): direkt bearbeiten
+                if let Some(id) = self.single_note().map(|n| n.id) {
+                    self.events.push(Event::EditNote(id));
                 }
             }
             self.marq = None;
@@ -2329,7 +2452,11 @@ impl Board {
             self.prev_frame = None;
             self.drag = 0;
         } else if (self.tool == NOTE || self.tool == TEXT) && !self.moved {
-            self.events.push(Event::AskText { wx: self.sx, wy: self.sy, note: self.tool == NOTE });
+            // Tippen auf vorhandenen Text: auswaehlen (erweitertes Menue), sonst neuer Text
+            let (x, y) = (self.sx * self.sc + self.tx, self.sy * self.sc + self.ty);
+            if !self.select_at_screen(x, y, true) {
+                self.events.push(Event::AskText { wx: self.sx, wy: self.sy, note: self.tool == NOTE });
+            }
         }
         self.cur = None;
         self.snap = None;
@@ -2644,6 +2771,48 @@ mod tests {
         b.set_size(800.0, 600.0, 1.0);
         b.recog = 2;
         b
+    }
+
+    #[test]
+    fn text_antippen_waehlt_aus_und_bearbeitet() {
+        let mut b = board();
+        b.set_tool(TEXT);
+        // Tippen ins Leere: neuer Text wird erfragt
+        drag(&mut b, &[(100.0, 100.0)], ToolType::Stylus);
+        assert!(b.events.iter().any(|e| matches!(e, Event::AskText { .. })));
+        b.events.clear();
+        b.add_note_rect("Hallo Welt, ein laengerer Text", b.new_note_rect(100.0, 100.0, false), false);
+        let id = b.items[0].id;
+        // Tippen auf den Text: Auswahl (Menü) im Auswahlwerkzeug, kein neuer Text
+        drag(&mut b, &[(170.0, 100.0)], ToolType::Stylus);
+        assert_eq!(b.sel, vec![id]);
+        assert_eq!(b.tool, SELECT);
+        assert!(!b.events.iter().any(|e| matches!(e, Event::AskText { .. })));
+        // Erneutes Tippen: direkt bearbeiten
+        drag(&mut b, &[(170.0, 100.0)], ToolType::Stylus);
+        assert!(b.events.contains(&Event::EditNote(id)));
+        // Tippen daneben: abwählen und zurück zum Textwerkzeug
+        drag(&mut b, &[(500.0, 400.0)], ToolType::Stylus);
+        assert!(b.sel.is_empty());
+        assert_eq!(b.tool, TEXT);
+    }
+
+    #[test]
+    fn textgroesse_und_ausblenden() {
+        let mut b = board();
+        b.add_note_rect("Hallo", (10.0, 10.0, 20.0, 100.0, 80.0), true);
+        let id = b.items[0].id;
+        b.select_only(id);
+        assert_eq!(b.sel_note_size(), Some(20.0));
+        b.set_sel_note_size(40.0, true);
+        let n = b.items[0].as_note().unwrap();
+        assert_eq!((n.size, n.w, n.mh), (40.0, 200.0, 160.0));
+        b.undo();
+        assert_eq!(b.items[0].as_note().unwrap().size, 20.0);
+        b.set_hidden(Some(id));
+        assert!(b.sel.is_empty());
+        b.delete_item(id);
+        assert!(b.items.is_empty());
     }
 
     #[test]

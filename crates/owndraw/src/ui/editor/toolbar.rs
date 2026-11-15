@@ -367,6 +367,37 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                         }
                         ui.add_space(6.0);
                     }
+                    // Text/Notiz: Schriftgröße und Farbe (erweitertes Menü)
+                    if let Some(s0) = ed.board.sel_note_size() {
+                        let sc = ed.board.sc;
+                        let mut v = s0 * sc;
+                        ui.add_space(6.0);
+                        ui.spacing_mut().slider_width = 110.0;
+                        let r = ui.add(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0).text("Größe")).on_hover_text("Schriftgröße (bei aktuellem Zoom)");
+                        if r.drag_started() {
+                            ed.board.set_sel_note_size(s0, true);
+                        }
+                        if r.changed() {
+                            ed.board.set_sel_note_size(v / sc, !r.dragged() && !r.drag_started());
+                        }
+                        ui.add_space(4.0);
+                        let cur_col = ed.board.single_note().map(|n| n.color).unwrap_or(ed.board.color);
+                        for (col, name) in super::COLORS {
+                            let (rr, resp) = ui.allocate_exact_size(Vec2::new(26.0, btn), egui::Sense::click());
+                            let pt = ui.painter();
+                            pt.circle_filled(rr.center(), 8.0, style::c(col));
+                            if col == owndraw_core::item::INK {
+                                pt.circle_stroke(rr.center(), 8.0, egui::Stroke::new(1.0, style::c(0x80808080)));
+                            }
+                            if cur_col == col {
+                                pt.circle_stroke(rr.center(), 11.5, egui::Stroke::new(2.0, style::c(p.text)));
+                            }
+                            if resp.on_hover_text(name).clicked() {
+                                ed.board.set_color(col);
+                            }
+                        }
+                        ui.add_space(6.0);
+                    }
                 }
                 g
             })

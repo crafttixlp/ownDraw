@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme),
-//!   `autosave` (Board im Standard-Ort mit Strich).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -154,6 +154,28 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             let ids: Vec<u64> = ed.board.items.iter().take(2).map(|i| i.id).collect();
             ed.board.sel = ids;
         }
+        // Texteingabe auf dem Blatt: neuer freier Text (textnew), Haftnotiz bearbeiten (textedit),
+        // Text ausgewählt mit erweitertem Menü (textsel)
+        if has("textnew") || has("textsel") {
+            ed.board.items.push(Rc::new(Item::note("Freier Text\nzweite Zeile", 0xFFE5484D, 34.0, 520.0, 260.0, 0.0, 0.0, 0)));
+        }
+        if has("textnew") {
+            ed.board.set_tool(board::TEXT);
+            ed.demo_text(520.0, 120.0, "Direkt hier tippen|");
+        }
+        if has("textedit") {
+            ed.board.set_tool(board::TEXT);
+            if let Some(id) = ed.board.items.iter().find(|i| i.as_note().map(|n| n.bg != 0).unwrap_or(false)).map(|i| i.id) {
+                ed.edit_note(id);
+                ed.demo_append("\nmit Cursor am Ort");
+            }
+        }
+        if has("textsel") {
+            ed.board.set_tool(board::TEXT);
+            let id = ed.board.items.last().map(|i| i.id).unwrap_or(0);
+            ed.board.set_tool(board::SELECT);
+            ed.board.select_only(id);
+        }
         if has("edittools") {
             let sh = app.parts().0;
             ed.begin_edit_tools(sh);
@@ -161,6 +183,9 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         ed.st.opts_open = has("options");
         ed.st.menu_open = has("menu");
         ed.st.layers_open = has("layers");
+        if has("pagesclosed") {
+            ed.st.pages_open = Some(false);
+        }
         if has("pagelist") {
             ed.st.pages_open = Some(true);
         }

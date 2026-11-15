@@ -3,13 +3,14 @@
 use super::{clip, Editor, Lay, Tool, M, PAD};
 use crate::app::{Req, Shared};
 use crate::layout::FormFactor;
-use crate::settings::{self, BarPos};
+use crate::settings::{self, BarPos, Dock};
 use crate::style::{self, c, icon_btn};
 use egui::{Align2, Color32, Order, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use owndraw_core::board;
 use owndraw_core::icons as ic;
 
 pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, tools: &[Tool]) {
+    ed.st.dock_rects.clear();
     top_bar(ed, ctx, sh, lay);
     tool_bar(ed, ctx, sh, lay, tools);
     selection_bar(ed, ctx, sh, lay);
@@ -25,45 +26,48 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     let name_max = (canvas.width() - 2.0 * M - btn - 2.0 * PAD - right_w - 3.0 * M - 14.0).clamp(40.0, 260.0);
 
     // links: Zurück + Titel
-    let r = tile(ed, ctx, sh, lay, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, |ed, sh, ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tl", Pos2::new(canvas.left() + M, canvas.top() + M), Align2::LEFT_TOP, Some(BarPos::Top), false, |ed, sh, ui, vert| {
         style::pill(26).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                let g = grip(ui, btn, true);
+            orient(ui, vert, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::splat(2.0);
+                let g = grip(ui, btn, !vert);
                 if icon_btn(ui, &mut sh.icons, ic::BACK, p.text, false, false, btn, "Zurück zum Start").clicked() {
                     sh.reqs.push(Req::Back);
                 }
                 // Speicherstatus als Punkt
                 let (label, err) = ed.save_state();
                 if !label.is_empty() {
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(10.0, btn), Sense::hover());
+                    let sz = if vert { Vec2::new(btn, 10.0) } else { Vec2::new(10.0, btn) };
+                    let (rect, resp) = ui.allocate_exact_size(sz, Sense::hover());
                     let col = if err { p.danger } else if label.starts_with("Änderungen") { 0xFFFFC53D } else { 0xFF30A46C };
                     ui.painter().circle_filled(rect.center(), 3.5, c(col));
                     resp.on_hover_text(label);
                 }
-                ui.scope(|ui| {
-                    ui.set_max_width(name_max);
-                    let t = egui::RichText::new(ed.name()).size(15.0).strong().color(c(p.text));
-                    let r = ui.add(egui::Button::new(t).fill(Color32::TRANSPARENT).truncate().min_size(Vec2::new(0.0, btn - 6.0))).on_hover_text("Board umbenennen");
-                    if r.clicked() {
-                        sh.dialog = Some(crate::ui::dialogs::Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: ed.name().to_string(), focus: true });
-                    }
-                });
-                ui.add_space(6.0);
+                // Senkrecht: kein Name (Umbenennen über das Menü ⋯)
+                if !vert {
+                    ui.scope(|ui| {
+                        ui.set_max_width(name_max);
+                        let t = egui::RichText::new(ed.name()).size(15.0).strong().color(c(p.text));
+                        let r = ui.add(egui::Button::new(t).fill(Color32::TRANSPARENT).truncate().min_size(Vec2::new(0.0, btn - 6.0))).on_hover_text("Board umbenennen");
+                        if r.clicked() {
+                            sh.dialog = Some(crate::ui::dialogs::Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: ed.name().to_string(), focus: true });
+                        }
+                    });
+                    ui.add_space(6.0);
+                }
                 g
             })
-            .inner
         })
         .inner
     });
     ed.st.popup_rects.push(r);
 
     // rechts: Rückgängig, Wiederholen, Zoom, ⋯
-    let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, |ed, sh, ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, Some(BarPos::Top), false, |ed, sh, ui, vert| {
         style::pill(26).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                let g = grip(ui, btn, true);
+            orient(ui, vert, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let g = grip(ui, btn, !vert);
                 let b = &mut ed.board;
                 let u = if b.can_undo() { p.text } else { p.disabled };
                 if icon_btn(ui, &mut sh.icons, ic::UNDO, u, false, false, btn, &env.tip("Rückgängig", "Strg+Z")).clicked() {
@@ -75,7 +79,11 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                 }
                 if !compact {
                     let t = format!("{} %", (ed.board.sc * 100.0).round() as i32);
-                    let r = ui.add(egui::Button::new(egui::RichText::new(t).size(13.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(60.0, btn - 6.0)));
+                    let r = if vert {
+                        ui.add(egui::Button::new(egui::RichText::new(t).size(11.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(btn, 28.0)))
+                    } else {
+                        ui.add(egui::Button::new(egui::RichText::new(t).size(13.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(60.0, btn - 6.0)))
+                    };
                     if r.on_hover_text(env.tip("Alles zeigen", "0")).clicked() {
                         ed.board.fit();
                     }
@@ -88,7 +96,6 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                 }
                 g
             })
-            .inner
         })
         .inner
     });
@@ -139,39 +146,152 @@ fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
     Grip(resp)
 }
 
-/// Verschiebbare Kachel: Position aus den Einstellungen (falls vorhanden) sonst `pos`/`pivot`;
-/// Ziehen am Griff verschiebt, Loslassen speichert, Doppelklick setzt zurück.
+/// Waagerechte oder senkrechte Anordnung des Inhalts einer Kachel.
+fn orient<R>(ui: &mut Ui, vert: bool, f: impl FnOnce(&mut Ui) -> R) -> R {
+    if vert {
+        ui.vertical_centered(f).inner
+    } else {
+        ui.horizontal(f).inner
+    }
+}
+
+/// Abstand (Punkte) des Zeigers zum Rand der Zeichenfläche, ab dem eine gezogene Kachel andockt.
+pub(super) const SNAP: f32 = 48.0;
+
+/// Rand, an dem eine beim Zeiger `p` losgelassene Kachel andockt (nächster Rand innerhalb `SNAP`).
+pub(super) fn snap_edge(canvas: Rect, p: Pos2) -> Option<BarPos> {
+    [(BarPos::Left, p.x - canvas.left()), (BarPos::Right, canvas.right() - p.x), (BarPos::Top, p.y - canvas.top()), (BarPos::Bottom, canvas.bottom() - p.y)]
+        .into_iter()
+        .filter(|(_, d)| *d < SNAP)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(e, _)| e)
+}
+
+/// Linke obere Ecke einer am Rand `e` angedockten Kachel (Abstand M); längs des Randes per Anteil `f`.
+pub(super) fn dock_pos(canvas: Rect, size: Vec2, e: BarPos, f: [f32; 2]) -> Pos2 {
+    let area = canvas.shrink(M);
+    let p = frac_to_pos(area, size, f);
+    match e {
+        BarPos::Left => Pos2::new(area.left(), p.y),
+        BarPos::Right => Pos2::new(area.right() - size.x, p.y),
+        BarPos::Top => Pos2::new(p.x, area.top()),
+        BarPos::Bottom => Pos2::new(p.x, area.bottom() - size.y),
+    }
+}
+
+/// Schiebt `r` vom Rand `e` weg, bis es keine schon platzierte Kachel am selben Rand überlappt.
+pub(super) fn stack(mut r: Rect, e: BarPos, placed: &[(BarPos, Rect)]) -> Rect {
+    for _ in 0..placed.len() {
+        let Some(o) = placed.iter().filter(|(e2, _)| *e2 == e).map(|(_, o)| *o).find(|o| o.shrink(1.0).intersects(r.shrink(1.0))) else { break };
+        let d = match e {
+            BarPos::Top => Vec2::new(0.0, o.bottom() + M - r.top()),
+            BarPos::Bottom => Vec2::new(0.0, o.top() - M - r.bottom()),
+            BarPos::Left => Vec2::new(o.right() + M - r.left(), 0.0),
+            BarPos::Right => Vec2::new(o.left() - M - r.right(), 0.0),
+        };
+        r = r.translate(d);
+    }
+    r
+}
+
+/// Verschiebbare, andockbare Kachel. Position: angedockt (Rand + Anteil längs), frei (Anteil) oder
+/// Vorgabe `pos`/`pivot` am Rand `def_edge`. Ziehen am Griff verschiebt; Loslassen nahe einem Rand
+/// dockt dort an (links/rechts senkrecht, oben/unten waagerecht), sonst bleibt sie frei liegen.
+/// Doppelklick auf den Griff setzt zurück. `content` bekommt `vert` (senkrechte Anordnung).
 #[allow(clippy::too_many_arguments)]
-fn tile(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, id: &str, pos: Pos2, pivot: Align2, content: impl FnOnce(&mut Editor, &mut Shared, &mut Ui) -> Grip) -> Rect {
+fn tile(
+    ed: &mut Editor,
+    ctx: &egui::Context,
+    sh: &mut Shared,
+    lay: &Lay,
+    id: &str,
+    pos: Pos2,
+    pivot: Align2,
+    def_edge: Option<BarPos>,
+    def_vert: bool,
+    content: impl FnOnce(&mut Editor, &mut Shared, &mut Ui, bool) -> Grip,
+) -> Rect {
     let canvas = lay.canvas;
     let key = tile_key(id, lay.env.ff);
     let size = ed.st.tile_sizes.get(id).copied().unwrap_or(Vec2::ZERO);
+    let dock = sh.settings.tile_dock.get(&key).copied();
+    let vert = dock.map(|d| d.vert).unwrap_or(def_vert);
     let dragging = ed.st.tile_drag.as_ref().is_some_and(|(k, _)| *k == key);
-    let (pos, pivot) = if let (true, Some((_, p))) = (dragging, &ed.st.tile_drag) {
-        (*p, Align2::LEFT_TOP)
-    } else if let Some(f) = sh.settings.tile_pos.get(&key) {
-        (frac_to_pos(canvas, size, *f), Align2::LEFT_TOP)
+    let saved = sh.settings.tile_pos.get(&key).copied();
+    let (mut pos, mut pivot, mut edge) = (pos, pivot, None);
+    if let (true, Some((_, p))) = (dragging, &ed.st.tile_drag) {
+        (pos, pivot) = (*p, Align2::LEFT_TOP);
+    } else if let Some(Dock { edge: Some(e), .. }) = dock {
+        (pos, pivot, edge) = (dock_pos(canvas, size, e, saved.unwrap_or([0.5, 0.5])), Align2::LEFT_TOP, Some(e));
+    } else if let Some(f) = saved {
+        (pos, pivot) = (frac_to_pos(canvas, size, f), Align2::LEFT_TOP);
     } else {
-        (pos, pivot)
-    };
+        edge = def_edge;
+    }
+    // Angedockte Kacheln am selben Rand stapeln statt überlappen
+    if let (Some(e), true) = (edge, size.x > 0.0) {
+        let r = stack(pivot.anchor_size(pos, size), e, &ed.st.dock_rects);
+        (pos, pivot) = (r.min, Align2::LEFT_TOP);
+    }
     let mut grip_resp = None;
     let r = Editor::float(ctx, id, pos, pivot, canvas, Order::Middle, |ui| {
-        grip_resp = Some(content(ed, sh, ui).0);
+        grip_resp = Some(content(ed, sh, ui, vert).0);
     });
     ed.st.tile_sizes.insert(id.to_string(), r.size());
+    if let Some(e) = edge {
+        ed.st.dock_rects.push((e, r));
+    }
     if let Some(g) = grip_resp {
+        let ptr = ctx.input(|i| i.pointer.interact_pos().or(i.pointer.latest_pos()));
         if g.double_clicked() {
             ed.st.tile_drag = None;
             sh.settings.tile_pos.remove(&key);
+            sh.settings.tile_dock.remove(&key);
         } else if g.dragged() {
             let cur = if dragging { ed.st.tile_drag.as_ref().map(|d| d.1).unwrap_or(r.min) } else { r.min };
             let np = cur + g.drag_delta();
             // in der Zeichenfläche halten
             let np = frac_to_pos(canvas, r.size(), pos_to_frac(canvas, r.size(), np));
             ed.st.tile_drag = Some((key, np));
+            if ptr.is_some() {
+                ed.st.tile_ptr = ptr;
+            }
+            // Andock-Zone anzeigen
+            if let Some(e) = ed.st.tile_ptr.and_then(|p| snap_edge(canvas, p)) {
+                let t = 6.0;
+                let zone = match e {
+                    BarPos::Left => Rect::from_min_max(canvas.min, Pos2::new(canvas.left() + t, canvas.bottom())),
+                    BarPos::Right => Rect::from_min_max(Pos2::new(canvas.right() - t, canvas.top()), canvas.max),
+                    BarPos::Top => Rect::from_min_max(canvas.min, Pos2::new(canvas.right(), canvas.top() + t)),
+                    BarPos::Bottom => Rect::from_min_max(Pos2::new(canvas.left(), canvas.bottom() - t), canvas.max),
+                };
+                let painter = ctx.layer_painter(egui::LayerId::new(Order::Tooltip, egui::Id::unique("dock-zone")));
+                painter.rect_filled(zone, 3.0, c(style::pal().accent).gamma_multiply(0.7));
+            }
         } else if g.drag_stopped() && dragging {
             if let Some((_, p)) = ed.st.tile_drag.take() {
-                sh.settings.tile_pos.insert(key, pos_to_frac(canvas, r.size(), p));
+                let at = ptr.or(ed.st.tile_ptr.take());
+                ed.st.tile_ptr = None;
+                match at.and_then(|q| snap_edge(canvas, q)) {
+                    Some(e) => {
+                        let v = matches!(e, BarPos::Left | BarPos::Right);
+                        // Größe nach dem Drehen schätzen (Länge und Dicke tauschen)
+                        let sz = if v != vert { Vec2::new(r.height(), r.width()) } else { r.size() };
+                        let sz = sz.min(canvas.shrink(M).size());
+                        let mut f = pos_to_frac(canvas.shrink(M), sz, p);
+                        if v {
+                            f[0] = 0.0;
+                        } else {
+                            f[1] = 0.0;
+                        }
+                        sh.settings.tile_pos.insert(key.clone(), f);
+                        sh.settings.tile_dock.insert(key, Dock { edge: Some(e), vert: v });
+                    }
+                    None => {
+                        sh.settings.tile_pos.insert(key.clone(), pos_to_frac(canvas, r.size(), p));
+                        sh.settings.tile_dock.insert(key, Dock { edge: None, vert });
+                    }
+                }
             }
         }
     }
@@ -273,22 +393,18 @@ fn tool_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, to
         BarPos::Left => (Pos2::new(canvas.left() + M, lay.y_below), Align2::LEFT_TOP, false),
         BarPos::Right => (Pos2::new(canvas.right() - M, lay.y_below), Align2::RIGHT_TOP, false),
     };
-    let r = tile(ed, ctx, sh, lay, "bar-tools", pos, pivot, |ed, sh, ui| {
+    let r = tile(ed, ctx, sh, lay, "bar-tools", pos, pivot, lay.tb_edge, !horiz, |ed, sh, ui, vert| {
+        ed.st.tools_vert = vert;
         style::pill(26)
             .show(ui, |ui| {
-                let body = |ui: &mut Ui| {
+                orient(ui, vert, |ui| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    let g = grip(ui, btn, horiz);
+                    let g = grip(ui, btn, !vert);
                     for &t in tools {
                         tool_btn(ui, ed, sh, t, btn);
                     }
                     g
-                };
-                if horiz {
-                    ui.horizontal(body).inner
-                } else {
-                    ui.vertical(body).inner
-                }
+                })
             })
             .inner
     });
@@ -309,103 +425,141 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
     let btn = lay.env.btn;
     let canvas = lay.canvas;
     let single_note = b.single_note().map(|n| n.id);
-    let bottom = canvas.bottom() - M - if lay.tb == BarPos::Bottom { lay.thick + M } else { 0.0 };
+    let bottom = canvas.bottom() - M - if lay.tb_edge == Some(BarPos::Bottom) { lay.thick + M } else { 0.0 };
     let maxw = canvas.width() - 2.0 * M;
-    let r = tile(ed, ctx, sh, lay, "bar-sel", Pos2::new(canvas.center().x, bottom), Align2::CENTER_BOTTOM, |ed, sh, ui| {
-        style::pill(26).show(ui, |ui| {
-            ui.set_max_width(maxw - 2.0 * PAD);
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::ZERO;
-                let g = grip(ui, btn, true);
-                let env = sh.env;
-                if has_sel {
-                    if icon_btn(ui, &mut sh.icons, ic::COPY, p.text, false, false, btn, &env.tip("Kopieren", "Strg+C")).clicked() {
-                        clip::copy(ed, &*sh.platform);
-                    }
-                    if icon_btn(ui, &mut sh.icons, ic::CUT, p.text, false, false, btn, &env.tip("Ausschneiden", "Strg+X")).clicked() {
-                        clip::cut(ed, &*sh.platform);
-                    }
-                }
-                if icon_btn(ui, &mut sh.icons, ic::PASTE, p.text, false, false, btn, &env.tip("Einfügen", "Strg+V")).clicked() {
-                    clip::paste_center(ed, &*sh.platform);
-                }
-                if has_sel {
-                    if icon_btn(ui, &mut sh.icons, ic::DUPLICATE, p.text, false, false, btn, &env.tip("Duplizieren", "Strg+D")).clicked() {
-                        ed.board.duplicate_sel();
-                    }
-                    if icon_btn(ui, &mut sh.icons, ic::ROTATE, p.text, false, false, btn, "Um 90° drehen").clicked() {
-                        ed.board.rotate_sel(std::f32::consts::FRAC_PI_2);
-                    }
-                    if icon_btn(ui, &mut sh.icons, ic::FRONT, p.text, false, false, btn, "Ganz nach vorne").clicked() {
-                        ed.board.bring_forward();
-                    }
-                    if icon_btn(ui, &mut sh.icons, ic::BACKWARD, p.text, false, false, btn, "Ganz nach hinten").clicked() {
-                        ed.board.send_backward();
-                    }
-                    if let Some(nid) = single_note {
-                        if icon_btn(ui, &mut sh.icons, ic::PEN, p.text, false, false, btn, "Text bearbeiten").clicked() {
-                            ed.edit_note(nid);
+    let maxh = canvas.height() - 2.0 * M;
+    let r = tile(ed, ctx, sh, lay, "bar-sel", Pos2::new(canvas.center().x, bottom), Align2::CENTER_BOTTOM, Some(BarPos::Bottom), false, |ed, sh, ui, vert| {
+        style::pill(26)
+            .show(ui, |ui| {
+                let body = |ui: &mut Ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    let g = grip(ui, btn, !vert);
+                    let env = sh.env;
+                    if has_sel {
+                        if icon_btn(ui, &mut sh.icons, ic::COPY, p.text, false, false, btn, &env.tip("Kopieren", "Strg+C")).clicked() {
+                            clip::copy(ed, &*sh.platform);
+                        }
+                        if icon_btn(ui, &mut sh.icons, ic::CUT, p.text, false, false, btn, &env.tip("Ausschneiden", "Strg+X")).clicked() {
+                            clip::cut(ed, &*sh.platform);
                         }
                     }
-                    if icon_btn(ui, &mut sh.icons, ic::TRASH, p.danger, false, false, btn, &env.tip("Löschen", "Entf")).clicked() {
-                        ed.board.delete_sel();
+                    if icon_btn(ui, &mut sh.icons, ic::PASTE, p.text, false, false, btn, &env.tip("Einfügen", "Strg+V")).clicked() {
+                        clip::paste_center(ed, &*sh.platform);
                     }
-                    // Strichstärke der ausgewählten Striche/Formen
-                    if let Some(w0) = ed.board.sel_width() {
-                        let mut w = w0;
-                        ui.add_space(6.0);
-                        ui.spacing_mut().slider_width = 110.0;
-                        let r = ui
-                            .add(egui::Slider::new(&mut w, 0.5..=40.0).logarithmic(true).max_decimals(1).text("Dicke"))
-                            .on_hover_text("Strichstärke der Auswahl");
-                        // Ein Rückgängig-Schritt je Ziehen (bei Beginn), sonst je Änderung (Tastatur/Klick)
-                        if r.drag_started() {
-                            ed.board.set_sel_width(w0, true);
+                    if has_sel {
+                        if icon_btn(ui, &mut sh.icons, ic::DUPLICATE, p.text, false, false, btn, &env.tip("Duplizieren", "Strg+D")).clicked() {
+                            ed.board.duplicate_sel();
                         }
-                        if r.changed() {
-                            ed.board.set_sel_width(w, !r.dragged() && !r.drag_started());
+                        if icon_btn(ui, &mut sh.icons, ic::ROTATE, p.text, false, false, btn, "Um 90° drehen").clicked() {
+                            ed.board.rotate_sel(std::f32::consts::FRAC_PI_2);
                         }
-                        ui.add_space(6.0);
-                    }
-                    // Text/Notiz: Schriftgröße und Farbe (erweitertes Menü)
-                    if let Some(s0) = ed.board.sel_note_size() {
-                        let sc = ed.board.sc;
-                        let mut v = s0 * sc;
-                        ui.add_space(6.0);
-                        ui.spacing_mut().slider_width = 110.0;
-                        let r = ui.add(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0).text("Größe")).on_hover_text("Schriftgröße (bei aktuellem Zoom)");
-                        if r.drag_started() {
-                            ed.board.set_sel_note_size(s0, true);
+                        if icon_btn(ui, &mut sh.icons, ic::FRONT, p.text, false, false, btn, "Ganz nach vorne").clicked() {
+                            ed.board.bring_forward();
                         }
-                        if r.changed() {
-                            ed.board.set_sel_note_size(v / sc, !r.dragged() && !r.drag_started());
+                        if icon_btn(ui, &mut sh.icons, ic::BACKWARD, p.text, false, false, btn, "Ganz nach hinten").clicked() {
+                            ed.board.send_backward();
                         }
-                        ui.add_space(4.0);
-                        let cur_col = ed.board.single_note().map(|n| n.color).unwrap_or(ed.board.color);
-                        for (col, name) in super::COLORS {
-                            let (rr, resp) = ui.allocate_exact_size(Vec2::new(26.0, btn), egui::Sense::click());
-                            let pt = ui.painter();
-                            pt.circle_filled(rr.center(), 8.0, style::c(col));
-                            if col == owndraw_core::item::INK {
-                                pt.circle_stroke(rr.center(), 8.0, egui::Stroke::new(1.0, style::c(0x80808080)));
-                            }
-                            if cur_col == col {
-                                pt.circle_stroke(rr.center(), 11.5, egui::Stroke::new(2.0, style::c(p.text)));
-                            }
-                            if resp.on_hover_text(name).clicked() {
-                                ed.board.set_color(col);
+                        if let Some(nid) = single_note {
+                            if icon_btn(ui, &mut sh.icons, ic::PEN, p.text, false, false, btn, "Text bearbeiten").clicked() {
+                                ed.edit_note(nid);
                             }
                         }
-                        ui.add_space(6.0);
+                        if icon_btn(ui, &mut sh.icons, ic::TRASH, p.danger, false, false, btn, &env.tip("Löschen", "Entf")).clicked() {
+                            ed.board.delete_sel();
+                        }
+                        ui.spacing_mut().slider_width = if vert { 90.0 } else { 110.0 };
+                        // Strichstärke der ausgewählten Striche/Formen
+                        if let Some(w0) = ed.board.sel_width() {
+                            let mut w = w0;
+                            ui.add_space(6.0);
+                            let r = ui.add(slider(egui::Slider::new(&mut w, 0.5..=40.0).logarithmic(true).max_decimals(1), vert, "Dicke")).on_hover_text(format!("Strichstärke der Auswahl: {w0:.1}"));
+                            // Ein Rückgängig-Schritt je Ziehen (bei Beginn), sonst je Änderung (Tastatur/Klick)
+                            if r.drag_started() {
+                                ed.board.set_sel_width(w0, true);
+                            }
+                            if r.changed() {
+                                ed.board.set_sel_width(w, !r.dragged() && !r.drag_started());
+                            }
+                            ui.add_space(6.0);
+                        }
+                        // Text/Notiz: Schriftgröße
+                        if let Some(s0) = ed.board.sel_note_size() {
+                            let sc = ed.board.sc;
+                            let mut v = s0 * sc;
+                            ui.add_space(6.0);
+                            let r = ui.add(slider(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0), vert, "Größe")).on_hover_text(format!("Schriftgröße (bei aktuellem Zoom): {:.0}", s0 * sc));
+                            if r.drag_started() {
+                                ed.board.set_sel_note_size(s0, true);
+                            }
+                            if r.changed() {
+                                ed.board.set_sel_note_size(v / sc, !r.dragged() && !r.drag_started());
+                            }
+                            ui.add_space(4.0);
+                        }
+                        // Farbe der Auswahl (Striche, Formen, Texte; Bilder bleiben unverändert)
+                        if let Some(cur) = ed.board.sel_color() {
+                            sel_colors(ui, ed, btn, vert, cur);
+                            ui.add_space(6.0);
+                        }
                     }
+                    g
+                };
+                if vert {
+                    egui::ScrollArea::vertical().max_height(maxh - 2.0 * PAD).auto_shrink([true, true]).show(ui, |ui| ui.vertical_centered(body).inner).inner
+                } else {
+                    ui.set_max_width(maxw - 2.0 * PAD);
+                    ui.horizontal_wrapped(body).inner
                 }
-                g
             })
             .inner
-        })
-        .inner
     });
     ed.st.popup_rects.push(r);
+}
+
+/// Regler der Auswahlleiste: senkrecht ohne Text/Wert, sonst mit Beschriftung.
+fn slider<'a>(s: egui::Slider<'a>, vert: bool, text: &str) -> egui::Slider<'a> {
+    if vert {
+        s.vertical().show_value(false)
+    } else {
+        s.text(text)
+    }
+}
+
+/// Farbpunkte für die Auswahl; `cur` = gemeinsame Farbe (None bei gemischter Auswahl).
+/// Senkrecht in zwei Spalten.
+fn sel_colors(ui: &mut Ui, ed: &mut Editor, btn: f32, vert: bool, cur: Option<u32>) {
+    let p = style::pal();
+    let mut dot = |ui: &mut Ui, col: u32, name: &str, size: Vec2| {
+        let (rr, resp) = ui.allocate_exact_size(size, Sense::click());
+        let pt = ui.painter();
+        pt.circle_filled(rr.center(), 8.0, c(col));
+        if col == owndraw_core::item::INK {
+            pt.circle_stroke(rr.center(), 8.0, Stroke::new(1.0, c(0x80808080)));
+        }
+        if cur == Some(col) {
+            pt.circle_stroke(rr.center(), 11.5, Stroke::new(2.0, c(p.text)));
+        } else if resp.hovered() {
+            pt.circle_stroke(rr.center(), 11.5, Stroke::new(1.5, c(p.line)));
+        }
+        if resp.on_hover_text(format!("Auswahl: {name}")).clicked() {
+            ed.board.set_color(col);
+        }
+    };
+    if vert {
+        let cell = (btn / 2.0).max(24.0);
+        for pair in super::COLORS.chunks(2) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                for (col, name) in pair {
+                    dot(ui, *col, name, Vec2::splat(cell));
+                }
+            });
+        }
+    } else {
+        for (col, name) in super::COLORS {
+            dot(ui, col, name, Vec2::new(26.0, btn));
+        }
+    }
 }
 
 // ---------------------------------------------------------------- Bearbeiten-Modus (WP9)
@@ -592,6 +746,23 @@ mod tile_tests {
         assert!((f[0] - 0.5).abs() < 1e-5 && (f[1] - 0.5).abs() < 1e-5);
         assert_eq!(pos_to_frac(canvas, size, Pos2::new(-100.0, 999.0)), [0.0, 1.0]);
         assert_eq!(pos_to_frac(canvas, Vec2::new(400.0, 50.0), Pos2::new(50.0, 20.0)), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn andocken() {
+        let canvas = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(1000.0, 800.0));
+        assert_eq!(snap_edge(canvas, Pos2::new(10.0, 400.0)), Some(BarPos::Left));
+        assert_eq!(snap_edge(canvas, Pos2::new(990.0, 400.0)), Some(BarPos::Right));
+        assert_eq!(snap_edge(canvas, Pos2::new(500.0, 5.0)), Some(BarPos::Top));
+        assert_eq!(snap_edge(canvas, Pos2::new(500.0, 400.0)), None);
+        let sz = Vec2::new(50.0, 300.0);
+        let p = dock_pos(canvas, sz, BarPos::Right, [0.0, 0.0]);
+        assert_eq!(p, Pos2::new(1000.0 - M - 50.0, M));
+        let a = Rect::from_min_size(Pos2::new(M, M), Vec2::new(200.0, 50.0));
+        let b = stack(Rect::from_min_size(Pos2::new(100.0, M), Vec2::new(300.0, 50.0)), BarPos::Top, &[(BarPos::Top, a)]);
+        assert_eq!(b.top(), a.bottom() + M);
+        let c = stack(Rect::from_min_size(Pos2::new(100.0, M), Vec2::new(300.0, 50.0)), BarPos::Left, &[(BarPos::Top, a)]);
+        assert_eq!(c.top(), M);
     }
 
     #[test]

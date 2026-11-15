@@ -911,6 +911,14 @@ impl Board {
         self.refresh();
     }
 
+    /// Gemeinsame Farbe der Auswahl (ohne Bilder); None ohne einfärbbare Auswahl oder bei
+    /// gemischten Farben (dann `Some(None)`).
+    pub fn sel_color(&self) -> Option<Option<u32>> {
+        let mut it = self.sel_items().into_iter().filter(|it| !it.is_img()).map(|it| it.color);
+        let first = it.next()?;
+        Some(if it.all(|c| c == first) { Some(first) } else { None })
+    }
+
     /// Strichstärke der Auswahl (ohne Bilder/Notizen) in Weltkoordinaten; None ohne passende Auswahl.
     pub fn sel_width(&self) -> Option<f32> {
         let w: Vec<f32> = self.sel_items().iter().filter(|it| !it.is_img() && it.as_note().is_none()).map(|it| it.width).collect();
@@ -2100,7 +2108,8 @@ impl Board {
             self.ey = y;
             self.erase_step(self.sx, self.sy);
         } else if self.tool == PEN || self.tool == MARKER {
-            let w = (if self.tool == MARKER { self.pen_w * 4.0 + 8.0 } else { self.pen_w }) * self.dp / self.sc;
+            // Strichstärke in Weltkoordinaten (Punkt), unabhängig von der Zoomstufe
+            let w = (if self.tool == MARKER { self.pen_w * 4.0 + 8.0 } else { self.pen_w }) * self.dp;
             let mut cur = Item::stroke(self.color, w, self.tool == MARKER, st && self.tool == PEN);
             self.last_pr = if st { p.pressure } else { 0.5 };
             cur.add_point(self.sx, self.sy, self.last_pr);
@@ -2173,7 +2182,7 @@ impl Board {
     }
 
     fn make_shape(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Item {
-        let w = self.pen_w * self.dp / self.sc;
+        let w = self.pen_w * self.dp;
         if self.shape_kind == 0 {
             Item::shape(item::POLY, vec![x0, y0, x1, y0, x1, y1, x0, y1], self.color, w)
         } else {
@@ -2187,10 +2196,12 @@ impl Board {
         }
     }
 
-    /// Radierer-Radius in Bildschirm-Pixeln fuer den aktuellen Modus.
+    /// Radierer-Radius in Bildschirm-Pixeln fuer den aktuellen Modus. Der Teil-Radierer
+    /// richtet sich wie die Strichstärke nach Weltkoordinaten (skaliert also mit dem Zoom),
+    /// bleibt aber mindestens 4 Pixel gross.
     fn erase_screen_r(&self) -> f32 {
         if self.erase_mode == 1 {
-            (self.pen_w * 3.0).max(6.0) * self.dp
+            ((self.pen_w * 3.0).max(6.0) * self.dp * self.sc).max(4.0 * self.dp)
         } else {
             10.0 * self.dp
         }
@@ -3419,6 +3430,35 @@ mod tests {
         let mut pm = Pixmap::new(800, 600).unwrap();
         b.render(&mut pm);
         assert_ne!(pm.pixel(50, 21).unwrap().red(), 0xFB);
+    }
+
+    #[test]
+    fn strichdicke_unabhaengig_vom_zoom() {
+        let mut ws = Vec::new();
+        for z in [0.5f32, 1.0, 3.0] {
+            let mut b = board();
+            b.zoom_at(0.0, 0.0, z);
+            b.recog = 2;
+            drag(&mut b, &[(10.0, 100.0), (200.0, 140.0), (390.0, 100.0)], ToolType::Stylus);
+            b.tool = SHAPE;
+            drag(&mut b, &[(10.0, 300.0), (200.0, 400.0)], ToolType::Stylus);
+            ws.push(b.items.iter().map(|it| it.width).collect::<Vec<_>>());
+        }
+        assert!(ws.iter().all(|w| w.len() == 2 && *w == ws[0]), "{ws:?}");
+    }
+
+    #[test]
+    fn farbe_der_auswahl() {
+        let mut b = board();
+        b.recog = 2;
+        drag(&mut b, &[(10.0, 100.0), (200.0, 140.0)], ToolType::Stylus);
+        b.tool = SELECT;
+        assert_eq!(b.sel_color(), None);
+        b.sel = b.items.iter().map(|it| it.id).collect();
+        b.set_color(0xFFE5484D);
+        assert_eq!(b.sel_color(), Some(Some(0xFFE5484D)));
+        b.undo();
+        assert_ne!(b.items[0].color, 0xFFE5484D);
     }
 
     #[test]

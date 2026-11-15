@@ -203,11 +203,18 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
                 settings.extra.insert("tile_radius".into(), serde_json::json!(v));
             }
         });
+        let before = settings.toolbar_pos;
         row(ui, env, "Werkzeugleiste", None, |ui| bar_chips(ui, env, &mut settings.toolbar_pos));
+        if settings.toolbar_pos != before {
+            // feste Wahl ersetzt eine per Griff verschobene/angedockte Werkzeugleiste
+            settings.tile_pos.retain(|k, _| !k.starts_with("bar-tools@"));
+            settings.tile_dock.retain(|k, _| !k.starts_with("bar-tools@"));
+        }
         row(ui, env, "Optionsleiste", None, |ui| bar_chips(ui, env, &mut settings.options_pos));
-        row(ui, env, "Leisten-Positionen", Some("Mit dem Griff verschobene Leisten zurück an den Standardplatz."), |ui| {
-            if ui.add_enabled(!settings.tile_pos.is_empty(), egui::Button::new("Leisten-Positionen zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
+        row(ui, env, "Leisten-Positionen", Some("Leisten mit dem Griff ⠿ verschieben; am Rand loslassen dockt an (seitlich senkrecht). Hier alles zurück an den Standardplatz."), |ui| {
+            if ui.add_enabled(!settings.tile_pos.is_empty() || !settings.tile_dock.is_empty(), egui::Button::new("Leisten-Positionen zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
                 settings.tile_pos.clear();
+                settings.tile_dock.clear();
             }
         });
         row(ui, env, "Werkzeuge", Some("Reihenfolge ändern und Werkzeuge aus- oder einblenden."), |ui| {

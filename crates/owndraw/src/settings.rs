@@ -22,6 +22,14 @@ pub enum BarPos {
     Right,
 }
 
+/// Andock-Zustand einer verschobenen Kachel: `edge` = angedockt an diesen Rand der
+/// Zeichenfläche (None = frei schwebend), `vert` = Symbole senkrecht angeordnet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dock {
+    pub edge: Option<BarPos>,
+    pub vert: bool,
+}
+
 /// Wo neue Boards gespeichert werden.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SaveChoice {
@@ -61,6 +69,8 @@ pub struct Settings {
     /// Vom Nutzer verschobene Kacheln: "<id>@<Formfaktor>" -> Anteil (0..1) der linken oberen Ecke
     /// bezogen auf (Zeichenfläche - Kachelgröße).
     pub tile_pos: BTreeMap<String, [f32; 2]>,
+    /// Andock-Zustand der Kacheln (gleiche Schlüssel wie `tile_pos`); fehlt = Vorgabe.
+    pub tile_dock: BTreeMap<String, Dock>,
     /// Sichtbare Werkzeuge in Reihenfolge.
     pub tools: Vec<ToolId>,
     pub save_choice: SaveChoice,
@@ -108,6 +118,7 @@ impl Default for Settings {
             toolbar_pos: None,
             options_pos: None,
             tile_pos: BTreeMap::new(),
+            tile_dock: BTreeMap::new(),
             tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
             save_choice: SaveChoice::Ask,
             default_dir: None,
@@ -140,6 +151,12 @@ impl Settings {
         self.tile_pos.retain(|_, f| f.iter().all(|v| v.is_finite()));
         for f in self.tile_pos.values_mut() {
             *f = [f[0].clamp(0.0, 1.0), f[1].clamp(0.0, 1.0)];
+        }
+        // Seitlich angedockt = immer senkrecht, oben/unten = waagerecht
+        for d in self.tile_dock.values_mut() {
+            if let Some(e) = d.edge {
+                d.vert = matches!(e, BarPos::Left | BarPos::Right);
+            }
         }
         if self.update_repo.trim().is_empty() {
             self.update_repo = Settings::default().update_repo;
@@ -252,6 +269,7 @@ mod tests {
         let mut s = neu;
         s.reset();
         assert!(s.tile_pos.is_empty());
+        assert!(Settings::parse(br#"{"tile_dock": {"bar-tools@Expanded": {"edge": "Left", "vert": false}}}"#).unwrap().tile_dock["bar-tools@Expanded"] == Dock { edge: Some(BarPos::Left), vert: true });
     }
 
     #[test]

@@ -206,7 +206,7 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
     }
     let canvas = lay.canvas;
     let mut act: Option<Act> = None;
-    let left = canvas.left() + M + if lay.tb == BarPos::Left { lay.thick + M } else { 0.0 };
+    let left = canvas.left() + M + if lay.tb_edge == Some(BarPos::Left) { lay.thick + M } else { 0.0 };
     match lay.env.ff {
         FormFactor::Expanded => {
             if let Some(dock) = lay.dock_pages {

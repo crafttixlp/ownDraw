@@ -22,7 +22,7 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
     let canvas = lay.canvas;
     if lay.env.ff == FormFactor::Compact {
         // Bottom-Sheet über der Werkzeugleiste
-        let bottom = canvas.bottom() - if lay.tb == BarPos::Bottom { lay.thick + 2.0 * M } else { 0.0 };
+        let bottom = canvas.bottom() - if lay.tb_edge == Some(BarPos::Bottom) { lay.thick + 2.0 * M } else { 0.0 };
         let w = canvas.width();
         let max_h = (canvas.height() * 0.55).max(160.0);
         let r = Editor::float(ctx, "opts-sheet", Pos2::new(canvas.left(), bottom), Align2::LEFT_BOTTOM, canvas, Order::Foreground, |ui| {
@@ -50,7 +50,19 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
     }
     // Popover neben dem Werkzeugknopf
     let Some(anchor) = ed.st.tool_rects.iter().find(|(x, _)| *x == t).map(|(_, r)| *r) else { return };
-    let (pos, pivot) = match lay.tb {
+    // Seite nach Lage der Werkzeugleiste: senkrecht -> rechts/links daneben, waagerecht -> darunter/darüber
+    let side = if ed.st.tools_vert {
+        if anchor.center().x < canvas.center().x {
+            BarPos::Left
+        } else {
+            BarPos::Right
+        }
+    } else if anchor.center().y < canvas.center().y {
+        BarPos::Top
+    } else {
+        BarPos::Bottom
+    };
+    let (pos, pivot) = match side {
         BarPos::Left => (Pos2::new(anchor.right() + M + PAD, anchor.top()), Align2::LEFT_TOP),
         BarPos::Right => (Pos2::new(anchor.left() - M - PAD, anchor.top()), Align2::RIGHT_TOP),
         BarPos::Top => (Pos2::new(anchor.center().x, anchor.bottom() + M + PAD), Align2::CENTER_TOP),

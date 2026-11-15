@@ -36,7 +36,7 @@ owndraw (Desktop, egui/eframe)  ──►  owndraw-core (keine UI-Abhängigkeit)
 
 ## Desktop
 
-- egui 0.37 / eframe (glow, X11 + Wayland). Alle Leisten sind `Area`s über der Board-Textur.
+- egui 0.37 / eframe (glow, X11 + Wayland). Alle Leisten sind `Area`s über der Board-Textur. Kacheln (`toolbar::tile`) lassen sich am Griff verschieben; am Rand losgelassen docken sie an (oben/unten waagerecht, links/rechts senkrecht), gespeichert in `Settings.tile_pos` + `tile_dock`. Strichstärken sind Weltkoordinaten (Punkt) und hängen nicht vom Zoom ab.
 - Maus: linke Taste wird als Stylus (Druck 0,5) an den Kern gegeben, rechte/mittlere Taste und Leertaste
   verschieben direkt; Touch wird auf Finger-Ereignisse abgebildet.
 - Autosave alle 30 s im Hintergrund-Thread, Speichern beim Schließen.

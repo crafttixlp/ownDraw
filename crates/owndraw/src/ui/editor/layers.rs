@@ -45,8 +45,8 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
             ed.st.popup_rects.push(r);
         }
         FormFactor::Medium => {
-            let right = canvas.right() - M - if lay.tb == BarPos::Right { lay.thick + M } else { 0.0 };
-            let max_h = (canvas.bottom() - lay.y_below - M - if lay.tb == BarPos::Bottom { lay.thick + M } else { 0.0 } - 110.0).max(120.0);
+            let right = canvas.right() - M - if lay.tb_edge == Some(BarPos::Right) { lay.thick + M } else { 0.0 };
+            let max_h = (canvas.bottom() - lay.y_below - M - if lay.tb_edge == Some(BarPos::Bottom) { lay.thick + M } else { 0.0 } - 110.0).max(120.0);
             let r = Editor::float(ctx, "layers-float", Pos2::new(right, lay.y_below), Align2::RIGHT_TOP, canvas, Order::Middle, |ui| {
                 style::pill(22).show(ui, |ui| {
                     egui::Frame::new().inner_margin(egui::Margin::same(8)).show(ui, |ui| {

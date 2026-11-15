@@ -132,6 +132,12 @@ pub struct UiState {
     pub tile_sizes: std::collections::HashMap<String, egui::Vec2>,
     /// Laufendes Verschieben einer Kachel: (Schlüssel, linke obere Ecke).
     pub tile_drag: Option<(String, Pos2)>,
+    /// Letzte Zeigerposition beim Ziehen einer Kachel (Touch liefert beim Loslassen keine).
+    pub tile_ptr: Option<Pos2>,
+    /// In diesem Frame bereits platzierte, an einem Rand liegende Kacheln (zum Stapeln).
+    pub dock_rects: Vec<(BarPos, Rect)>,
+    /// Werkzeugleiste im letzten Frame senkrecht angeordnet.
+    pub tools_vert: bool,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).
@@ -139,6 +145,8 @@ pub(super) struct Lay {
     pub canvas: Rect,
     pub env: Env,
     pub tb: BarPos,
+    /// Rand, an dem die Werkzeugleiste tatsächlich liegt (None = frei verschoben).
+    pub tb_edge: Option<BarPos>,
     /// Werkzeugleiste in zweiter Reihe unter den oberen Pillen (nur bei `tb == Top`).
     pub row2: bool,
     /// y-Koordinate unter der obersten Reihe (Start von seitlichen Leisten/Panels).
@@ -500,16 +508,30 @@ impl Editor {
         let wr = 3.0 * btn + 64.0 + 2.0 * PAD;
         let fits_row = canvas.width() >= wl + length + wr + 6.0 * M;
         let mut tb = layout::toolbar_pos(env.ff, sh.settings.toolbar_pos);
+        let mut tb_edge = Some(tb);
+        // per Griff angedockte/verschobene Werkzeugleiste
+        let key = toolbar::tile_key("bar-tools", env.ff);
+        let custom = if let Some(d) = sh.settings.tile_dock.get(&key) {
+            tb = d.edge.unwrap_or(if d.vert { BarPos::Left } else { BarPos::Top });
+            tb_edge = d.edge;
+            true
+        } else if sh.settings.tile_pos.contains_key(&key) {
+            tb_edge = None;
+            true
+        } else {
+            false
+        };
         let row2 = tb == BarPos::Top && !fits_row;
         let mut y_below = canvas.top() + M + thick + M;
         if row2 {
             y_below += thick + M;
         }
         // Seitliche Leiste, die nicht in die Höhe passt (Handy quer): automatisch nach unten, solange nichts Festes gewählt ist.
-        if matches!(tb, BarPos::Left | BarPos::Right) && sh.settings.toolbar_pos.is_none() && y_below + length + M + (thick + M) > canvas.bottom() {
+        if !custom && matches!(tb, BarPos::Left | BarPos::Right) && sh.settings.toolbar_pos.is_none() && y_below + length + M + (thick + M) > canvas.bottom() {
             tb = BarPos::Bottom;
+            tb_edge = Some(tb);
         }
-        Lay { canvas, env, tb, row2, y_below, thick, dock_layers, dock_pages, pages_mode }
+        Lay { canvas, env, tb, tb_edge, row2, y_below, thick, dock_layers, dock_pages, pages_mode }
     }
 
     // ---------------------------------------------------------------- Haupt-UI

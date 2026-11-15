@@ -294,6 +294,7 @@ impl Editor {
     fn sync_modified(&mut self, now: f64) {
         if self.board.modified {
             self.board.modified = false;
+            crate::platform::note_unsaved(true);
             self.autosave.mark_changed(now);
             self.page_thumbs.dirty = true;
         }
@@ -301,6 +302,7 @@ impl Editor {
 
     pub fn rename(&mut self, name: String, now: f64) {
         self.doc.meta.name = name;
+        crate::platform::note_unsaved(true);
         self.autosave.mark_changed(now);
     }
 
@@ -367,7 +369,16 @@ impl Editor {
             }
             PickPurpose::SaveCopy => {
                 let f = with_ext(f, "owndraw");
-                match session::save_copy_as(&*sh.platform, &self.snapshot_doc(), &f) {
+                let mut doc = self.snapshot_doc();
+                if crate::platform::WEB {
+                    // Download ist im Browser die eigentliche Sicherung: mit Vorschaubild (für die Kachel beim Öffnen)
+                    doc.thumb = self.board.thumb().encode_png().ok();
+                }
+                match session::save_copy_as(&*sh.platform, &doc, &f) {
+                    Ok(()) if crate::platform::WEB => {
+                        crate::platform::note_unsaved(false);
+                        sh.toast("Board heruntergeladen");
+                    }
                     Ok(()) => sh.toast("Kopie gespeichert"),
                     Err(e) => sh.toast(&e),
                 }
@@ -433,6 +444,10 @@ impl Editor {
 
     pub fn preview(&mut self, sh: &mut Shared) {
         if self.empty_hint(sh) {
+            return;
+        }
+        if crate::platform::WEB {
+            sh.toast("Website-Vorschau gibt es im Browser nicht – exportiere die Website als ZIP");
             return;
         }
         match owndraw_core::export::build_preview(&sh.platform.cache_dir(), &self.board) {
@@ -681,7 +696,12 @@ impl Editor {
         if !self.board.busy() {
             let Self { autosave, board, doc, .. } = self;
             let fmt = autosave.format();
+            let before = autosave.status().clone();
             autosave.tick(sh.now, || Self::snapshot_bytes(board, doc, fmt), &*sh.platform);
+            // Synchrones Schreiben (URI, Browser) ändert den Status erst nach dem Zeichnen der Leiste
+            if *autosave.status() != before {
+                ctx.request_repaint();
+            }
         }
         if self.autosave.error().is_some() {
             if !self.st.error_toast_shown {
@@ -889,7 +909,8 @@ impl Editor {
                     match key {
                         Key::C if cmd => copy = true,
                         Key::X if cmd => cut = true,
-                        Key::V if cmd => paste = true,
+                        // Im Browser kommt der Inhalt mit dem `paste`-Ereignis (Event::Paste), sonst doppelt.
+                        Key::V if cmd && !crate::platform::WEB => paste = true,
                         Key::D if cmd => {
                             if sel {
                                 self.board.duplicate_sel();
@@ -902,7 +923,12 @@ impl Editor {
                             self.sync_modified(sh.now);
                             self.autosave.mark_changed(sh.now);
                             self.flush(sh);
-                            sh.toast("Gespeichert");
+                            if crate::platform::WEB {
+                                // Browser: Strg+S lädt das Board herunter.
+                                self.apply_confirm(ConfirmAction::SaveCopy, sh);
+                            } else {
+                                sh.toast("Gespeichert");
+                            }
                         }
                         Key::E if cmd => {
                             self.st.menu_open = true;
@@ -951,6 +977,7 @@ impl Editor {
         match self.autosave.status() {
             AutosaveStatus::Error(_) => ("Speichern fehlgeschlagen", true),
             AutosaveStatus::Dirty | AutosaveStatus::Saving => ("Änderungen werden gespeichert …", false),
+            AutosaveStatus::Saved(_) if crate::platform::WEB => ("Im Browser zwischengespeichert – zum Sichern herunterladen (⋯)", false),
             AutosaveStatus::Saved(_) => ("Gespeichert", false),
             AutosaveStatus::Idle => ("", false),
         }

@@ -4,6 +4,7 @@ pub mod dialogs;
 pub mod editor;
 pub mod settings;
 pub mod start;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod update;
 
 use egui::Color32;
@@ -51,6 +52,10 @@ fn local_offset_secs() -> i64 {
     use std::sync::OnceLock;
     static OFF: OnceLock<i64> = OnceLock::new();
     *OFF.get_or_init(|| {
+        // Browser: Versatz aus `Date` (getTimezoneOffset liefert Minuten westlich von UTC).
+        #[cfg(target_arch = "wasm32")]
+        return -(js_sys::Date::new_0().get_timezone_offset() as i64) * 60;
+        #[allow(unreachable_code)]
         let now = owndraw_core::store::now_ms() / 1000;
         let data = std::env::var("TZ")
             .ok()

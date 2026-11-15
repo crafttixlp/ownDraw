@@ -113,8 +113,26 @@ pub fn export_xopp(platform: &dyn Platform, doc: &Document, f: &FileRef) -> Resu
 }
 
 /// Legt die Bilder des Dokuments im Bildordner `dir` ab (für das Rendern, `item::set_img_dir`).
+/// Im Browser (kein Dateisystem) stattdessen in den Bildspeicher des Kerns (`item::put_mem_image`).
 pub fn prepare_images(doc: &Document, dir: &Path) -> Result<(), String> {
+    if crate::platform::WEB {
+        owndraw_core::item::clear_mem_images();
+        for (n, b) in &doc.images.files {
+            owndraw_core::item::put_mem_image(n, b.clone());
+        }
+        return Ok(());
+    }
     doc.images.materialize(dir).map_err(|e| e.to_string())
+}
+
+/// Ein einzelnes Bild für das Rendern ablegen (Bildordner bzw. im Browser der Bildspeicher des Kerns).
+pub fn put_image(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), String> {
+    if crate::platform::WEB {
+        owndraw_core::item::put_mem_image(name, bytes.to_vec());
+        return Ok(());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(name), bytes).map_err(|e| e.to_string())
 }
 
 /// Bild importieren (png/jpg/gif/bmp/webp): auf höchstens 2048 px verkleinern, als PNG ins Dokument und in den
@@ -135,8 +153,7 @@ pub fn import_image(images: &mut ImageStore, dir: &Path, bytes: &[u8]) -> Result
     let mut png = Vec::new();
     image::DynamicImage::ImageRgba8(rgba).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
     let name = images.add(png.clone(), "png");
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(&name), &png).map_err(|e| e.to_string())?;
+    put_image(dir, &name, &png)?;
     Ok((name, w, h))
 }
 
@@ -170,6 +187,7 @@ pub fn read_thumb(platform: &dyn Platform, f: &FileRef) -> Option<Vec<u8>> {
 }
 
 /// Name und Seitenmodus einer `.owndraw` aus dem Manifest (ohne die ganze Datei zu dekodieren).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub fn read_summary(platform: &dyn Platform, f: &FileRef) -> Option<(String, bool)> {
     let m: serde_json::Value = serde_json::from_slice(&read_zip_entry(platform, f, "manifest.json", 4 << 20)?).ok()?;
     let name = m.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(|| f.display_name().trim_end_matches(".owndraw").to_string());

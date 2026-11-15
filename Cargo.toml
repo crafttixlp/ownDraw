@@ -1,11 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-android"]
-# owndraw-android ist nur für das Android-Ziel sinnvoll (siehe docs/android.md).
+members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-android", "crates/owndraw-web"]
+# owndraw-android ist nur für das Android-Ziel sinnvoll (siehe docs/android.md),
+# owndraw-web nur für wasm32-unknown-unknown (siehe docs/web.md, build-web.sh).
 default-members = ["crates/owndraw-core", "crates/owndraw"]
 
 [workspace.package]
-version = "4.5.1"
+version = "4.6.0"
 edition = "2021"
 license = "MIT"
 
@@ -20,3 +21,9 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# Browser-Build (build-web.sh): wie release, aber ohne `strip = true`, damit wasm-bindgen die
+# Wasm-Features (Abschnitt target_features) sieht.
+[profile.web]
+inherits = "release"
+strip = "debuginfo"

@@ -46,3 +46,9 @@ owndraw (Desktop, egui/eframe)  ──►  owndraw-core (keine UI-Abhängigkeit)
 
 `build-appimage.sh` baut Release, füllt `packaging/appimage/appdir/` und packt mit eigener Runtime
 (`packaging/appimage/runtime.c`, squashfs + statische zlib). Ergebnis: eine Datei ohne Java, ca. 7 MB.
+
+## Browser (ab 4.6)
+
+`crates/owndraw-web` startet dieselbe App über `owndraw::run_web` im Canvas (eframe Web/WebGL). Plattform:
+`platform/web` (Gastmodus: Öffnen per Upload, Speichern als Download, Boards vorläufig in IndexedDB). Bauen mit
+`build-web.sh`, Details und Grenzen: [web.md](web.md).

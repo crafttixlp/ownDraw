@@ -24,6 +24,8 @@ pub fn ink(c: u32, dark: bool) -> u32 {
 thread_local! {
     static NEXT_ID: Cell<u64> = const { Cell::new(1) };
     static IMG_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    /// Bilder im Speicher (Name → Bytes), falls es keinen Bildordner gibt (Browser). Vorrang vor dem Ordner.
+    static IMG_MEM: RefCell<HashMap<String, Rc<Vec<u8>>>> = RefCell::new(HashMap::new());
     static IMG_CACHE: RefCell<(HashMap<String, Option<Rc<Pixmap>>>, Vec<String>)> = RefCell::new((HashMap::new(), Vec::new()));
 }
 
@@ -45,6 +47,17 @@ pub fn set_img_dir(dir: PathBuf) {
         c.0.clear();
         c.1.clear();
     });
+}
+
+/// Legt ein Bild im Speicher ab (Browser ohne Dateisystem); `load_image` nimmt es vor dem Bildordner.
+pub fn put_mem_image(name: &str, bytes: Vec<u8>) {
+    IMG_MEM.with(|m| m.borrow_mut().insert(name.to_string(), Rc::new(bytes)));
+    forget_image(name);
+}
+
+/// Leert die Bilder im Speicher (beim Öffnen eines anderen Dokuments).
+pub fn clear_mem_images() {
+    IMG_MEM.with(|m| m.borrow_mut().clear());
 }
 
 pub fn img_dir() -> Option<PathBuf> {
@@ -71,11 +84,20 @@ fn load_image(name: &str) -> Option<Rc<Pixmap>> {
     if let Some(hit) = IMG_CACHE.with(|c| c.borrow().0.get(name).cloned()) {
         return hit;
     }
-    let pm = img_dir().and_then(|d| {
+    let mem = IMG_MEM.with(|m| m.borrow().get(name).cloned());
+    let pm = if let Some(b) = mem {
+        image::load_from_memory(&b).ok().and_then(|img| {
+            let img = img.into_rgba8();
+            let (w, h) = (img.width(), img.height());
+            pixmap_from_rgba(w, h, img.into_raw()).map(Rc::new)
+        })
+    } else {
+        img_dir().and_then(|d| {
         let img = image::open(d.join(name)).ok()?.into_rgba8();
         let (w, h) = (img.width(), img.height());
         pixmap_from_rgba(w, h, img.into_raw()).map(Rc::new)
-    });
+        })
+    };
     IMG_CACHE.with(|c| {
         let mut c = c.borrow_mut();
         if c.1.len() >= MAX_IMG_CACHE {

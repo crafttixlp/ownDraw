@@ -198,7 +198,8 @@ fn num(v: Option<&Value>, d: f32) -> f32 {
     v.and_then(Value::as_f64).map(|x| x as f32).filter(|x| *x > 0.0).unwrap_or(d)
 }
 
-fn mode_from_manifest(m: &Value) -> BoardMode {
+/// Board-Modus aus dem Manifest (Felder `mode`, `page`, `pages`; auch für [`mode_to_json`]).
+pub fn mode_from_manifest(m: &Value) -> BoardMode {
     if m.get("mode").and_then(Value::as_str) != Some("pages") {
         return BoardMode::Infinite;
     }
@@ -304,6 +305,18 @@ fn page_json(p: &Page) -> Value {
     o
 }
 
+/// Board-Modus als Manifest-Ausschnitt `{"mode", "page", "pages"}` (Gegenstück: [`mode_from_manifest`]).
+pub fn mode_to_json(mode: &BoardMode) -> Value {
+    match mode {
+        BoardMode::Infinite => json!({"mode": "infinite", "page": null, "pages": null}),
+        BoardMode::Pages(s) => json!({
+            "mode": "pages",
+            "page": {"w": s.w as f64, "h": s.h as f64, "bg": s.bg.name()},
+            "pages": Value::Array(s.pages.iter().map(page_json).collect()),
+        }),
+    }
+}
+
 /// Schreibt `.owndraw` v2.
 pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     // Bilder inhaltsadressiert umbenennen; nur referenzierte Bilder behalten.
@@ -324,17 +337,8 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     m.insert("id".into(), json!(doc.meta.id));
     m.insert("name".into(), json!(doc.meta.name));
     m.insert("modified".into(), json!(rfc3339(crate::store::now_ms())));
-    match &doc.mode {
-        BoardMode::Infinite => {
-            m.insert("mode".into(), json!("infinite"));
-            m.insert("page".into(), Value::Null);
-            m.insert("pages".into(), Value::Null);
-        }
-        BoardMode::Pages(s) => {
-            m.insert("mode".into(), json!("pages"));
-            m.insert("page".into(), json!({"w": s.w as f64, "h": s.h as f64, "bg": s.bg.name()}));
-            m.insert("pages".into(), Value::Array(s.pages.iter().map(page_json).collect()));
-        }
+    if let Value::Object(mj) = mode_to_json(&doc.mode) {
+        m.extend(mj);
     }
     let mut z = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let opt = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);

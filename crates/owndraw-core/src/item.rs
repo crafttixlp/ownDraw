@@ -39,6 +39,30 @@ fn next_id() -> u64 {
     })
 }
 
+/// Neue zufällige, dauerhafte Objekt-Kennung (nie 0).
+pub fn new_uid() -> u64 {
+    loop {
+        let v = u64::from_str_radix(&crate::store::random_hex(16), 16).unwrap_or(0);
+        if v != 0 {
+            return v;
+        }
+    }
+}
+
+/// Kennung als Text im Dateiformat (16 Hex-Zeichen, Feld `"uid"`).
+pub fn uid_str(u: u64) -> String {
+    format!("{u:016x}")
+}
+
+/// Liest eine Kennung aus dem Dateiformat (None bei fehlendem/ungültigem Wert).
+pub fn parse_uid(v: &Value) -> Option<u64> {
+    let s = v.as_str()?;
+    if s.is_empty() || s.len() > 16 {
+        return None;
+    }
+    u64::from_str_radix(s, 16).ok().filter(|u| *u != 0)
+}
+
 /// Ordner, aus dem Bild-Objekte ihre Dateien laden.
 pub fn set_img_dir(dir: PathBuf) {
     IMG_DIR.with(|d| *d.borrow_mut() = Some(dir));
@@ -442,9 +466,12 @@ pub enum Kind {
 }
 
 /// Ein Board-Objekt. `id` ist nur zur Laufzeit eindeutig (Auswahl), nicht Teil des Dateiformats.
+/// `uid` ist die dauerhafte Kennung (Feld `"uid"` im Item-JSON, für die Zusammenarbeit): bleibt bei Änderungen
+/// (`Rc::make_mut`, Undo) gleich, neue Objekte und Kopien (`dup`) bekommen eine neue.
 #[derive(Clone, Debug)]
 pub struct Item {
     pub id: u64,
+    pub uid: u64,
     pub color: u32,
     pub width: f32,
     /// Layer.id der Ebene, auf der das Objekt liegt.
@@ -460,7 +487,7 @@ pub struct Item {
 
 impl Item {
     pub fn new(kind: Kind) -> Item {
-        Item { id: next_id(), color: INK, width: 4.0, layer: 1, kind, lift: false, extra: None, b: Cell::new(None), path: RefCell::new(None) }
+        Item { id: next_id(), uid: new_uid(), color: INK, width: 4.0, layer: 1, kind, lift: false, extra: None, b: Cell::new(None), path: RefCell::new(None) }
     }
 
     pub fn stroke(color: u32, width: f32, hl: bool, var: bool) -> Item {
@@ -481,6 +508,7 @@ impl Item {
     pub fn dup(&self) -> Item {
         let mut c = self.clone();
         c.id = next_id();
+        c.uid = new_uid();
         c.lift = false;
         c
     }
@@ -1253,6 +1281,7 @@ impl Item {
             }
         }
         o.insert("ly".into(), json!(self.layer));
+        o.insert("uid".into(), json!(uid_str(self.uid)));
         if let Some(ex) = &self.extra {
             for (k, v) in ex.iter() {
                 o.entry(k.clone()).or_insert_with(|| v.clone());
@@ -1314,6 +1343,10 @@ impl Item {
         it.color = jint(o.get("c")?)? as u32;
         it.width = jf(o, "w")?;
         it.layer = o.get("ly").and_then(jint).unwrap_or(1);
+        // ältere Dateien (Java 2.x, Rust < 4.6) haben keine uid: neue vergeben (bei Item::new schon geschehen)
+        if let Some(u) = o.get("uid").and_then(parse_uid) {
+            it.uid = u;
+        }
         if let Some(m) = o.as_object() {
             let ex: Map<String, Value> = m.iter().filter(|(k, _)| !KNOWN_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
             if !ex.is_empty() {
@@ -1360,7 +1393,7 @@ fn poly_hit(q: &[f32], x: f32, y: f32, lim: f32) -> bool {
 // ---------------------------------------------------------------- JSON-Helfer
 
 /// Vom Kern selbst geschriebene Item-Felder; alle anderen landen in `Item::extra`.
-const KNOWN_KEYS: [&str; 21] = ["an", "bg", "c", "f", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "q", "s", "sh", "t", "tx", "v", "w", "x", "y"];
+const KNOWN_KEYS: [&str; 22] = ["an", "bg", "c", "f", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "q", "s", "sh", "t", "tx", "uid", "v", "w", "x", "y"];
 
 /// f32 als JSON-Zahl (kuerzeste Darstellung; NaN/Unendlich werden 0).
 pub fn num(v: f32) -> Value {

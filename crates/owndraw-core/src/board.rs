@@ -7,7 +7,7 @@
 use crate::canvas::{Canvas, Cap, Paint, Style};
 use crate::geom::{hypot, RectF};
 use crate::icons;
-use crate::item::{self, Item, Kind, INK};
+use crate::item::{self, is_linear, Item, Kind, INK};
 use crate::layer::Layer;
 use crate::pages::{BoardMode, PageBg, PageSetup};
 use crate::recognizer;
@@ -204,6 +204,8 @@ pub struct Board {
     g_scale: f32,
     g_ux: f32,
     g_uy: f32,
+    /// Kanten-Griff (0 oben, 1 rechts, 2 unten, 3 links) beim Ziehen mit drag == 7.
+    g_edge: usize,
 }
 
 impl Default for Board {
@@ -302,6 +304,7 @@ impl Board {
             g_scale: 1.0,
             g_ux: 1.0,
             g_uy: 0.0,
+            g_edge: 0,
         }
     }
 
@@ -1942,6 +1945,28 @@ impl Board {
         best_i.map(|i| self.items[i].id)
     }
 
+    /// Endpunkte (x0, y0, x1, y1), wenn genau eine lineare Form (Linie/Pfeil) ausgewaehlt ist.
+    fn lin_ends(&self) -> Option<[f32; 4]> {
+        if self.sel.len() != 1 {
+            return None;
+        }
+        let it = self.sel_items().into_iter().next()?;
+        let g = it.as_shape()?;
+        if is_linear(g.kind) && g.q.len() >= 4 {
+            Some([g.q[0], g.q[1], g.q[2], g.q[3]])
+        } else {
+            None
+        }
+    }
+
+    /// Kanten-Griffe (Mitte jeder Seite, 0 oben, 1 rechts, 2 unten, 3 links) sind nur sichtbar/greifbar,
+    /// wenn die Seite am Bildschirm lang genug ist (>= 3 Grifflaengen), damit die Ecken greifbar bleiben.
+    fn edge_visible(&self, k: usize) -> bool {
+        let (len, sep) = if k % 2 == 0 { (self.sel_w, self.sel_h) } else { (self.sel_h, self.sel_w) };
+        // zusaetzlich: gegenueberliegende Griffe muessen so weit auseinander liegen, dass die Mitte frei zum Verschieben bleibt
+        len * self.sc >= 3.0 * 14.0 * self.dp && sep * self.sc >= 44.0 * self.dp
+    }
+
     fn begin_select(&mut self, wx: f32, wy: f32) {
         self.pend = None;
         self.prev_sel = None;
@@ -1952,6 +1977,23 @@ impl Board {
             self.ensure_frame();
             let pad = 6.0 * dp / self.sc;
             let (hw, hh, hit) = (self.sel_w / 2.0 + pad, self.sel_h / 2.0 + pad, 22.0 * dp);
+            // Endpunkt-Griffe einer einzelnen Linie/eines Pfeils (statt Dreh-/Eck-/Kanten-Griffen)
+            if let Some(q) = self.lin_ends() {
+                let (sc, tx, ty) = (self.sc, self.tx, self.ty);
+                let d0 = hypot(self.dsx - (q[0] * sc + tx), self.dsy - (q[1] * sc + ty));
+                let d1 = hypot(self.dsx - (q[2] * sc + tx), self.dsy - (q[3] * sc + ty));
+                if d0 < hit || d1 < hit {
+                    self.drag = if d0 <= d1 { 5 } else { 6 };
+                    return;
+                }
+                let (dx, dy) = (wx - self.sel_cx, wy - self.sel_cy);
+                let (cs, sn) = (self.sel_ang.cos(), self.sel_ang.sin());
+                let (lx, ly, m) = (dx * cs + dy * sn, -dx * sn + dy * cs, 8.0 * dp / self.sc);
+                if lx.abs() <= hw + m && ly.abs() <= hh + m {
+                    self.drag = 1;
+                    return;
+                }
+            } else {
             // Dreh-Griff
             let (rx, ry) = self.ls(0.0, -hh - 32.0 * dp / self.sc);
             if hypot(self.dsx - rx, self.dsy - ry) < hit {
@@ -1987,6 +2029,36 @@ impl Board {
                 self.drag = 2;
                 return;
             }
+            // Kanten-Griffe: nur Breite bzw. nur Hoehe skalieren, gegenueberliegende Kante bleibt fest
+            let (egx, egy) = ([0.0f32, 1.0, 0.0, -1.0], [-1.0f32, 0.0, 1.0, 0.0]);
+            let mut ek: Option<usize> = None;
+            let mut ed = hit;
+            for k in 0..4 {
+                if !self.edge_visible(k) {
+                    continue;
+                }
+                let (x, y) = self.ls(egx[k] * hw, egy[k] * hh);
+                let d = hypot(self.dsx - x, self.dsy - y);
+                if d < ed {
+                    ed = d;
+                    ek = Some(k);
+                }
+            }
+            if let Some(k) = ek {
+                let c1 = self.lw(egx[k] * self.sel_w / 2.0, egy[k] * self.sel_h / 2.0);
+                let c2 = self.lw(-egx[k] * self.sel_w / 2.0, -egy[k] * self.sel_h / 2.0);
+                self.pvx = c2.0;
+                self.pvy = c2.1;
+                let (ux, uy) = (c1.0 - c2.0, c1.1 - c2.1);
+                let l = hypot(ux, uy).max(0.0001);
+                self.g_ux = ux / l;
+                self.g_uy = uy / l;
+                self.d0 = (l * 0.2).max((wx - self.pvx) * self.g_ux + (wy - self.pvy) * self.g_uy);
+                self.g_scale = 1.0;
+                self.g_edge = k;
+                self.drag = 7;
+                return;
+            }
             // innerhalb des Rahmens: verschieben
             let (dx, dy) = (wx - self.sel_cx, wy - self.sel_cy);
             let (cs, sn) = (self.sel_ang.cos(), self.sel_ang.sin());
@@ -1994,6 +2066,7 @@ impl Board {
             if lx.abs() <= hw + m && ly.abs() <= hh + m {
                 self.drag = 1;
                 return;
+            }
             }
         }
         // ausserhalb: neue Auswahl (die alte bleibt, bis wirklich gezogen wird)
@@ -2069,6 +2142,43 @@ impl Board {
             self.sel_cy = pvy + (self.sel_cy - pvy) * s;
             self.sel_w *= s;
             self.sel_h *= s;
+        } else if self.drag == 7 {
+            let d = (wx - self.pvx) * self.g_ux + (wy - self.pvy) * self.g_uy;
+            let target = (d / self.d0).clamp(0.05, 20.0);
+            let s = target / self.g_scale;
+            self.g_scale = target;
+            let horiz = self.g_edge % 2 == 1;
+            let (sx, sy) = if horiz { (s, 1.0) } else { (1.0, s) };
+            let (pvx, pvy, ang) = (self.pvx, self.pvy, self.sel_ang);
+            self.sel_mut(|it| it.xf_axis(sx, sy, pvx, pvy, ang));
+            // Mittelpunkt wandert nur entlang der Griff-Achse
+            let along = (self.sel_cx - pvx) * self.g_ux + (self.sel_cy - pvy) * self.g_uy;
+            self.sel_cx += self.g_ux * along * (s - 1.0);
+            self.sel_cy += self.g_uy * along * (s - 1.0);
+            if horiz {
+                self.sel_w *= s;
+            } else {
+                self.sel_h *= s;
+            }
+        } else if self.drag == 5 || self.drag == 6 {
+            if let Some(q) = self.lin_ends() {
+                let oth = if self.drag == 5 { 2 } else { 0 };
+                let (ox, oy) = (q[oth], q[oth + 1]);
+                let (mut nx, mut ny) = (wx, wy);
+                let (dx, dy) = (wx - ox, wy - oy);
+                let l = hypot(dx, dy);
+                if l > 0.0001 {
+                    let deg = dy.atan2(dx).to_degrees();
+                    let r = (deg / 15.0).round() * 15.0;
+                    if (deg - r).abs() <= 4.0 {
+                        let a = r.to_radians();
+                        nx = ox + l * a.cos();
+                        ny = oy + l * a.sin();
+                    }
+                }
+                let i = if self.drag == 5 { 0 } else { 1 };
+                self.sel_mut(|it| it.set_end(i, nx, ny));
+            }
         } else if self.drag == 4 {
             let a = (wy - self.sel_cy).atan2(wx - self.sel_cx);
             let mut dl = a - self.g_a0;
@@ -2197,6 +2307,10 @@ impl Board {
             }
         } else if self.tool == SELECT {
             self.drop_lift();
+            if self.drag == 5 || self.drag == 6 {
+                self.frame_ok = false;
+                self.ensure_frame();
+            }
             if self.drag == 3 {
                 if self.moved {
                     self.select_area();
@@ -2340,6 +2454,16 @@ impl Board {
         let pad = 6.0 * dp / self.sc;
         let (hw, hh) = (self.sel_w / 2.0 + pad, self.sel_h / 2.0 + pad);
         let (sgx, sgy) = ([-1.0f32, 1.0, 1.0, -1.0], [-1.0f32, -1.0, 1.0, 1.0]);
+        if let Some(q) = self.lin_ends() {
+            // Linie/Pfeil: nur die beiden Endpunkt-Griffe
+            let (sc, tx, ty) = (self.sc, self.tx, self.ty);
+            for (x, y) in [(q[0], q[1]), (q[2], q[3])] {
+                let (x, y) = (x * sc + tx, y * sc + ty);
+                c.draw_circle(x, y, 7.0 * dp, &Paint::fill(ACCENT));
+                c.draw_circle(x, y, 7.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+            }
+            return;
+        }
         let mut corners = [(0.0f32, 0.0f32); 4];
         let mut pb = PathBuilder::new();
         for k in 0..4 {
@@ -2373,6 +2497,15 @@ impl Board {
         for (x, y) in corners {
             c.draw_circle(x, y, 7.0 * dp, &Paint::fill(ACCENT));
             c.draw_circle(x, y, 7.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+        }
+        // Kanten-Griffe (Mitte jeder Seite)
+        let (egx, egy) = ([0.0f32, 1.0, 0.0, -1.0], [-1.0f32, 0.0, 1.0, 0.0]);
+        for k in 0..4 {
+            if self.edge_visible(k) {
+                let (x, y) = self.ls(egx[k] * hw, egy[k] * hh);
+                c.draw_circle(x, y, 7.0 * dp, &Paint::fill(ACCENT));
+                c.draw_circle(x, y, 7.0 * dp, &Paint::stroke(0xFFFFFFFF, 2.0 * dp, Cap::Butt));
+            }
         }
         if self.mode == 1 && self.drag == 4 && self.moved {
             let deg = (self.sel_ang.to_degrees().round() as i32).rem_euclid(360);
@@ -2585,6 +2718,46 @@ mod tests {
     fn note_bg_colors() {
         assert_eq!(note_bg(INK), 0xFFFFE27A);
         assert_eq!(note_bg(0xFFE5484D), 0xFFF4B5B7);
+    }
+
+    // ---------- Auswahl: Kanten- und Endpunkt-Griffe ----------
+
+    fn sel_board(it: Item) -> Board {
+        let mut b = board();
+        b.items.push(Rc::new(it));
+        b.set_tool(SELECT);
+        b.sel = vec![b.items[0].id];
+        b.frame_ok = false;
+        b.ensure_frame();
+        b
+    }
+
+    #[test]
+    fn kanten_griff_skaliert_nur_breite() {
+        let mut b = sel_board(Item::shape(item::POLY, vec![100.0, 100.0, 200.0, 100.0, 200.0, 150.0, 100.0, 150.0], INK, 2.0));
+        // rechter Kanten-Griff bei (206, 125) -> 100 Pixel nach rechts: Breite verdoppelt
+        drag(&mut b, &[(206.0, 125.0), (250.0, 125.0), (306.0, 125.0)], ToolType::Mouse);
+        let r = b.sel_items()[0].bounds();
+        let (w, h) = (r.width(), r.height());
+        assert!((w - 200.0 - 2.0).abs() < 8.0, "Breite {w}");
+        assert!((h - 50.0 - 2.0).abs() < 4.0, "Hoehe {h}");
+        assert!((r.left - 99.0).abs() < 3.0, "linke Kante fest {}", r.left);
+        assert!((b.sel_w - w).abs() < 8.0 && (b.sel_h - h).abs() < 8.0, "{} {}", b.sel_w, b.sel_h);
+    }
+
+    #[test]
+    fn endpunkt_griff_und_undo() {
+        let mut b = sel_board(Item::shape(item::ARROW, vec![100.0, 100.0, 200.0, 100.0], INK, 2.0));
+        let n = b.undo.len();
+        drag(&mut b, &[(200.0, 100.0), (250.0, 160.0), (300.0, 200.0)], ToolType::Mouse);
+        let q = b.sel_items()[0].as_shape().unwrap().q.clone();
+        assert_eq!(&q[0..2], &[100.0, 100.0]);
+        assert!(q[2] > 250.0 && q[3] > 150.0, "{q:?}");
+        assert_eq!(b.undo.len(), n + 1);
+        assert!(b.sel_w > 150.0);
+        b.undo();
+        let q = b.items[0].as_shape().unwrap().q.clone();
+        assert_eq!(q, vec![100.0, 100.0, 200.0, 100.0]);
     }
 
     // ---------- Seitenmodus (WP2) ----------

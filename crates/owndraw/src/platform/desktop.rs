@@ -49,25 +49,16 @@ impl DesktopPlatform {
         let tx = self.tx.clone();
         let last = self.last_dir.clone();
         let start = last.lock().ok().and_then(|g| g.clone());
-        let res = std::thread::Builder::new()
-            .name("owndraw-dialog".into())
-            .spawn(move || {
-                let picked = pollster::block_on(run_dialog(job, start));
-                if let Some(p) = &picked {
-                    let dir = if p.is_dir() {
-                        Some(p.clone())
-                    } else {
-                        p.parent().map(Path::to_path_buf)
-                    };
-                    if let (Some(d), Ok(mut g)) = (dir, last.lock()) {
-                        *g = Some(d);
-                    }
+        let res = std::thread::Builder::new().name("owndraw-dialog".into()).spawn(move || {
+            let picked = pollster::block_on(run_dialog(job, start));
+            if let Some(p) = &picked {
+                let dir = if p.is_dir() { Some(p.clone()) } else { p.parent().map(Path::to_path_buf) };
+                if let (Some(d), Ok(mut g)) = (dir, last.lock()) {
+                    *g = Some(d);
                 }
-                let _ = tx.send(PlatformEvent::Picked {
-                    tag,
-                    file: picked.map(FileRef::Path),
-                });
-            });
+            }
+            let _ = tx.send(PlatformEvent::Picked { tag, file: picked.map(FileRef::Path) });
+        });
         if res.is_err() {
             let _ = self.tx.send(PlatformEvent::Picked { tag, file: None });
         }
@@ -82,10 +73,7 @@ async fn run_dialog(job: DialogJob, start: Option<PathBuf>) -> Option<PathBuf> {
     match job {
         DialogJob::Open(kinds) => {
             if kinds.len() > 1 {
-                let all: Vec<&str> = kinds
-                    .iter()
-                    .flat_map(|k| k.extensions().iter().copied())
-                    .collect();
+                let all: Vec<&str> = kinds.iter().flat_map(|k| k.extensions().iter().copied()).collect();
                 if !all.is_empty() && !kinds.contains(&FileKind::Any) {
                     d = d.add_filter("Alle unterstützten Dateien", &all);
                 }
@@ -124,10 +112,7 @@ pub fn filter_name(k: FileKind) -> &'static str {
 fn path_of(f: &FileRef) -> io::Result<&Path> {
     match f {
         FileRef::Path(p) => Ok(p),
-        FileRef::Uri(_) => Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "URI wird auf dem Desktop nicht unterstützt",
-        )),
+        FileRef::Uri(_) => Err(io::Error::new(io::ErrorKind::Unsupported, "URI wird auf dem Desktop nicht unterstützt")),
     }
 }
 
@@ -139,19 +124,14 @@ pub fn write_atomic_path(path: &Path, data: &[u8]) -> io::Result<()> {
         Some(d) if !d.as_os_str().is_empty() => d,
         _ => Path::new("."),
     };
-    let name = path
-        .file_name()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "kein Dateiname"))?;
+    let name = path.file_name().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "kein Dateiname"))?;
     let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut tmp_name = std::ffi::OsString::from(".");
     tmp_name.push(name);
     tmp_name.push(format!(".{}.{n}.tmp", std::process::id()));
     let tmp = dir.join(tmp_name);
     let res = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)?;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
@@ -173,11 +153,7 @@ pub fn write_atomic_path(path: &Path, data: &[u8]) -> io::Result<()> {
 pub fn unique_name(dir: &Path, name: &str, kind: FileKind) -> String {
     let mut name = name.to_string();
     if let Some(ext) = kind.extensions().first() {
-        if !kind
-            .extensions()
-            .iter()
-            .any(|e| name.to_ascii_lowercase().ends_with(&format!(".{e}")))
-        {
+        if !kind.extensions().iter().any(|e| name.to_ascii_lowercase().ends_with(&format!(".{e}"))) {
             name = format!("{name}.{ext}");
         }
     }
@@ -205,9 +181,7 @@ fn resolve_dir(base: Option<PathBuf>, sub: &str, sys: Option<PathBuf>) -> PathBu
 }
 
 fn data_override() -> Option<PathBuf> {
-    std::env::var_os("OWNDRAW_DATA")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
+    std::env::var_os("OWNDRAW_DATA").filter(|s| !s.is_empty()).map(PathBuf::from)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -228,10 +202,7 @@ impl InternalClip {
     }
     /// JSON, falls der Fingerprint zum gemerkten passt (Zwischenablage enthält noch unseren Inhalt).
     pub fn resolve(&self, fp: u64) -> Option<&str> {
-        self.cur
-            .as_ref()
-            .filter(|(f, _)| *f == fp)
-            .map(|(_, j)| j.as_str())
+        self.cur.as_ref().filter(|(f, _)| *f == fp).map(|(_, j)| j.as_str())
     }
 }
 
@@ -310,40 +281,26 @@ impl Platform for DesktopPlatform {
             let (w, h) = (img.width as u32, img.height as u32);
             let rgba = img.bytes.into_owned();
             if let Some(json) = items.resolve(fingerprint_image(w, h, &rgba)) {
-                return Some(ClipData::Items {
-                    json: json.to_string(),
-                    image: Some((w, h, rgba)),
-                });
+                return Some(ClipData::Items { json: json.to_string(), image: Some((w, h, rgba)) });
             }
             return Some(ClipData::Image { w, h, rgba });
         }
         let t = cb.get_text().ok()?;
         if let Some(json) = items.resolve(fingerprint_text(&t)) {
-            return Some(ClipData::Items {
-                json: json.to_string(),
-                image: None,
-            });
+            return Some(ClipData::Items { json: json.to_string(), image: None });
         }
         Some(ClipData::Text(t))
     }
 
     fn clipboard_set(&self, d: ClipData) {
-        let Ok(mut g) = self.clipboard.lock() else {
-            return;
-        };
+        let Ok(mut g) = self.clipboard.lock() else { return };
         if g.is_none() {
             *g = arboard::Clipboard::new().ok();
         }
         let Some(cb) = g.as_mut() else { return };
-        let Ok(mut items) = internal().lock() else {
-            return;
-        };
+        let Ok(mut items) = internal().lock() else { return };
         fn img(w: u32, h: u32, rgba: &[u8]) -> arboard::ImageData<'_> {
-            arboard::ImageData {
-                width: w as usize,
-                height: h as usize,
-                bytes: std::borrow::Cow::Borrowed(rgba),
-            }
+            arboard::ImageData { width: w as usize, height: h as usize, bytes: std::borrow::Cow::Borrowed(rgba) }
         }
         match d {
             ClipData::Image { w, h, rgba } => {
@@ -351,10 +308,7 @@ impl Platform for DesktopPlatform {
                     items.forget();
                 }
             }
-            ClipData::Items {
-                json,
-                image: Some((w, h, rgba)),
-            } => {
+            ClipData::Items { json, image: Some((w, h, rgba)) } => {
                 if cb.set_image(img(w, h, &rgba)).is_ok() {
                     items.remember(fingerprint_image(w, h, &rgba), json);
                 }
@@ -384,25 +338,12 @@ impl Platform for DesktopPlatform {
             .into_iter()
             .map(|f| {
                 let p = f.path().to_path_buf();
-                let name = p
-                    .file_name()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_default();
+                let name = p.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
                 // Ohne echten Pfad (z. B. Bild aus dem Browser) Inhalt direkt lesen.
                 if p.is_file() {
-                    Drop {
-                        file: Some(FileRef::Path(p)),
-                        bytes: None,
-                        name,
-                        pos,
-                    }
+                    Drop { file: Some(FileRef::Path(p)), bytes: None, name, pos }
                 } else {
-                    Drop {
-                        file: None,
-                        bytes: f.bytes().ok(),
-                        name,
-                        pos,
-                    }
+                    Drop { file: None, bytes: f.bytes().ok(), name, pos }
                 }
             })
             .collect()
@@ -417,9 +358,7 @@ impl Platform for DesktopPlatform {
     }
 
     fn is_touch(&self) -> bool {
-        std::env::var("OWNDRAW_TOUCH")
-            .map(|v| v == "1")
-            .unwrap_or(false)
+        std::env::var("OWNDRAW_TOUCH").map(|v| v == "1").unwrap_or(false)
     }
 }
 
@@ -442,10 +381,7 @@ mod tests {
         pf.write_atomic(&p, b"eins").unwrap();
         pf.write_atomic(&p, b"zwei-laenger").unwrap();
         assert_eq!(pf.read(&p).unwrap(), "zwei-laenger".as_bytes());
-        let names: Vec<_> = std::fs::read_dir(&d)
-            .unwrap()
-            .map(|e| e.unwrap().file_name())
-            .collect();
+        let names: Vec<_> = std::fs::read_dir(&d).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(names.len(), 1, "temp-Rest: {names:?}");
         assert!(pf.exists(&p));
         let _ = std::fs::remove_dir_all(&d);
@@ -456,9 +392,7 @@ mod tests {
         let d = tmpdir("atomic-err");
         let pf = DesktopPlatform::new(None);
         // Ordner existiert nicht
-        assert!(pf
-            .write_atomic(&FileRef::Path(d.join("fehlt/x.owndraw")), b"x")
-            .is_err());
+        assert!(pf.write_atomic(&FileRef::Path(d.join("fehlt/x.owndraw")), b"x").is_err());
         // Schreibgeschützter Ordner (als root nicht prüfbar)
         #[cfg(unix)]
         {
@@ -468,16 +402,12 @@ mod tests {
             std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o555)).unwrap();
             let is_root = std::fs::write(ro.join("probe"), b"").is_ok();
             if !is_root {
-                assert!(pf
-                    .write_atomic(&FileRef::Path(ro.join("x.owndraw")), b"x")
-                    .is_err());
+                assert!(pf.write_atomic(&FileRef::Path(ro.join("x.owndraw")), b"x").is_err());
                 assert_eq!(std::fs::read_dir(&ro).unwrap().count(), 0);
             }
             std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        assert!(pf
-            .write_atomic(&FileRef::Uri("content://x".into()), b"x")
-            .is_err());
+        assert!(pf.write_atomic(&FileRef::Uri("content://x".into()), b"x").is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -489,9 +419,7 @@ mod tests {
         let a = pf.create_in(&dir, "Board", FileKind::Owndraw).unwrap();
         assert_eq!(a, FileRef::Path(d.join("Board.owndraw")));
         std::fs::write(d.join("Board.owndraw"), b"").unwrap();
-        let b = pf
-            .create_in(&dir, "Board.owndraw", FileKind::Owndraw)
-            .unwrap();
+        let b = pf.create_in(&dir, "Board.owndraw", FileKind::Owndraw).unwrap();
         assert_eq!(b, FileRef::Path(d.join("Board (2).owndraw")));
         std::fs::write(d.join("Board (2).owndraw"), b"").unwrap();
         let c = pf.create_in(&dir, "Board", FileKind::Owndraw).unwrap();
@@ -501,10 +429,7 @@ mod tests {
 
     #[test]
     fn filekind_key_roundtrip() {
-        for r in [
-            FileRef::Path(PathBuf::from("/tmp/a b/c.owndraw")),
-            FileRef::Uri("content://x/y%3Az".into()),
-        ] {
+        for r in [FileRef::Path(PathBuf::from("/tmp/a b/c.owndraw")), FileRef::Uri("content://x/y%3Az".into())] {
             assert_eq!(FileRef::from_key(&r.to_key()), Some(r));
         }
         assert_eq!(FileRef::from_key("foo"), None);
@@ -540,10 +465,7 @@ mod tests {
     #[test]
     fn open_file_beim_ersten_poll() {
         let pf = DesktopPlatform::new(Some(PathBuf::from("/x/y.owndraw")));
-        assert!(matches!(
-            pf.poll().as_slice(),
-            [PlatformEvent::OpenFile(FileRef::Path(_))]
-        ));
+        assert!(matches!(pf.poll().as_slice(), [PlatformEvent::OpenFile(FileRef::Path(_))]));
         assert!(pf.poll().is_empty());
     }
 
@@ -553,15 +475,9 @@ mod tests {
     fn clipboard_roundtrip_echt() {
         let pf = DesktopPlatform::new(None);
         let rgba: Vec<u8> = (0..4 * 4 * 4).map(|i| i as u8).collect();
-        pf.clipboard_set(ClipData::Items {
-            json: "{}".into(),
-            image: Some((4, 4, rgba.clone())),
-        });
+        pf.clipboard_set(ClipData::Items { json: "{}".into(), image: Some((4, 4, rgba.clone())) });
         match pf.clipboard_get() {
-            Some(ClipData::Items {
-                json,
-                image: Some((4, 4, r)),
-            }) => {
+            Some(ClipData::Items { json, image: Some((4, 4, r)) }) => {
                 assert_eq!(json, "{}");
                 assert_eq!(r, rgba);
             }

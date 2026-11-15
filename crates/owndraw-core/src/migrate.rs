@@ -12,16 +12,7 @@ pub const MARKER: &str = "migrated-v4";
 
 /// Bereinigt einen Board-Namen zu einem Dateinamen (ohne Endung).
 fn clean_name(n: &str) -> String {
-    let s: String = n
-        .chars()
-        .map(|c| {
-            if c.is_control() || "/\\:*?\"<>|".contains(c) {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
+    let s: String = n.chars().map(|c| if c.is_control() || "/\\:*?\"<>|".contains(c) { '_' } else { c }).collect();
     let s = s.trim().trim_matches('.').trim().to_string();
     let s: String = s.chars().take(80).collect();
     if s.is_empty() {
@@ -49,32 +40,21 @@ pub fn migrate_store(old_data_dir: &Path, target_dir: &Path) -> Vec<PathBuf> {
     if old_data_dir.join(MARKER).exists() {
         return out;
     }
-    let boards = [
-        old_data_dir.join("files").join("boards"),
-        old_data_dir.join("boards"),
-    ]
-    .into_iter()
-    .find(|d| d.join("index.json").is_file());
+    let boards = [old_data_dir.join("files").join("boards"), old_data_dir.join("boards")].into_iter().find(|d| d.join("index.json").is_file());
     let Some(boards) = boards else { return out };
     let img = boards.join("img");
     let _ = fs::create_dir_all(target_dir);
     for o in index_in(&boards) {
-        let Some(id) = o.get("id").and_then(Value::as_str) else {
-            continue;
-        };
+        let Some(id) = o.get("id").and_then(Value::as_str) else { continue };
         let name = o.get("name").and_then(Value::as_str).unwrap_or("Board");
         // Über das v1-Austauschformat laufen lassen: liest Board, Vorschau und Bilder einheitlich.
         let mut buf = Cursor::new(Vec::new());
         if !export_board_files(&boards, &img, id, name, &mut buf) {
             continue;
         }
-        let Ok(mut doc) = read_owndraw(buf.get_ref()) else {
-            continue;
-        };
+        let Ok(mut doc) = read_owndraw(buf.get_ref()) else { continue };
         doc.meta.name = name.to_string();
-        let Ok(bytes) = write_owndraw(&doc) else {
-            continue;
-        };
+        let Ok(bytes) = write_owndraw(&doc) else { continue };
         let p = free_path(target_dir, &clean_name(name));
         if write_atomic(&p, &bytes).is_ok() {
             out.push(p);
@@ -99,34 +79,18 @@ mod tests {
         let b = st.create("Mathe/Heft");
         let png = {
             let mut v = Vec::new();
-            image::DynamicImage::new_rgba8(2, 2)
-                .write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png)
-                .unwrap();
+            image::DynamicImage::new_rgba8(2, 2).write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png).unwrap();
             v
         };
         let img = st.save_image_png(&png).unwrap();
         let board = serde_json::json!({"bg":0,"items":[{"t":"i","f":img}],"layers":[]});
         st.save(&a, &board.to_string(), None, true);
-        st.save(
-            &b,
-            &serde_json::json!({"items":[]}).to_string(),
-            Some(&png),
-            true,
-        );
+        st.save(&b, &serde_json::json!({"items":[]}).to_string(), Some(&png), true);
         let r = migrate_store(&old, &new);
         assert_eq!(r.len(), 2);
-        let names: Vec<String> = r
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        assert!(
-            names.contains(&"Mathe_Heft.owndraw".to_string())
-                && names.contains(&"Mathe_Heft (2).owndraw".to_string())
-        );
-        let docs: Vec<_> = r
-            .iter()
-            .map(|p| read_owndraw(&fs::read(p).unwrap()).unwrap())
-            .collect();
+        let names: Vec<String> = r.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert!(names.contains(&"Mathe_Heft.owndraw".to_string()) && names.contains(&"Mathe_Heft (2).owndraw".to_string()));
+        let docs: Vec<_> = r.iter().map(|p| read_owndraw(&fs::read(p).unwrap()).unwrap()).collect();
         assert!(docs.iter().any(|d| d.images.files.len() == 1));
         assert!(docs.iter().all(|d| d.meta.version == 2));
         assert!(old.join(MARKER).exists() && old.join("files/boards/index.json").exists());

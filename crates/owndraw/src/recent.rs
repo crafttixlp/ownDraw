@@ -49,11 +49,7 @@ impl Recent {
                     .collect()
             })
             .unwrap_or_default();
-        Recent {
-            path,
-            items,
-            missing: HashSet::new(),
-        }
+        Recent { path, items, missing: HashSet::new() }
     }
 
     fn save(&self) {
@@ -61,8 +57,7 @@ impl Recent {
         if let Some(d) = self.path.parent() {
             let _ = std::fs::create_dir_all(d);
         }
-        let _ =
-            owndraw_core::store::write_atomic(&self.path, Value::Array(v).to_string().as_bytes());
+        let _ = owndraw_core::store::write_atomic(&self.path, Value::Array(v).to_string().as_bytes());
     }
 
     /// Fügt vorn ein (ersetzt einen vorhandenen Eintrag derselben Datei) und speichert.
@@ -81,12 +76,7 @@ impl Recent {
 
     /// Prüft alle Einträge mit `exists` und merkt sich die fehlenden (für das Ausgrauen).
     pub fn check_missing(&mut self, exists: impl Fn(&FileRef) -> bool) {
-        self.missing = self
-            .items
-            .iter()
-            .filter(|e| !exists(&e.file))
-            .map(|e| e.file.to_key())
-            .collect();
+        self.missing = self.items.iter().filter(|e| !exists(&e.file)).map(|e| e.file.to_key()).collect();
     }
 
     /// Datei nicht mehr vorhanden (Stand der letzten `check_missing`)?
@@ -106,29 +96,13 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let dir =
-            std::env::temp_dir().join(format!("owndraw-rc-{}", owndraw_core::store::random_hex(6)));
+        let dir = std::env::temp_dir().join(format!("owndraw-rc-{}", owndraw_core::store::random_hex(6)));
         let mut r = Recent::load(&dir);
         let a = FileRef::Path(PathBuf::from("/x/a.owndraw"));
         let b = FileRef::Path(PathBuf::from("/x/b.owndraw"));
-        r.add(RecentEntry {
-            file: a.clone(),
-            name: "A".into(),
-            modified_ms: 1,
-            pages: false,
-        });
-        r.add(RecentEntry {
-            file: b.clone(),
-            name: "B".into(),
-            modified_ms: 2,
-            pages: true,
-        });
-        r.add(RecentEntry {
-            file: a.clone(),
-            name: "A2".into(),
-            modified_ms: 3,
-            pages: false,
-        });
+        r.add(RecentEntry { file: a.clone(), name: "A".into(), modified_ms: 1, pages: false });
+        r.add(RecentEntry { file: b.clone(), name: "B".into(), modified_ms: 2, pages: true });
+        r.add(RecentEntry { file: a.clone(), name: "A2".into(), modified_ms: 3, pages: false });
         let r2 = Recent::load(&dir);
         assert_eq!(r2.list().len(), 2);
         assert_eq!(r2.list()[0].name, "A2");
@@ -140,40 +114,22 @@ mod tests {
 
     #[test]
     fn fehlende_dateien_und_kaputte_json() {
-        let dir = std::env::temp_dir().join(format!(
-            "owndraw-rc2-{}",
-            owndraw_core::store::random_hex(6)
-        ));
+        let dir = std::env::temp_dir().join(format!("owndraw-rc2-{}", owndraw_core::store::random_hex(6)));
         std::fs::create_dir_all(&dir).unwrap();
         let da = dir.join("da.owndraw");
         std::fs::write(&da, b"x").unwrap();
         let weg = FileRef::Path(dir.join("weg.owndraw"));
         let da = FileRef::Path(da);
         let mut r = Recent::load(&dir);
-        r.add(RecentEntry {
-            file: da.clone(),
-            name: "da".into(),
-            modified_ms: 1,
-            pages: false,
-        });
-        r.add(RecentEntry {
-            file: weg.clone(),
-            name: "weg".into(),
-            modified_ms: 2,
-            pages: true,
-        });
+        r.add(RecentEntry { file: da.clone(), name: "da".into(), modified_ms: 1, pages: false });
+        r.add(RecentEntry { file: weg.clone(), name: "weg".into(), modified_ms: 2, pages: true });
         r.check_missing(|f| matches!(f, FileRef::Path(p) if p.exists()));
         assert!(r.is_missing(&weg) && !r.is_missing(&da));
         r.remove(&weg);
         assert!(!r.is_missing(&weg));
         // Höchstzahl und kaputte Datei
         for i in 0..(MAX_RECENT + 5) {
-            r.add(RecentEntry {
-                file: FileRef::Uri(format!("content://x/{i}")),
-                name: i.to_string(),
-                modified_ms: i as i64,
-                pages: false,
-            });
+            r.add(RecentEntry { file: FileRef::Uri(format!("content://x/{i}")), name: i.to_string(), modified_ms: i as i64, pages: false });
         }
         assert_eq!(Recent::load(&dir).list().len(), MAX_RECENT);
         std::fs::write(dir.join("recent.json"), b"{kaputt").unwrap();

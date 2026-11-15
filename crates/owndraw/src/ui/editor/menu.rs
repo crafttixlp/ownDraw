@@ -15,28 +15,14 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
     let Some(btn) = ed.st.menu_btn else { return };
     let canvas = lay.canvas;
     let max_h = (canvas.bottom() - btn.bottom() - 2.0 * M - 4.0).max(160.0);
-    let r = Editor::float(
-        ctx,
-        "menu-more",
-        Pos2::new(btn.right(), btn.bottom() + M),
-        Align2::RIGHT_TOP,
-        canvas.shrink(M),
-        Order::Foreground,
-        |ui| {
-            style::pill(18).show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .max_height(max_h)
-                    .min_scrolled_height(
-                        (15.0 * min_touch(sh.env.touch).max(34.0) + 120.0).min(max_h),
-                    )
-                    .auto_shrink([true, false])
-                    .show(ui, |ui| {
-                        ui.set_width(250.0);
-                        content(ui, ed, sh, lay);
-                    });
+    let r = Editor::float(ctx, "menu-more", Pos2::new(btn.right(), btn.bottom() + M), Align2::RIGHT_TOP, canvas.shrink(M), Order::Foreground, |ui| {
+        style::pill(18).show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(max_h).min_scrolled_height((15.0 * min_touch(sh.env.touch).max(34.0) + 120.0).min(max_h)).auto_shrink([true, false]).show(ui, |ui| {
+                ui.set_width(250.0);
+                content(ui, ed, sh, lay);
             });
-        },
-    );
+        });
+    });
     ed.st.popup_rects.push(r);
 }
 
@@ -46,27 +32,13 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     let pages_mode = lay.pages_mode;
 
     style::caption(ui, "Ansicht");
-    if style::menu_row(
-        ui,
-        if ed.st.layers_open {
-            "Ebenen ausblenden"
-        } else {
-            "Ebenen"
-        },
-        false,
-        h,
-    ) {
+    if style::menu_row(ui, if ed.st.layers_open { "Ebenen ausblenden" } else { "Ebenen" }, false, h) {
         ed.st.layers_open = !ed.st.layers_open;
         close = true;
     }
     if pages_mode {
         let open = ed.st.pages_open.unwrap_or(lay.dock_pages.is_some());
-        if style::menu_row(
-            ui,
-            if open { "Seiten ausblenden" } else { "Seiten" },
-            false,
-            h,
-        ) {
+        if style::menu_row(ui, if open { "Seiten ausblenden" } else { "Seiten" }, false, h) {
             ed.st.pages_open = Some(!open);
             close = true;
         }
@@ -77,23 +49,11 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     }
     // Hintergrund
     ui.add_space(2.0);
-    style::caption(
-        ui,
-        if pages_mode {
-            "Hintergrund dieser Seite"
-        } else {
-            "Hintergrund"
-        },
-    );
+    style::caption(ui, if pages_mode { "Hintergrund dieser Seite" } else { "Hintergrund" });
     ui.horizontal_wrapped(|ui| {
         if pages_mode {
             let cur = pages::current_bg(&ed.board);
-            for (b, l) in [
-                (PageBg::Plain, "Blanko"),
-                (PageBg::Lined, "Liniert"),
-                (PageBg::Grid, "Kariert"),
-                (PageBg::Dotted, "Punktiert"),
-            ] {
+            for (b, l) in [(PageBg::Plain, "Blanko"), (PageBg::Lined, "Liniert"), (PageBg::Grid, "Kariert"), (PageBg::Dotted, "Punktiert")] {
                 if style::chip(ui, l, cur == Some(b), h).clicked() {
                     pages::set_bg(&mut ed.board, b);
                 }
@@ -109,12 +69,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         }
     });
     let dark = ed.board.dark;
-    if style::menu_row(
-        ui,
-        if dark { "Board: hell" } else { "Board: dunkel" },
-        false,
-        h,
-    ) {
+    if style::menu_row(ui, if dark { "Board: hell" } else { "Board: dunkel" }, false, h) {
         ed.board.dark = !dark;
         ed.board.modified = true;
         ed.board.refresh();
@@ -148,30 +103,17 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     ui.add_space(4.0);
     style::caption(ui, "Datei");
     if style::menu_row(ui, "Umbenennen …", false, h) {
-        sh.dialog = Some(crate::ui::dialogs::Dialog::Rename {
-            what: crate::ui::dialogs::RenameWhat::Doc,
-            title: "Board umbenennen",
-            text: ed.name().to_string(),
-            focus: true,
-        });
+        sh.dialog = Some(crate::ui::dialogs::Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: ed.name().to_string(), focus: true });
         close = true;
     }
     if style::menu_row(ui, "Kopie speichern unter …", false, h) {
         let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
-        sh.reqs.push(Req::PickSave {
-            purpose: PickPurpose::SaveCopy,
-            name,
-            kind: FileKind::Owndraw,
-        });
+        sh.reqs.push(Req::PickSave { purpose: PickPurpose::SaveCopy, name, kind: FileKind::Owndraw });
         close = true;
     }
     if style::menu_row(ui, "Xournal++ exportieren …", false, h) {
         let name = format!("{}.xopp", crate::app::safe_file_name(ed.name()));
-        sh.reqs.push(Req::PickSave {
-            purpose: PickPurpose::ExportXopp,
-            name,
-            kind: FileKind::Xopp,
-        });
+        sh.reqs.push(Req::PickSave { purpose: PickPurpose::ExportXopp, name, kind: FileKind::Xopp });
         close = true;
     }
     if style::menu_row(ui, "Einstellungen", false, h) {
@@ -179,11 +121,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         close = true;
     }
     ui.add_space(2.0);
-    ui.painter().hline(
-        ui.max_rect().x_range(),
-        ui.cursor().top(),
-        egui::Stroke::new(1.0, c(style::pal().line)),
-    );
+    ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), egui::Stroke::new(1.0, c(style::pal().line)));
     ui.add_space(4.0);
     if style::menu_row(ui, "Schließen", false, h) {
         sh.reqs.push(Req::Back);

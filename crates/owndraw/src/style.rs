@@ -1,9 +1,7 @@
 //! Farben (hell/dunkel, Akzent aus den Einstellungen), Leisten-Stil und Icon-Texturen.
 
 use crate::settings::{Settings, Theme};
-use egui::{
-    Color32, CornerRadius, Frame, Margin, Response, Sense, Shadow, Stroke, TextureHandle, Ui, Vec2,
-};
+use egui::{Color32, CornerRadius, Frame, Margin, Response, Sense, Shadow, Stroke, TextureHandle, Ui, Vec2};
 use owndraw_core::icons;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -35,21 +33,13 @@ fn with_alpha(argb: u32, a: u8) -> u32 {
 }
 
 fn luminance(argb: u32) -> f32 {
-    let (r, g, b) = (
-        ((argb >> 16) & 255) as f32,
-        ((argb >> 8) & 255) as f32,
-        (argb & 255) as f32,
-    );
+    let (r, g, b) = (((argb >> 16) & 255) as f32, ((argb >> 8) & 255) as f32, (argb & 255) as f32);
     (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
 }
 
 pub fn palette(dark: bool, accent: u32) -> Pal {
     let accent = with_alpha(accent, 0xFF);
-    let on_accent = if luminance(accent) > 0.55 {
-        0xFF16171B
-    } else {
-        0xFFFFFFFF
-    };
+    let on_accent = if luminance(accent) > 0.55 { 0xFF16171B } else { 0xFFFFFFFF };
     if dark {
         Pal {
             dark,
@@ -102,12 +92,7 @@ pub const TILE_RADIUS_DEFAULT: f32 = 26.0;
 
 /// Eingestellte Abrundung der Kacheln aus den Einstellungen (0–40 px).
 pub fn tile_radius_setting(s: &Settings) -> f32 {
-    s.extra
-        .get("tile_radius")
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .unwrap_or(TILE_RADIUS_DEFAULT)
-        .clamp(0.0, 40.0)
+    s.extra.get("tile_radius").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(TILE_RADIUS_DEFAULT).clamp(0.0, 40.0)
 }
 
 /// Aktuelle Palette (gesetzt von `apply`).
@@ -117,31 +102,19 @@ pub fn pal() -> Pal {
 
 /// 0xAARRGGBB nach egui-Farbe.
 pub fn c(argb: u32) -> Color32 {
-    Color32::from_rgba_unmultiplied(
-        (argb >> 16) as u8,
-        (argb >> 8) as u8,
-        argb as u8,
-        (argb >> 24) as u8,
-    )
+    Color32::from_rgba_unmultiplied((argb >> 16) as u8, (argb >> 8) as u8, argb as u8, (argb >> 24) as u8)
 }
 
 /// Kachel/Leiste; `radius` ist der Entwurfswert bei Standard-Abrundung, er wird nach der Einstellung skaliert.
 pub fn pill(radius: u8) -> Frame {
     let p = pal();
-    let radius = (radius as f32 * TILE_R.with(|r| r.get()) / TILE_RADIUS_DEFAULT)
-        .round()
-        .clamp(0.0, 255.0) as u8;
+    let radius = (radius as f32 * TILE_R.with(|r| r.get()) / TILE_RADIUS_DEFAULT).round().clamp(0.0, 255.0) as u8;
     Frame::new()
         .fill(c(p.pill))
         .stroke(Stroke::new(1.0, c(p.line)))
         .corner_radius(CornerRadius::same(radius))
         .inner_margin(Margin::same(4))
-        .shadow(Shadow {
-            offset: [0, 3],
-            blur: 14,
-            spread: 0,
-            color: Color32::from_black_alpha(if p.dark { 90 } else { 45 }),
-        })
+        .shadow(Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(if p.dark { 90 } else { 45 }) })
 }
 
 pub fn card() -> Frame {
@@ -150,18 +123,8 @@ pub fn card() -> Frame {
         .fill(c(p.card))
         .stroke(Stroke::new(1.0, c(p.line)))
         .corner_radius(CornerRadius::same(14))
-        .inner_margin(Margin {
-            left: 20,
-            right: 20,
-            top: 18,
-            bottom: 14,
-        })
-        .shadow(Shadow {
-            offset: [0, 4],
-            blur: 20,
-            spread: 0,
-            color: Color32::from_black_alpha(if p.dark { 120 } else { 60 }),
-        })
+        .inner_margin(Margin { left: 20, right: 20, top: 18, bottom: 14 })
+        .shadow(Shadow { offset: [0, 4], blur: 20, spread: 0, color: Color32::from_black_alpha(if p.dark { 120 } else { 60 }) })
 }
 
 /// Fläche für Bottom-Sheets (oben abgerundet) und angedockte Panels.
@@ -170,24 +133,9 @@ pub fn sheet(top_radius: u8) -> Frame {
     Frame::new()
         .fill(c(p.card))
         .stroke(Stroke::new(1.0, c(p.line)))
-        .corner_radius(CornerRadius {
-            nw: top_radius,
-            ne: top_radius,
-            sw: 0,
-            se: 0,
-        })
-        .inner_margin(Margin {
-            left: 16,
-            right: 16,
-            top: 8,
-            bottom: 12,
-        })
-        .shadow(Shadow {
-            offset: [0, -2],
-            blur: 18,
-            spread: 0,
-            color: Color32::from_black_alpha(if p.dark { 110 } else { 50 }),
-        })
+        .corner_radius(CornerRadius { nw: top_radius, ne: top_radius, sw: 0, se: 0 })
+        .inner_margin(Margin { left: 16, right: 16, top: 8, bottom: 12 })
+        .shadow(Shadow { offset: [0, -2], blur: 18, spread: 0, color: Color32::from_black_alpha(if p.dark { 110 } else { 50 }) })
 }
 
 /// Wendet Theme, UI-Größe und Akzentfarbe aus den Einstellungen an.
@@ -205,11 +153,7 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
     for theme in [egui::Theme::Dark, egui::Theme::Light] {
         let d = theme == egui::Theme::Dark;
         let q = palette(d, s.accent);
-        let mut v = if d {
-            egui::Visuals::dark()
-        } else {
-            egui::Visuals::light()
-        };
+        let mut v = if d { egui::Visuals::dark() } else { egui::Visuals::light() };
         v.panel_fill = c(q.bg);
         v.window_fill = c(q.card);
         v.window_stroke = Stroke::new(1.0, c(q.line));
@@ -228,12 +172,9 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
         st.spacing.item_spacing = Vec2::new(6.0, 6.0);
         st.spacing.button_padding = Vec2::new(10.0, 6.0);
         st.spacing.interact_size.y = 30.0;
-        st.text_styles
-            .insert(egui::TextStyle::Body, egui::FontId::proportional(14.5));
-        st.text_styles
-            .insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
-        st.text_styles
-            .insert(egui::TextStyle::Heading, egui::FontId::proportional(17.0));
+        st.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.5));
+        st.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        st.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(17.0));
     });
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }
@@ -245,14 +186,7 @@ pub struct Icons {
 }
 
 impl Icons {
-    pub fn get(
-        &mut self,
-        ctx: &egui::Context,
-        id: i32,
-        tint: u32,
-        filled: bool,
-        size_pt: f32,
-    ) -> Option<TextureHandle> {
+    pub fn get(&mut self, ctx: &egui::Context, id: i32, tint: u32, filled: bool, size_pt: f32) -> Option<TextureHandle> {
         let px = (size_pt * ctx.pixels_per_point()).round().max(8.0) as u32;
         let key = (id, tint, filled, px);
         if let Some(t) = self.map.get(&key) {
@@ -260,33 +194,16 @@ impl Icons {
         }
         let pm = icons::render(id, px, tint, filled)?;
         let img = egui::ColorImage::from_rgba_premultiplied([px as usize, px as usize], pm.data());
-        let t = ctx.load_texture(
-            format!("ic{id}-{tint:x}-{filled}-{px}"),
-            img,
-            egui::TextureOptions::LINEAR,
-        );
+        let t = ctx.load_texture(format!("ic{id}-{tint:x}-{filled}-{px}"), img, egui::TextureOptions::LINEAR);
         self.map.insert(key, t.clone());
         Some(t)
     }
 
     /// Zeichnet ein Icon mittig in `rect`.
-    pub fn paint(
-        &mut self,
-        ui: &Ui,
-        rect: egui::Rect,
-        id: i32,
-        tint: u32,
-        filled: bool,
-        size: f32,
-    ) {
+    pub fn paint(&mut self, ui: &Ui, rect: egui::Rect, id: i32, tint: u32, filled: bool, size: f32) {
         if let Some(t) = self.get(ui.ctx(), id, tint, filled, size) {
             let r = egui::Rect::from_center_size(rect.center(), Vec2::splat(size));
-            ui.painter().image(
-                t.id(),
-                r,
-                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
+            ui.painter().image(t.id(), r, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         }
     }
 }
@@ -304,23 +221,13 @@ pub fn btn_bg(ui: &Ui, rect: egui::Rect, resp: &Response, active: bool) {
         None
     };
     if let Some(b) = bg {
-        ui.painter()
-            .rect_filled(rect.shrink(2.0), CornerRadius::same(255), c(b));
+        ui.painter().rect_filled(rect.shrink(2.0), CornerRadius::same(255), c(b));
     }
 }
 
 /// Runder Icon-Knopf mit Kantenlänge `size`.
 #[allow(clippy::too_many_arguments)]
-pub fn icon_btn(
-    ui: &mut Ui,
-    ic: &mut Icons,
-    id: i32,
-    tint: u32,
-    active: bool,
-    filled: bool,
-    size: f32,
-    tip: &str,
-) -> Response {
+pub fn icon_btn(ui: &mut Ui, ic: &mut Icons, id: i32, tint: u32, active: bool, filled: bool, size: f32, tip: &str) -> Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     btn_bg(ui, rect, &resp, active);
     ic.paint(ui, rect, id, tint, filled, (size * 0.55).round());
@@ -353,12 +260,7 @@ pub fn primary_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
 }
 
 pub fn plain_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
-    ui.add(
-        egui::Button::new(label)
-            .fill(Color32::TRANSPARENT)
-            .min_size(Vec2::new(0.0, min_h))
-            .corner_radius(CornerRadius::same(14)),
-    )
+    ui.add(egui::Button::new(label).fill(Color32::TRANSPARENT).min_size(Vec2::new(0.0, min_h)).corner_radius(CornerRadius::same(14)))
 }
 
 pub fn danger_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
@@ -377,11 +279,7 @@ pub fn chip(ui: &mut Ui, label: &str, selected: bool, min_h: f32) -> Response {
     let t = if selected { t.strong() } else { t };
     let b = egui::Button::new(t)
         .fill(c(if selected { p.active } else { p.hover }))
-        .stroke(if selected {
-            Stroke::new(1.0, c(p.accent))
-        } else {
-            Stroke::NONE
-        })
+        .stroke(if selected { Stroke::new(1.0, c(p.accent)) } else { Stroke::NONE })
         .min_size(Vec2::new(0.0, min_h))
         .corner_radius(CornerRadius::same(255));
     ui.add(b)
@@ -390,29 +288,15 @@ pub fn chip(ui: &mut Ui, label: &str, selected: bool, min_h: f32) -> Response {
 /// Menüzeile über die volle Breite; schließt ein umgebendes Menü nicht selbst.
 pub fn menu_row(ui: &mut Ui, label: &str, danger: bool, min_h: f32) -> bool {
     let p = pal();
-    let txt = if danger {
-        egui::RichText::new(label).color(c(p.danger_text))
-    } else {
-        egui::RichText::new(label)
-    };
+    let txt = if danger { egui::RichText::new(label).color(c(p.danger_text)) } else { egui::RichText::new(label) };
     let w = ui.available_width();
-    let r = ui.add(
-        egui::Button::new(txt)
-            .fill(Color32::TRANSPARENT)
-            .min_size(Vec2::new(w, min_h))
-            .corner_radius(CornerRadius::same(10)),
-    );
+    let r = ui.add(egui::Button::new(txt).fill(Color32::TRANSPARENT).min_size(Vec2::new(w, min_h)).corner_radius(CornerRadius::same(10)));
     r.clicked()
 }
 
 /// Kleine Abschnittsüberschrift in Menüs und Optionen.
 pub fn caption(ui: &mut Ui, text: &str) {
-    ui.label(
-        egui::RichText::new(text)
-            .size(12.0)
-            .strong()
-            .color(c(pal().dim)),
-    );
+    ui.label(egui::RichText::new(text).size(12.0).strong().color(c(pal().dim)));
 }
 
 /// Gezeichnetes Icon für den Maschinenbau-Pfeil (gefülltes, schmales Dreieck am Linienende).
@@ -427,9 +311,5 @@ pub fn paint_arrow_eng(painter: &egui::Painter, rect: egui::Rect, color: Color32
     let half = len * (7.5f32.to_radians().tan());
     let half = half.max(2.2);
     painter.line_segment([a, base], Stroke::new(1.8, color));
-    painter.add(egui::Shape::convex_polygon(
-        vec![b, base + n * half, base - n * half],
-        color,
-        Stroke::NONE,
-    ));
+    painter.add(egui::Shape::convex_polygon(vec![b, base + n * half, base - n * half], color, Stroke::NONE));
 }

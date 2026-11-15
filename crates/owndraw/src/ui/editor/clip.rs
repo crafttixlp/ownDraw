@@ -5,9 +5,9 @@
 //! Items, dann ein Bild, dann Text. Die Einfüge-Logik hängt nicht an `Platform` (`insert_clip`) und ist so testbar.
 
 use super::Editor;
-use crate::app::Shared;
 use crate::platform::{ClipData, Platform};
 use crate::session;
+use crate::app::Shared;
 use egui::Pos2;
 use owndraw_core::board::{self, Event};
 use owndraw_core::item::{Item, Kind};
@@ -28,21 +28,11 @@ const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012
 fn b64_encode(d: &[u8]) -> String {
     let mut o = String::with_capacity(d.len().div_ceil(3) * 4);
     for c in d.chunks(3) {
-        let n = (c[0] as u32) << 16
-            | (*c.get(1).unwrap_or(&0) as u32) << 8
-            | *c.get(2).unwrap_or(&0) as u32;
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
         o.push(B64[(n >> 18) as usize & 63] as char);
         o.push(B64[(n >> 12) as usize & 63] as char);
-        o.push(if c.len() > 1 {
-            B64[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        o.push(if c.len() > 2 {
-            B64[n as usize & 63] as char
-        } else {
-            '='
-        });
+        o.push(if c.len() > 1 { B64[(n >> 6) as usize & 63] as char } else { '=' });
+        o.push(if c.len() > 2 { B64[n as usize & 63] as char } else { '=' });
     }
     o
 }
@@ -90,13 +80,7 @@ pub fn items_json(editor: &Editor) -> Option<String> {
             if images.contains_key(&m.file) || !safe_name(&m.file) {
                 continue;
             }
-            let bytes = editor
-                .doc
-                .images
-                .files
-                .get(&m.file)
-                .cloned()
-                .or_else(|| std::fs::read(editor.img_dir.join(&m.file)).ok());
+            let bytes = editor.doc.images.files.get(&m.file).cloned().or_else(|| std::fs::read(editor.img_dir.join(&m.file)).ok());
             if let Some(b) = bytes {
                 images.insert(m.file.clone(), Value::String(b64_encode(&b)));
             }
@@ -115,12 +99,7 @@ pub fn parse_items(json: &str) -> Option<ParsedItems> {
     if v.get("owndraw")?.as_str()? != MAGIC {
         return None;
     }
-    let items: Vec<Item> = v
-        .get("items")?
-        .as_array()?
-        .iter()
-        .filter_map(Item::from_json)
-        .collect();
+    let items: Vec<Item> = v.get("items")?.as_array()?.iter().filter_map(Item::from_json).collect();
     if items.is_empty() {
         return None;
     }
@@ -154,10 +133,7 @@ fn notice(editor: &mut Editor, s: &str) {
 /// Daten für die Zwischenablage aus der Auswahl (None ohne Auswahl).
 pub fn clip_data(editor: &Editor) -> Option<ClipData> {
     let json = items_json(editor)?;
-    let image = editor
-        .board
-        .render_selection(COPY_SCALE, COPY_MAX_PX)
-        .map(|pm| pixmap_rgba(&pm));
+    let image = editor.board.render_selection(COPY_SCALE, COPY_MAX_PX).map(|pm| pixmap_rgba(&pm));
     Some(ClipData::Items { json, image })
 }
 
@@ -242,13 +218,8 @@ pub fn insert_clip(editor: &mut Editor, d: ClipData, at: Option<(f32, f32)>) -> 
 }
 
 /// Fügt Items aus dem JSON ein und nimmt fehlende Bilder in das Dokument mit.
-pub fn insert_items_json(
-    editor: &mut Editor,
-    json: &str,
-    at: Option<(f32, f32)>,
-) -> Result<(), String> {
-    let (items, images) = parse_items(json)
-        .ok_or_else(|| "Keine einfügbaren Objekte in der Zwischenablage".to_string())?;
+pub fn insert_items_json(editor: &mut Editor, json: &str, at: Option<(f32, f32)>) -> Result<(), String> {
+    let (items, images) = parse_items(json).ok_or_else(|| "Keine einfügbaren Objekte in der Zwischenablage".to_string())?;
     for (name, bytes) in images {
         if editor.doc.images.files.contains_key(&name) {
             continue;
@@ -268,28 +239,15 @@ pub fn insert_items_json(
 }
 
 /// RGBA8 (nicht vormultipliziert) als Bild einfügen.
-pub fn insert_image_rgba(
-    editor: &mut Editor,
-    w: u32,
-    h: u32,
-    rgba: &[u8],
-    at: Option<(f32, f32)>,
-) -> Result<(), String> {
-    let buf = image::RgbaImage::from_raw(w, h, rgba.to_vec())
-        .ok_or("Ungültige Bilddaten in der Zwischenablage")?;
+pub fn insert_image_rgba(editor: &mut Editor, w: u32, h: u32, rgba: &[u8], at: Option<(f32, f32)>) -> Result<(), String> {
+    let buf = image::RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or("Ungültige Bilddaten in der Zwischenablage")?;
     let mut png = Vec::new();
-    image::DynamicImage::ImageRgba8(buf)
-        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
+    image::DynamicImage::ImageRgba8(buf).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
     insert_image_bytes(editor, &png, at)
 }
 
 /// Bild aus Dateiinhalt einfügen (auf höchstens 2048 px verkleinert, Größe passend zur Ansicht).
-pub fn insert_image_bytes(
-    editor: &mut Editor,
-    bytes: &[u8],
-    at: Option<(f32, f32)>,
-) -> Result<(), String> {
+pub fn insert_image_bytes(editor: &mut Editor, bytes: &[u8], at: Option<(f32, f32)>) -> Result<(), String> {
     let (name, w, h) = session::import_image(&mut editor.doc.images, &editor.img_dir, bytes)?;
     if editor.board.add_image_at(&name, w, h, at) {
         Ok(())
@@ -343,16 +301,8 @@ pub(crate) mod tests {
     use std::rc::Rc;
 
     pub(crate) fn editor(pages: bool) -> Editor {
-        let mut app = crate::app::App::new(
-            Box::new(StubPlatform::new()),
-            crate::settings::Settings::default(),
-            None,
-        );
-        let doc = new_document(&NewParams {
-            name: "T".into(),
-            pages,
-            ..NewParams::default()
-        });
+        let mut app = crate::app::App::new(Box::new(StubPlatform::new()), crate::settings::Settings::default(), None);
+        let doc = new_document(&NewParams { name: "T".into(), pages, ..NewParams::default() });
         let mut ed = Editor::open(app.parts().0, doc, None);
         ed.board.set_size(800.0, 600.0, 1.0);
         ed
@@ -361,9 +311,7 @@ pub(crate) mod tests {
     fn png(w: u32, h: u32) -> Vec<u8> {
         let mut o = Vec::new();
         let img = image::RgbaImage::from_fn(w, h, |x, y| image::Rgba([x as u8, y as u8, 7, 200]));
-        image::DynamicImage::ImageRgba8(img)
-            .write_to(&mut std::io::Cursor::new(&mut o), image::ImageFormat::Png)
-            .unwrap();
+        image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut o), image::ImageFormat::Png).unwrap();
         o
     }
 
@@ -379,15 +327,8 @@ pub(crate) mod tests {
     #[test]
     fn items_json_roundtrip_verschoben() {
         let mut ed = editor(false);
-        ed.board.items.push(Rc::new(Item::shape(
-            item::ELLIPSE,
-            vec![10.0, 10.0, 90.0, 10.0, 10.0, 60.0],
-            0xFF3E63DD,
-            3.0,
-        )));
-        ed.board.items.push(Rc::new(Item::note(
-            "Hallo", 0xFF1F2025, 20.0, 200.0, 200.0, 100.0, 100.0, 0,
-        )));
+        ed.board.items.push(Rc::new(Item::shape(item::ELLIPSE, vec![10.0, 10.0, 90.0, 10.0, 10.0, 60.0], 0xFF3E63DD, 3.0)));
+        ed.board.items.push(Rc::new(Item::note("Hallo", 0xFF1F2025, 20.0, 200.0, 200.0, 100.0, 100.0, 0)));
         let b = png(16, 8);
         ed.import_image_bytes(&b).unwrap();
         ed.board.sel = ed.board.items.iter().map(|i| i.id).collect();
@@ -412,12 +353,7 @@ pub(crate) mod tests {
     fn rgba_wird_img_item() {
         let mut ed = editor(false);
         let rgba: Vec<u8> = (0..10 * 6 * 4).map(|i| i as u8).collect();
-        insert_clip(
-            &mut ed,
-            ClipData::Image { w: 10, h: 6, rgba },
-            Some((50.0, 60.0)),
-        )
-        .unwrap();
+        insert_clip(&mut ed, ClipData::Image { w: 10, h: 6, rgba }, Some((50.0, 60.0))).unwrap();
         assert_eq!(ed.board.items.len(), 1);
         assert!(matches!(ed.board.items[0].kind, Kind::Img(_)));
         assert_eq!(ed.doc.images.files.len(), 1);
@@ -445,20 +381,12 @@ pub(crate) mod tests {
     #[test]
     fn kopieren_setzt_png_und_items() {
         let mut ed = editor(false);
-        ed.board.items.push(Rc::new(Item::shape(
-            item::ELLIPSE,
-            vec![10.0, 10.0, 90.0, 10.0, 10.0, 60.0],
-            0xFF3E63DD,
-            3.0,
-        )));
+        ed.board.items.push(Rc::new(Item::shape(item::ELLIPSE, vec![10.0, 10.0, 90.0, 10.0, 10.0, 60.0], 0xFF3E63DD, 3.0)));
         ed.board.sel = vec![ed.board.items[0].id];
         let pf = StubPlatform::new();
         copy(&mut ed, &pf);
         match pf.clipboard_get() {
-            Some(ClipData::Items {
-                image: Some((w, h, rgba)),
-                ..
-            }) => {
+            Some(ClipData::Items { image: Some((w, h, rgba)), .. }) => {
                 assert!(w > 0 && h > 0 && w.max(h) <= COPY_MAX_PX);
                 assert_eq!(rgba.len(), (w * h * 4) as usize);
                 // transparent: Ecke ohne Inhalt ist durchsichtig
@@ -482,33 +410,16 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("in.png");
         std::fs::write(&f, png(24, 12)).unwrap();
-        let st = Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "xclip -selection clipboard -t image/png -i {}",
-                f.display()
-            ))
-            .status()
-            .unwrap();
+        let st = Command::new("sh").arg("-c").arg(format!("xclip -selection clipboard -t image/png -i {}", f.display())).status().unwrap();
         assert!(st.success());
         let mut ed = editor(false);
         paste_center(&mut ed, &pf);
-        assert!(matches!(
-            ed.board.items.last().map(|i| &i.kind),
-            Some(Kind::Img(_))
-        ));
+        assert!(matches!(ed.board.items.last().map(|i| &i.kind), Some(Kind::Img(_))));
         // 2) Auswahl kopieren → xclip -o liefert PNG
         ed.board.sel = vec![ed.board.items[0].id];
         copy(&mut ed, &pf);
-        let out = Command::new("xclip")
-            .args(["-selection", "clipboard", "-o", "-t", "image/png"])
-            .output()
-            .unwrap();
-        assert!(
-            out.stdout.starts_with(&[0x89, b'P', b'N', b'G']),
-            "kein PNG: {} Bytes",
-            out.stdout.len()
-        );
+        let out = Command::new("xclip").args(["-selection", "clipboard", "-o", "-t", "image/png"]).output().unwrap();
+        assert!(out.stdout.starts_with(&[0x89, b'P', b'N', b'G']), "kein PNG: {} Bytes", out.stdout.len());
         let img = image::load_from_memory(&out.stdout).unwrap();
         assert!(img.width() >= 24);
     }

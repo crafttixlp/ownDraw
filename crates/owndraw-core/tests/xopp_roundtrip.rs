@@ -22,18 +22,14 @@ const DATEIEN: [&str; 10] = [
 ];
 
 fn lade(name: &str) -> Vec<u8> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/xopp")
-        .join(name);
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/xopp").join(name);
     std::fs::read(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
 fn entpacke(gz: &[u8]) -> String {
     assert_eq!(&gz[..2], &[0x1f, 0x8b], "Export ist nicht gzip-komprimiert");
     let mut s = String::new();
-    flate2::read::GzDecoder::new(gz)
-        .read_to_string(&mut s)
-        .expect("gzip lesbar");
+    flate2::read::GzDecoder::new(gz).read_to_string(&mut s).expect("gzip lesbar");
     s
 }
 
@@ -110,49 +106,24 @@ fn vergleiche(name: &str, a: &Document, b: &Document) {
     let (sa, sb) = (seiten(a), seiten(b));
     assert_eq!(sa.pages.len(), sb.pages.len(), "{name}: Seitenzahl");
     for (i, (p, q)) in sa.pages.iter().zip(&sb.pages).enumerate() {
-        assert!(
-            (p.w - q.w).abs() < 0.01 && (p.h - q.h).abs() < 0.01,
-            "{name}: Seitengröße {i}"
-        );
+        assert!((p.w - q.w).abs() < 0.01 && (p.h - q.h).abs() < 0.01, "{name}: Seitengröße {i}");
         assert_eq!(p.bg, q.bg, "{name}: Hintergrund {i}");
-        assert_eq!(
-            p.extra["xopp"]["bg"], q.extra["xopp"]["bg"],
-            "{name}: Hintergrund-Attribute {i}"
-        );
-        assert_eq!(
-            p.extra["xopp"]["raw"], q.extra["xopp"]["raw"],
-            "{name}: unbekannte Elemente {i}"
-        );
+        assert_eq!(p.extra["xopp"]["bg"], q.extra["xopp"]["bg"], "{name}: Hintergrund-Attribute {i}");
+        assert_eq!(p.extra["xopp"]["raw"], q.extra["xopp"]["raw"], "{name}: unbekannte Elemente {i}");
     }
     assert_eq!(a.board["layers"], b.board["layers"], "{name}: Ebenen");
     let (oa, ob) = (objekte(a), objekte(b));
     assert_eq!(oa.len(), ob.len(), "{name}: Objektzahl");
     // Zahl je Seite, Ebene und Art
     for o in &oa {
-        let z = |v: &[Obj]| {
-            v.iter()
-                .filter(|x| x.page == o.page && x.layer == o.layer && x.art == o.art)
-                .count()
-        };
-        assert_eq!(
-            z(&oa),
-            z(&ob),
-            "{name}: Anzahl {} auf Seite {} Ebene {}",
-            o.art,
-            o.page,
-            o.layer
-        );
+        let z = |v: &[Obj]| v.iter().filter(|x| x.page == o.page && x.layer == o.layer && x.art == o.art).count();
+        assert_eq!(z(&oa), z(&ob), "{name}: Anzahl {} auf Seite {} Ebene {}", o.art, o.page, o.layer);
     }
     for (k, (x, y)) in oa.iter().zip(&ob).enumerate() {
         let w = format!("{name}: Objekt {k} ({})", x.art);
         assert_eq!((x.page, x.layer, x.art), (y.page, y.layer, y.art), "{w}");
         assert_eq!(x.color, y.color, "{w}: Farbe");
-        assert!(
-            (x.width - y.width).abs() < 0.01,
-            "{w}: Breite {} / {}",
-            x.width,
-            y.width
-        );
+        assert!((x.width - y.width).abs() < 0.01, "{w}: Breite {} / {}", x.width, y.width);
         assert_eq!(x.zahlen.len(), y.zahlen.len(), "{w}: Punktzahl");
         for (u, v) in x.zahlen.iter().zip(&y.zahlen) {
             assert!((u - v).abs() <= 0.0101, "{w}: Koordinate/Druck {u} / {v}");
@@ -168,8 +139,7 @@ fn rundreise(name: &str) -> (Document, String, Document) {
     let a = import_xopp(&lade(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
     let gz = export_xopp(&a, XoppExport::default()).unwrap();
     let xml = entpacke(&gz);
-    roxmltree::Document::parse(&xml)
-        .unwrap_or_else(|e| panic!("{name}: Export ist kein gültiges XML: {e}"));
+    roxmltree::Document::parse(&xml).unwrap_or_else(|e| panic!("{name}: Export ist kein gültiges XML: {e}"));
     if let Some(dir) = std::env::var_os("XOPP_EXPORT_DIR") {
         std::fs::write(PathBuf::from(dir).join(name.replace(".xoj", ".xopp")), &gz).unwrap();
     }
@@ -204,26 +174,10 @@ fn striche_druck_und_farben() {
     assert!(xml.contains(r#"style="dashdot""#));
     // Druckbreiten werden exakt zurückgeschrieben
     // Druckbreiten: Grundbreite exakt, Streckenbreiten bis auf die Rundung des Drucks (0,01) im Item-JSON
-    let w: Vec<f32> = xml
-        .split("<stroke")
-        .nth(1)
-        .unwrap()
-        .split("width=\"")
-        .nth(1)
-        .unwrap()
-        .split('"')
-        .next()
-        .unwrap()
-        .split(' ')
-        .map(|v| v.parse().unwrap())
-        .collect();
+    let w: Vec<f32> = xml.split("<stroke").nth(1).unwrap().split("width=\"").nth(1).unwrap().split('"').next().unwrap().split(' ').map(|v| v.parse().unwrap()).collect();
     assert_eq!(w.len(), 69);
     assert_eq!(w[0], 2.26);
-    assert!(
-        (w[1] - 0.41932136).abs() < 2.26 * 0.65 * 0.0051 + 1e-4,
-        "{}",
-        w[1]
-    );
+    assert!((w[1] - 0.41932136).abs() < 2.26 * 0.65 * 0.0051 + 1e-4, "{}", w[1]);
 }
 
 #[test]
@@ -232,13 +186,7 @@ fn seiten_hintergruende() {
     let s = seiten(&a);
     assert_eq!(s.pages.len(), 11);
     let names: Vec<&str> = s.pages.iter().map(|p| p.bg.name()).collect();
-    assert_eq!(
-        names,
-        [
-            "plain", "lined", "lined", "lined", "plain", "grid", "dotted", "plain", "plain",
-            "grid", "plain"
-        ]
-    );
+    assert_eq!(names, ["plain", "lined", "lined", "lined", "plain", "grid", "dotted", "plain", "plain", "grid", "plain"]);
     // Seite i liegt im Seitenmodus untereinander: Text "p2" bei y = 100 + Seite 1
     let os = objekte(&a);
     assert_eq!(os[1].text, "p2");
@@ -287,16 +235,8 @@ fn bilder_und_latex() {
     assert!(os[0].bild.starts_with(b"\x89PNG"));
     let x = roxmltree::Document::parse(&xml).unwrap();
     let im = x.descendants().find(|n| n.has_tag_name("image")).unwrap();
-    for (k, v) in [
-        ("left", 41.637795),
-        ("top", 164.94488),
-        ("right", 553.63779),
-        ("bottom", 676.94488),
-    ] {
-        assert!(
-            (im.attribute(k).unwrap().parse::<f64>().unwrap() - v).abs() < 0.01,
-            "{k}"
-        );
+    for (k, v) in [("left", 41.637795), ("top", 164.94488), ("right", 553.63779), ("bottom", 676.94488)] {
+        assert!((im.attribute(k).unwrap().parse::<f64>().unwrap() - v).abs() < 0.01, "{k}");
     }
     // LaTeX (PDF-Daten) bleibt roh erhalten
     let (l, xml, _) = rundreise("latex-fileversion-4.xopp");
@@ -316,18 +256,7 @@ fn pdf_hintergrund_unveraendert() {
     assert_eq!(s.pages[1].extra["xopp"]["layers"], json!(2));
     let os = objekte(&a);
     let arten: Vec<(usize, i32, &str)> = os.iter().map(|o| (o.page, o.layer, o.art)).collect();
-    assert_eq!(
-        arten,
-        [
-            (0, 1, "stift"),
-            (0, 1, "marker"),
-            (0, 1, "text"),
-            (0, 2, "bild"),
-            (0, 2, "stift"),
-            (1, 1, "stift"),
-            (2, 1, "text")
-        ]
-    );
+    assert_eq!(arten, [(0, 1, "stift"), (0, 1, "marker"), (0, 1, "text"), (0, 2, "bild"), (0, 2, "stift"), (1, 1, "stift"), (2, 1, "text")]);
     assert_eq!(os[2].text, "Hallo & <Welt>\nzweite Zeile");
     assert_eq!(a.board["layers"][1]["n"], json!("Notizen"));
     // seitenlokale Koordinaten: Seite 1 liegt unter Seite 0
@@ -361,9 +290,7 @@ fn unendliches_board_mit_maschinenbaupfeil() {
     for i in 0..10 {
         strich.add_point(50.0 + i as f32 * 10.0, 400.0, i as f32 / 10.0);
     }
-    let notiz = Item::note(
-        "Notiz", 0xFF111111, 18.0, 400.0, 300.0, 200.0, 120.0, 0xFFFFF59D,
-    );
+    let notiz = Item::note("Notiz", 0xFF111111, 18.0, 400.0, 300.0, 200.0, 120.0, 0xFFFFF59D);
     let d = unendlich(vec![pfeil, strich, notiz]);
     let gz = export_xopp(&d, XoppExport::default()).unwrap();
     if let Some(dir) = std::env::var_os("XOPP_EXPORT_DIR") {
@@ -374,52 +301,27 @@ fn unendliches_board_mit_maschinenbaupfeil() {
     let root = x.root_element();
     assert_eq!(root.attribute("fileversion"), Some("4"));
     assert!(root.attribute("creator").unwrap().starts_with("OwnDraw "));
-    assert_eq!(
-        root.children().filter(|n| n.has_tag_name("title")).count(),
-        1
-    );
-    assert_eq!(
-        root.children().filter(|n| n.has_tag_name("page")).count(),
-        1
-    );
-    let filled: Vec<_> = x
-        .descendants()
-        .filter(|n| n.has_tag_name("stroke") && n.attribute("fill") == Some("255"))
-        .collect();
-    assert!(
-        filled
-            .iter()
-            .any(|n| n.attribute("color") == Some("#0000ffff")),
-        "Pfeilspitze als gefüllter Stroke fehlt"
-    );
+    assert_eq!(root.children().filter(|n| n.has_tag_name("title")).count(), 1);
+    assert_eq!(root.children().filter(|n| n.has_tag_name("page")).count(), 1);
+    let filled: Vec<_> = x.descendants().filter(|n| n.has_tag_name("stroke") && n.attribute("fill") == Some("255")).collect();
+    assert!(filled.iter().any(|n| n.attribute("color") == Some("#0000ffff")), "Pfeilspitze als gefüllter Stroke fehlt");
     // Rand 20 pt: Seite beginnt 20 pt vor dem Inhalt
     let a = import_xopp(&export_xopp(&d, XoppExport::default()).unwrap()).unwrap();
     assert_eq!(seiten(&a).pages.len(), 1);
     let os = objekte(&a);
-    let minx = os
-        .iter()
-        .filter(|o| o.art == "stift")
-        .flat_map(|o| o.zahlen.chunks(3).map(|t| t[0]))
-        .fold(f32::MAX, f32::min);
+    let minx = os.iter().filter(|o| o.art == "stift").flat_map(|o| o.zahlen.chunks(3).map(|t| t[0])).fold(f32::MAX, f32::min);
     assert!(minx > 19.0 && minx < 40.0, "Rand {minx}");
     // Druck bleibt erhalten
     let st = os.iter().find(|o| o.zahlen.len() == 30).unwrap();
     assert!((st.width - 3.0).abs() < 1e-4);
     assert!((st.zahlen[5] - 0.1).abs() < 0.011);
     // A4-Kacheln
-    let weit = unendlich(vec![Item::shape(
-        ARROW_ENG,
-        vec![0.0, 0.0, 1500.0, 2000.0],
-        0xFF000000,
-        2.0,
-    )]);
+    let weit = unendlich(vec![Item::shape(ARROW_ENG, vec![0.0, 0.0, 1500.0, 2000.0], 0xFF000000, 2.0)]);
     let xml = entpacke(&export_xopp(&weit, XoppExport { tile_a4: true }).unwrap());
     let x = roxmltree::Document::parse(&xml).unwrap();
     let pages: Vec<_> = x.descendants().filter(|n| n.has_tag_name("page")).collect();
     assert_eq!(pages.len(), 3 * 3);
-    assert!(pages
-        .iter()
-        .all(|p| p.attribute("width") == Some("595") && p.attribute("height") == Some("842")));
+    assert!(pages.iter().all(|p| p.attribute("width") == Some("595") && p.attribute("height") == Some("842")));
     // leeres Board → eine A4-Seite
     let leer = entpacke(&export_xopp(&unendlich(Vec::new()), XoppExport::default()).unwrap());
     assert_eq!(leer.matches("<page ").count(), 1);
@@ -428,15 +330,7 @@ fn unendliches_board_mit_maschinenbaupfeil() {
 #[test]
 fn seitenmodus_export_owndraw() {
     // OwnDraw-Board im Seitenmodus ohne Xournal-Zusatzdaten
-    let mut d = Document::new(
-        "Seiten",
-        BoardMode::Pages(PageSetup::new(
-            595.0,
-            842.0,
-            owndraw_core::pages::PageBg::Grid,
-            2,
-        )),
-    );
+    let mut d = Document::new("Seiten", BoardMode::Pages(PageSetup::new(595.0, 842.0, owndraw_core::pages::PageBg::Grid, 2)));
     let rs = seiten(&d).rects();
     let mut it = Item::stroke(0xFF00FF00, 2.0, true, false);
     it.add_point(10.0, rs[1].top + 10.0, 0.5);
@@ -445,7 +339,5 @@ fn seitenmodus_export_owndraw() {
     let xml = entpacke(&export_xopp(&d, XoppExport::default()).unwrap());
     assert_eq!(xml.matches("<page ").count(), 2);
     assert_eq!(xml.matches(r#"style="graph""#).count(), 2);
-    assert!(xml.contains(
-        r##"<stroke tool="highlighter" color="#00ff007f" width="2">10 10 50 30</stroke>"##
-    ));
+    assert!(xml.contains(r##"<stroke tool="highlighter" color="#00ff007f" width="2">10 10 50 30</stroke>"##));
 }

@@ -52,19 +52,14 @@ pub fn write_path_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
         Some(d) if !d.as_os_str().is_empty() => d,
         _ => Path::new("."),
     };
-    let name = path
-        .file_name()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "kein Dateiname"))?;
+    let name = path.file_name().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "kein Dateiname"))?;
     let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut tmp_name = std::ffi::OsString::from(".");
     tmp_name.push(name);
     tmp_name.push(format!(".{}.{n}.tmp", std::process::id()));
     let tmp = dir.join(tmp_name);
     let res = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)?;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
         f.write_all(data)?;
         f.sync_all()?;
         drop(f);
@@ -118,15 +113,7 @@ pub struct Autosave {
 impl Autosave {
     /// `target`: Zieldatei; `None` = (noch) kein Speicherort, es wird nichts geschrieben.
     pub fn new(target: Option<FileRef>) -> Autosave {
-        Autosave {
-            target,
-            format: SaveFormat::Owndraw,
-            dirty_since: None,
-            status: AutosaveStatus::Idle,
-            inflight: None,
-            perm_error: false,
-            read_only: false,
-        }
+        Autosave { target, format: SaveFormat::Owndraw, dirty_since: None, status: AutosaveStatus::Idle, inflight: None, perm_error: false, read_only: false }
     }
 
     pub fn target(&self) -> Option<&FileRef> {
@@ -173,12 +160,7 @@ impl Autosave {
 
     /// Pro Frame aufrufen: wertet ein beendetes Schreiben aus und startet ein neues, wenn die Wartezeit abgelaufen ist.
     /// `doc_bytes` liefert den Speicherauftrag; teure Teile (Serialisieren, Packen) laufen im Schreib-Thread.
-    pub fn tick<J: Into<Job>>(
-        &mut self,
-        now: f64,
-        doc_bytes: impl FnOnce() -> J,
-        platform: &dyn Platform,
-    ) {
+    pub fn tick<J: Into<Job>>(&mut self, now: f64, doc_bytes: impl FnOnce() -> J, platform: &dyn Platform) {
         self.poll(now);
         if self.inflight.is_none() {
             if let Some(t) = self.dirty_since {
@@ -190,12 +172,7 @@ impl Autosave {
     }
 
     /// Sofort und synchron speichern, falls Änderungen anstehen (Schließen, Zurück, App im Hintergrund, Beenden).
-    pub fn flush<J: Into<Job>>(
-        &mut self,
-        now: f64,
-        doc_bytes: impl FnOnce() -> J,
-        platform: &dyn Platform,
-    ) {
+    pub fn flush<J: Into<Job>>(&mut self, now: f64, doc_bytes: impl FnOnce() -> J, platform: &dyn Platform) {
         self.wait_idle(now);
         if self.dirty_since.is_some() {
             self.write(now, doc_bytes, platform, true);
@@ -205,9 +182,7 @@ impl Autosave {
     /// Wartet auf ein laufendes Hintergrund-Schreiben und wertet es aus.
     pub fn wait_idle(&mut self, now: f64) {
         if let Some(rx) = self.inflight.take() {
-            let r = rx
-                .recv()
-                .unwrap_or_else(|_| Err(io::Error::other("Schreib-Thread abgebrochen")));
+            let r = rx.recv().unwrap_or_else(|_| Err(io::Error::other("Schreib-Thread abgebrochen")));
             self.finish(now, r);
         }
     }
@@ -228,35 +203,18 @@ impl Autosave {
             Ok(()) => {
                 self.perm_error = false;
                 // Während des Schreibens kam eine neue Änderung: bleibt „ungespeichert“.
-                self.status = if self.dirty_since.is_some() {
-                    AutosaveStatus::Dirty
-                } else {
-                    AutosaveStatus::Saved(now)
-                };
+                self.status = if self.dirty_since.is_some() { AutosaveStatus::Dirty } else { AutosaveStatus::Saved(now) };
             }
             Err(e) => {
-                let name = self
-                    .target
-                    .as_ref()
-                    .map(FileRef::display_name)
-                    .unwrap_or_default();
-                self.perm_error = matches!(
-                    e.kind(),
-                    io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem
-                );
+                let name = self.target.as_ref().map(FileRef::display_name).unwrap_or_default();
+                self.perm_error = matches!(e.kind(), io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem);
                 self.dirty_since.get_or_insert(now);
                 self.status = AutosaveStatus::Error(describe_error(&e, &name));
             }
         }
     }
 
-    fn write<J: Into<Job>>(
-        &mut self,
-        now: f64,
-        doc_bytes: impl FnOnce() -> J,
-        platform: &dyn Platform,
-        sync: bool,
-    ) {
+    fn write<J: Into<Job>>(&mut self, now: f64, doc_bytes: impl FnOnce() -> J, platform: &dyn Platform, sync: bool) {
         let Some(t) = self.target.clone().filter(|_| !self.read_only) else {
             self.dirty_since = None;
             self.status = AutosaveStatus::Idle;
@@ -269,17 +227,11 @@ impl Autosave {
                 self.dirty_since = None;
                 let (tx, rx) = channel();
                 self.inflight = Some(rx);
-                let spawned = std::thread::Builder::new()
-                    .name("owndraw-autosave".into())
-                    .spawn(move || {
-                        let bytes = (job.0)();
-                        let r = if bytes.is_empty() {
-                            Err(io::Error::other("Format"))
-                        } else {
-                            write_path_atomic(&p, &bytes)
-                        };
-                        let _ = tx.send(r);
-                    });
+                let spawned = std::thread::Builder::new().name("owndraw-autosave".into()).spawn(move || {
+                    let bytes = (job.0)();
+                    let r = if bytes.is_empty() { Err(io::Error::other("Format")) } else { write_path_atomic(&p, &bytes) };
+                    let _ = tx.send(r);
+                });
                 if spawned.is_err() {
                     self.inflight = None;
                     self.finish(now, Err(io::Error::other("Schreib-Thread nicht startbar")));
@@ -330,10 +282,7 @@ mod tests {
     use owndraw_core::pages::BoardMode;
 
     fn tmpdir(n: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!(
-            "owndraw-as-{n}-{}",
-            owndraw_core::store::random_hex(6)
-        ));
+        let d = std::env::temp_dir().join(format!("owndraw-as-{n}-{}", owndraw_core::store::random_hex(6)));
         std::fs::create_dir_all(&d).unwrap();
         d
     }
@@ -389,9 +338,7 @@ mod tests {
     #[test]
     fn fehler_rechte_und_wiederholung() {
         let pf = StubPlatform::new();
-        let f = FileRef::Path(std::path::PathBuf::from(
-            "/proc/owndraw-nicht-schreibbar/a.owndraw",
-        ));
+        let f = FileRef::Path(std::path::PathBuf::from("/proc/owndraw-nicht-schreibbar/a.owndraw"));
         let mut a = Autosave::new(Some(f));
         a.mark_changed(0.0);
         a.flush(5.0, || b"x".to_vec(), &pf);
@@ -414,22 +361,13 @@ mod tests {
     /// Kindprozess des Kill-Tests: schreibt endlos große Dokumente (nur aktiv mit `OWNDRAW_KILLTEST_FILE`).
     #[test]
     fn kill_child() {
-        let Ok(path) = std::env::var("OWNDRAW_KILLTEST_FILE") else {
-            return;
-        };
+        let Ok(path) = std::env::var("OWNDRAW_KILLTEST_FILE") else { return };
         let path = std::path::PathBuf::from(path);
         let mut doc = Document::new("Kill", BoardMode::Infinite);
         for i in 0u64.. {
             // pro Durchlauf andere, schlecht komprimierbare Bilder (einige MB)
             let mut x = i.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
-            let bytes: Vec<u8> = (0..3_000_000)
-                .map(|_| {
-                    x ^= x << 13;
-                    x ^= x >> 7;
-                    x ^= x << 17;
-                    x as u8
-                })
-                .collect();
+            let bytes: Vec<u8> = (0..3_000_000).map(|_| { x ^= x << 13; x ^= x >> 7; x ^= x << 17; x as u8 }).collect();
             doc.images.add(bytes, "png");
             if doc.images.files.len() > 3 {
                 let k = doc.images.files.keys().next().cloned().unwrap();
@@ -450,21 +388,12 @@ mod tests {
         }
         let d = tmpdir("kill");
         let path = d.join("k.owndraw");
-        write_path_atomic(
-            &path,
-            &write_owndraw(&Document::new("Start", BoardMode::Infinite)).unwrap(),
-        )
-        .unwrap();
+        write_path_atomic(&path, &write_owndraw(&Document::new("Start", BoardMode::Infinite)).unwrap()).unwrap();
         let exe = std::env::current_exe().unwrap();
         let mut gesehen = std::collections::BTreeSet::new();
         for run in 0..20u64 {
             let mut child = std::process::Command::new(&exe)
-                .args([
-                    "--exact",
-                    "autosave::tests::kill_child",
-                    "--nocapture",
-                    "--test-threads=1",
-                ])
+                .args(["--exact", "autosave::tests::kill_child", "--nocapture", "--test-threads=1"])
                 .env("OWNDRAW_KILLTEST_FILE", &path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -473,23 +402,17 @@ mod tests {
             // Warten, bis das Kind mindestens einmal geschrieben hat, dann an zufälliger Stelle abbrechen.
             let t0 = std::time::Instant::now();
             let before = std::fs::metadata(&path).unwrap().modified().unwrap();
-            while std::fs::metadata(&path).unwrap().modified().unwrap() == before
-                && t0.elapsed().as_secs() < 30
-            {
+            while std::fs::metadata(&path).unwrap().modified().unwrap() == before && t0.elapsed().as_secs() < 30 {
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
             std::thread::sleep(std::time::Duration::from_millis(3 + (run * 37) % 90));
             child.kill().unwrap(); // SIGKILL
             child.wait().unwrap();
             let bytes = std::fs::read(&path).unwrap();
-            let doc = read_owndraw(&bytes)
-                .unwrap_or_else(|e| panic!("Durchlauf {run}: Datei nicht lesbar: {e}"));
+            let doc = read_owndraw(&bytes).unwrap_or_else(|e| panic!("Durchlauf {run}: Datei nicht lesbar: {e}"));
             gesehen.insert(doc.meta.name.clone());
         }
-        assert!(
-            gesehen.len() > 1,
-            "Kind hat nichts geschrieben: {gesehen:?}"
-        );
+        assert!(gesehen.len() > 1, "Kind hat nichts geschrieben: {gesehen:?}");
         let _ = std::fs::remove_dir_all(d);
     }
 }

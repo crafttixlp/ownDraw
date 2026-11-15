@@ -135,10 +135,7 @@ fn rot_arr(a: &mut [f32], stride: usize, rad: f32, px: f32, py: f32) {
 fn ell_half(rx: f32, ry: f32, ang: f32) -> (f32, f32) {
     let (c, s) = ((ang as f64).cos(), (ang as f64).sin());
     let (rx, ry) = (rx as f64, ry as f64);
-    (
-        (rx * rx * c * c + ry * ry * s * s).sqrt() as f32,
-        (rx * rx * s * s + ry * ry * c * c).sqrt() as f32,
-    )
+    ((rx * rx * c * c + ry * ry * s * s).sqrt() as f32, (rx * rx * s * s + ry * ry * c * c).sqrt() as f32)
 }
 
 /// Achsenparallele Huelle eines um ang gedrehten Rechtecks.
@@ -153,11 +150,7 @@ fn rect_hull(cx: f32, cy: f32, w: f32, h: f32, ang: f32) -> RectF {
 pub fn seg(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     let (dx, dy) = (bx - ax, by - ay);
     let l = dx * dx + dy * dy;
-    let t = if l == 0.0 {
-        0.0
-    } else {
-        (((px - ax) * dx + (py - ay) * dy) / l).clamp(0.0, 1.0)
-    };
+    let t = if l == 0.0 { 0.0 } else { (((px - ax) * dx + (py - ay) * dy) / l).clamp(0.0, 1.0) };
     hypot(px - ax - t * dx, py - ay - t * dy)
 }
 
@@ -171,11 +164,7 @@ pub fn erase_split(p: &[f32], width: f32, cx: f32, cy: f32, r: f32) -> Option<Ve
     }
     let lim = r + width / 2.0;
     if n == 1 {
-        return if hypot(p[0] - cx, p[1] - cy) < lim {
-            Some(Vec::new())
-        } else {
-            None
-        };
+        return if hypot(p[0] - cx, p[1] - cy) < lim { Some(Vec::new()) } else { None };
     }
     let max_seg = (r / 2.0).max(1e-4);
     let mut q: Vec<f32> = Vec::with_capacity(n * 3);
@@ -195,9 +184,7 @@ pub fn erase_split(p: &[f32], width: f32, cx: f32, cy: f32, r: f32) -> Option<Ve
         q.extend_from_slice(&[bx, by, bp]);
     }
     let m = q.len() / 3;
-    let gone: Vec<bool> = (0..m)
-        .map(|i| hypot(q[i * 3] - cx, q[i * 3 + 1] - cy) < lim)
-        .collect();
+    let gone: Vec<bool> = (0..m).map(|i| hypot(q[i * 3] - cx, q[i * 3 + 1] - cy) < lim).collect();
     if !gone.iter().any(|g| *g) {
         return None;
     }
@@ -286,9 +273,7 @@ pub fn styled_arrow(kind: i32, style: i32) -> i32 {
     if kind != ARROW && kind != ARROW2 {
         return kind;
     }
-    let Some(&(_, single, double)) = ARROW_STYLES.get(style.max(0) as usize) else {
-        return kind;
-    };
+    let Some(&(_, single, double)) = ARROW_STYLES.get(style.max(0) as usize) else { return kind };
     if style == 0 {
         return kind;
     }
@@ -357,20 +342,10 @@ pub fn heart_pts(q: &[f32], ang: f32, n: usize) -> Vec<f32> {
     let hr = HEART_R;
     let mut o = vec![0.0f32; n * 4];
     for i in 0..2 * n {
-        let t = if i < n {
-            i as f32 / n as f32
-        } else {
-            1.0 - (i - n) as f32 / n as f32
-        };
+        let t = if i < n { i as f32 / n as f32 } else { 1.0 - (i - n) as f32 / n as f32 };
         let u = 1.0 - t;
-        let mut bx = u * u * u * hr[0]
-            + 3.0 * u * u * t * hr[2]
-            + 3.0 * u * t * t * hr[4]
-            + t * t * t * hr[6];
-        let by = u * u * u * hr[1]
-            + 3.0 * u * u * t * hr[3]
-            + 3.0 * u * t * t * hr[5]
-            + t * t * t * hr[7];
+        let mut bx = u * u * u * hr[0] + 3.0 * u * u * t * hr[2] + 3.0 * u * t * t * hr[4] + t * t * t * hr[6];
+        let by = u * u * u * hr[1] + 3.0 * u * u * t * hr[3] + 3.0 * u * t * t * hr[5] + t * t * t * hr[7];
         if i >= n {
             bx = 1.0 - bx;
         }
@@ -413,21 +388,13 @@ impl Note {
     pub fn layout(&mut self) {
         let k = self.size / NOTE_BASE;
         if self.bg == 0 {
-            let mw = self
-                .text
-                .split('\n')
-                .map(|l| crate::text::measure(l, NOTE_BASE))
-                .fold(0.0f32, f32::max);
+            let mw = self.text.split('\n').map(|l| crate::text::measure(l, NOTE_BASE)).fold(0.0f32, f32::max);
             self.w = (mw + 2.0).min(NOTE_BASE * 26.0) * k;
         }
         let lw = ((self.w - 2.0 * self.pad()) / k).ceil().max(1.0);
         let lay = TextLayout::new(&self.text, NOTE_BASE, lw, 1.15);
         let need = lay.height() * k + 2.0 * self.pad();
-        self.h = if self.bg != 0 {
-            self.mh.max(need)
-        } else {
-            need
-        };
+        self.h = if self.bg != 0 { self.mh.max(need) } else { need };
         self.lay = Some(Rc::new(lay));
     }
 }
@@ -471,38 +438,18 @@ pub struct Item {
 
 impl Item {
     pub fn new(kind: Kind) -> Item {
-        Item {
-            id: next_id(),
-            color: INK,
-            width: 4.0,
-            layer: 1,
-            kind,
-            lift: false,
-            extra: None,
-            b: Cell::new(None),
-            path: RefCell::new(None),
-        }
+        Item { id: next_id(), color: INK, width: 4.0, layer: 1, kind, lift: false, extra: None, b: Cell::new(None), path: RefCell::new(None) }
     }
 
     pub fn stroke(color: u32, width: f32, hl: bool, var: bool) -> Item {
-        let mut it = Item::new(Kind::Stroke(Stroke {
-            p: Vec::with_capacity(96),
-            hl,
-            var,
-            sharp: false,
-        }));
+        let mut it = Item::new(Kind::Stroke(Stroke { p: Vec::with_capacity(96), hl, var, sharp: false }));
         it.color = color;
         it.width = width;
         it
     }
 
     pub fn shape(kind: i32, q: Vec<f32>, color: u32, width: f32) -> Item {
-        let mut it = Item::new(Kind::Shape(Shape {
-            kind,
-            q,
-            hl: false,
-            ang: 0.0,
-        }));
+        let mut it = Item::new(Kind::Shape(Shape { kind, q, hl: false, ang: 0.0 }));
         it.color = color;
         it.width = width;
         it
@@ -590,8 +537,7 @@ impl Item {
                     RectF::new(r.left - w, r.top - w, r.right + w, r.bottom + w)
                 } else if g.kind == ELLIPSE && g.ang != 0.0 {
                     let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
-                    let (hx, hy) =
-                        ell_half((q[2] - q[0]).abs() / 2.0, (q[3] - q[1]).abs() / 2.0, g.ang);
+                    let (hx, hy) = ell_half((q[2] - q[0]).abs() / 2.0, (q[3] - q[1]).abs() / 2.0, g.ang);
                     RectF::new(cx - hx - w, cy - hy - w, cx + hx + w, cy + hy + w)
                 } else if g.kind == ARROW_ENG {
                     // Dreieckspunkte gehören zur Huelle (die Basis liegt seitlich ueber der Linie).
@@ -606,11 +552,7 @@ impl Item {
                     for c in q.chunks_exact(2) {
                         r.union(&RectF::new(c[0], c[1], c[0], c[1]));
                     }
-                    let w = if arrow_spec(g.kind).is_some() {
-                        w * 3.0
-                    } else {
-                        w
-                    };
+                    let w = if arrow_spec(g.kind).is_some() { w * 3.0 } else { w };
                     RectF::new(r.left - w, r.top - w, r.right + w, r.bottom + w)
                 }
             }
@@ -625,12 +567,7 @@ impl Item {
                 if m.ang != 0.0 {
                     rect_hull(m.x + m.w / 2.0, m.y + m.h / 2.0, m.w, m.h, m.ang)
                 } else {
-                    RectF::new(
-                        m.x.min(m.x + m.w),
-                        m.y.min(m.y + m.h),
-                        m.x.max(m.x + m.w),
-                        m.y.max(m.y + m.h),
-                    )
+                    RectF::new(m.x.min(m.x + m.w), m.y.min(m.y + m.h), m.x.max(m.x + m.w), m.y.max(m.y + m.h))
                 }
             }
         };
@@ -673,14 +610,7 @@ impl Item {
                 c.save();
                 c.translate(n.x + n.pad(), n.y + n.pad());
                 c.scale(k, k);
-                lay.draw(
-                    c,
-                    if n.bg != 0 {
-                        0xFF1B1B1F
-                    } else {
-                        ink(self.color, dark)
-                    },
-                );
+                lay.draw(c, if n.bg != 0 { 0xFF1B1B1F } else { ink(self.color, dark) });
                 c.restore();
                 if n.ang != 0.0 {
                     c.restore();
@@ -697,11 +627,7 @@ impl Item {
                     }
                     None => {
                         c.draw_rect(m.x, m.y, m.x + m.w, m.y + m.h, &Paint::fill(0xFFC9CBD2));
-                        let p = Paint::stroke(
-                            0xFF7A7D88,
-                            (m.w.abs().min(m.h.abs()) / 60.0).max(1.0),
-                            Cap::Butt,
-                        );
+                        let p = Paint::stroke(0xFF7A7D88, (m.w.abs().min(m.h.abs()) / 60.0).max(1.0), Cap::Butt);
                         c.draw_rect(m.x, m.y, m.x + m.w, m.y + m.h, &p);
                         c.draw_line(m.x, m.y, m.x + m.w, m.y + m.h, &p);
                         c.draw_line(m.x + m.w, m.y, m.x, m.y + m.h, &p);
@@ -773,10 +699,7 @@ impl Item {
                 }
                 *cache = pb.finish();
             }
-            let path = cache
-                .as_ref()
-                .filter(|path| path.bounds().width() > 0.0 || path.bounds().height() > 0.0)
-                .cloned();
+            let path = cache.as_ref().filter(|path| path.bounds().width() > 0.0 || path.bounds().height() > 0.0).cloned();
             return vec![(self.width, path)];
         }
         let wid = |i: usize| self.width * (0.35 + 1.3 * (p[i * 3 - 1] + p[i * 3 + 2]) * 0.5);
@@ -845,10 +768,7 @@ impl Item {
             for j in 1..=k {
                 let t = j as f32 / k as f32;
                 let u = 1.0 - t;
-                let (nx, ny) = (
-                    u * u * x + 2.0 * u * t * cx + t * t * ex,
-                    u * u * y + 2.0 * u * t * cy + t * t * ey,
-                );
+                let (nx, ny) = (u * u * x + 2.0 * u * t * cx + t * t * ex, u * u * y + 2.0 * u * t * cy + t * t * ey);
                 v.push([x, y, nx, ny, r]);
                 x = nx;
                 y = ny;
@@ -867,31 +787,20 @@ impl Item {
         }
         let hd = (l * max_rel).min(self.width * 5.0);
         let (ux, uy, cs, sn) = (dx / l, dy / l, 0.88f32, 0.47f32);
-        Some([
-            tx - hd * (ux * cs - uy * sn),
-            ty - hd * (uy * cs + ux * sn),
-            tx - hd * (ux * cs + uy * sn),
-            ty - hd * (uy * cs - ux * sn),
-        ])
+        Some([tx - hd * (ux * cs - uy * sn), ty - hd * (uy * cs + ux * sn), tx - hd * (ux * cs + uy * sn), ty - hd * (uy * cs - ux * sn)])
     }
 
     /// Widerhaken für Ende (Index 0) und – bei Doppelpfeilen – Anfang (Index 1).
     fn arrow_heads(&self, q: &[f32], both: bool) -> [Option<[f32; 4]>; 2] {
         let rel = if both { 0.4 } else { 0.5 };
         let end = self.barbs(q[2], q[3], q[0], q[1], rel);
-        let start = if both {
-            self.barbs(q[0], q[1], q[2], q[3], rel)
-        } else {
-            None
-        };
+        let start = if both { self.barbs(q[0], q[1], q[2], q[3], rel) } else { None };
         [end, start]
     }
 
     /// Gefüllte Pfeilspitzen als Dreiecke [Spitze, Basis 1, Basis 2] (für Export, der nur Striche kennt).
     pub fn filled_heads(&self) -> Vec<[f32; 6]> {
-        let Kind::Shape(g) = &self.kind else {
-            return Vec::new();
-        };
+        let Kind::Shape(g) = &self.kind else { return Vec::new() };
         let q = &g.q;
         if q.len() < 4 {
             return Vec::new();
@@ -902,11 +811,7 @@ impl Item {
         match arrow_spec(g.kind) {
             Some((both, true, _)) => {
                 let tips = [(q[2], q[3]), (q[0], q[1])];
-                self.arrow_heads(q, both)
-                    .iter()
-                    .zip(tips)
-                    .filter_map(|(h, t)| h.map(|h| [t.0, t.1, h[0], h[1], h[2], h[3]]))
-                    .collect()
+                self.arrow_heads(q, both).iter().zip(tips).filter_map(|(h, t)| h.map(|h| [t.0, t.1, h[0], h[1], h[2], h[3]])).collect()
             }
             _ => Vec::new(),
         }
@@ -978,13 +883,7 @@ impl Item {
                     c.save();
                     c.rotate(g.ang.to_degrees(), (q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
                 }
-                c.draw_oval(
-                    q[0].min(q[2]),
-                    q[1].min(q[3]),
-                    q[0].max(q[2]),
-                    q[1].max(q[3]),
-                    &p,
-                );
+                c.draw_oval(q[0].min(q[2]), q[1].min(q[3]), q[0].max(q[2]), q[1].max(q[3]), &p);
                 if g.ang != 0.0 {
                     c.restore();
                 }
@@ -997,14 +896,7 @@ impl Item {
                     let hr = HEART_R;
                     let mut pb = PathBuilder::new();
                     pb.move_to(x0 + hr[0] * w, y0 + hr[1] * h);
-                    pb.cubic_to(
-                        x0 + hr[2] * w,
-                        y0 + hr[3] * h,
-                        x0 + hr[4] * w,
-                        y0 + hr[5] * h,
-                        x0 + hr[6] * w,
-                        y0 + hr[7] * h,
-                    );
+                    pb.cubic_to(x0 + hr[2] * w, y0 + hr[3] * h, x0 + hr[4] * w, y0 + hr[5] * h, x0 + hr[6] * w, y0 + hr[7] * h);
                     pb.cubic_to(
                         x0 + (1.0 - hr[4]) * w,
                         y0 + hr[5] * h,
@@ -1062,8 +954,7 @@ impl Item {
             Kind::Shape(g) => {
                 let q = &g.q;
                 match g.kind {
-                    LINE | ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED
-                    | ARROW2_DASHED => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
+                    LINE | ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
                     ARROW_ENG => {
                         let h = arrow_eng_head(q[0], q[1], q[2], q[3], self.width);
                         seg(x, y, q[0], q[1], q[2], q[3]) <= lim || poly_hit(&h, x, y, lim)
@@ -1072,11 +963,7 @@ impl Item {
                     ELLIPSE => {
                         let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
                         let (rx, ry) = ((q[2] - q[0]).abs() / 2.0, (q[3] - q[1]).abs() / 2.0);
-                        let (x, y) = if g.ang != 0.0 {
-                            rot_pt(x, y, cx, cy, -g.ang)
-                        } else {
-                            (x, y)
-                        };
+                        let (x, y) = if g.ang != 0.0 { rot_pt(x, y, cx, cy, -g.ang) } else { (x, y) };
                         if rx < 0.001 || ry < 0.001 {
                             return seg(x, y, q[0], q[1], q[2], q[3]) <= lim;
                         }
@@ -1087,23 +974,12 @@ impl Item {
                 }
             }
             Kind::Note(n) => {
-                let (px, py) = if n.ang != 0.0 {
-                    rot_pt(x, y, n.x + n.w / 2.0, n.y + n.h / 2.0, -n.ang)
-                } else {
-                    (x, y)
-                };
+                let (px, py) = if n.ang != 0.0 { rot_pt(x, y, n.x + n.w / 2.0, n.y + n.h / 2.0, -n.ang) } else { (x, y) };
                 px >= n.x - r && px <= n.x + n.w + r && py >= n.y - r && py <= n.y + n.h + r
             }
             Kind::Img(m) => {
-                let (px, py) = if m.ang != 0.0 {
-                    rot_pt(x, y, m.x + m.w / 2.0, m.y + m.h / 2.0, -m.ang)
-                } else {
-                    (x, y)
-                };
-                px >= m.x.min(m.x + m.w) - r
-                    && px <= m.x.max(m.x + m.w) + r
-                    && py >= m.y.min(m.y + m.h) - r
-                    && py <= m.y.max(m.y + m.h) + r
+                let (px, py) = if m.ang != 0.0 { rot_pt(x, y, m.x + m.w / 2.0, m.y + m.h / 2.0, -m.ang) } else { (x, y) };
+                px >= m.x.min(m.x + m.w) - r && px <= m.x.max(m.x + m.w) + r && py >= m.y.min(m.y + m.h) - r && py <= m.y.max(m.y + m.h) + r
             }
         }
     }
@@ -1111,11 +987,7 @@ impl Item {
     /// Wie hit(), aber mit schnellem Vorab-Test ueber die Huelle.
     pub fn near(&self, x: f32, y: f32, r: f32) -> bool {
         let b = self.bounds();
-        x >= b.left - r
-            && x <= b.right + r
-            && y >= b.top - r
-            && y <= b.bottom + r
-            && self.hit(x, y, r)
+        x >= b.left - r && x <= b.right + r && y >= b.top - r && y <= b.bottom + r && self.hit(x, y, r)
     }
 
     /// Skaliert um s um den Punkt (px, py) und verschiebt danach um (dx, dy).
@@ -1204,12 +1076,7 @@ impl Item {
         for xy in v.chunks_exact(2) {
             p.extend_from_slice(&[xy[0], xy[1], 0.5]);
         }
-        let mut it = Item::new(Kind::Stroke(Stroke {
-            p,
-            hl,
-            var: false,
-            sharp: true,
-        }));
+        let mut it = Item::new(Kind::Stroke(Stroke { p, hl, var: false, sharp: true }));
         it.color = self.color;
         it.width = self.width;
         it.layer = self.layer;
@@ -1218,9 +1085,7 @@ impl Item {
 
     /// Wandelt eine Form in gleich aussehende Freihand-Striche um (fuer den Teil-Radierer).
     pub fn to_strokes(&self) -> Vec<Item> {
-        let Kind::Shape(g) = &self.kind else {
-            return Vec::new();
-        };
+        let Kind::Shape(g) = &self.kind else { return Vec::new() };
         let q = &g.q;
         let hl = g.hl;
         let mut out = Vec::new();
@@ -1260,15 +1125,7 @@ impl Item {
                     let mut t = 0.0;
                     while l > 0.0 && t < l {
                         let e = (t + on).min(l);
-                        out.push(self.mk(
-                            hl,
-                            &[
-                                a.0 + dx * t / l,
-                                a.1 + dy * t / l,
-                                a.0 + dx * e / l,
-                                a.1 + dy * e / l,
-                            ],
-                        ));
+                        out.push(self.mk(hl, &[a.0 + dx * t / l, a.1 + dy * t / l, a.0 + dx * e / l, a.1 + dy * e / l]));
                         t += on + off;
                     }
                 } else {
@@ -1306,11 +1163,7 @@ impl Item {
                 out.push(self.mk(hl, &v));
             }
             _ => {
-                let hp = if g.kind == HEART {
-                    heart_pts(q, g.ang, 36)
-                } else {
-                    q.clone()
-                };
+                let hp = if g.kind == HEART { heart_pts(q, g.ang, 36) } else { q.clone() };
                 let m = hp.len() / 2;
                 let mut v = Vec::with_capacity((m + 1) * 2);
                 for i in 0..=m {
@@ -1396,12 +1249,7 @@ impl Item {
                 if p.is_empty() {
                     return None;
                 }
-                Kind::Stroke(Stroke {
-                    p,
-                    hl: jbool(o, "h"),
-                    var: jbool(o, "v"),
-                    sharp: jbool(o, "sh"),
-                })
+                Kind::Stroke(Stroke { p, hl: jbool(o, "h"), var: jbool(o, "v"), sharp: jbool(o, "sh") })
             }
             "g" => {
                 let kind = jint(o.get("k")?)?;
@@ -1410,12 +1258,7 @@ impl Item {
                 if q.len() < 4 {
                     return None;
                 }
-                Kind::Shape(Shape {
-                    kind,
-                    q,
-                    hl: jbool(o, "h"),
-                    ang: jf(o, "an").unwrap_or(0.0),
-                })
+                Kind::Shape(Shape { kind, q, hl: jbool(o, "h"), ang: jf(o, "an").unwrap_or(0.0) })
             }
             "i" => Kind::Img(Img {
                 x: jf(o, "x")?,
@@ -1450,11 +1293,7 @@ impl Item {
         it.width = jf(o, "w")?;
         it.layer = o.get("ly").and_then(jint).unwrap_or(1);
         if let Some(m) = o.as_object() {
-            let ex: Map<String, Value> = m
-                .iter()
-                .filter(|(k, _)| !KNOWN_KEYS.contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+            let ex: Map<String, Value> = m.iter().filter(|(k, _)| !KNOWN_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect();
             if !ex.is_empty() {
                 it.extra = Some(Box::new(ex));
             }
@@ -1463,28 +1302,8 @@ impl Item {
     }
 
     /// Neue Notiz (note = Haftnotiz mit Hintergrund bg) bzw. freier Text.
-    pub fn note(
-        text: &str,
-        color: u32,
-        size: f32,
-        x: f32,
-        y: f32,
-        w: f32,
-        mh: f32,
-        bg: u32,
-    ) -> Item {
-        let mut n = Note {
-            x,
-            y,
-            w,
-            h: 0.0,
-            mh,
-            size,
-            bg,
-            ang: 0.0,
-            text: text.to_string(),
-            lay: None,
-        };
+    pub fn note(text: &str, color: u32, size: f32, x: f32, y: f32, w: f32, mh: f32, bg: u32) -> Item {
+        let mut n = Note { x, y, w, h: 0.0, mh, size, bg, ang: 0.0, text: text.to_string(), lay: None };
         n.layout();
         let mut it = Item::new(Kind::Note(n));
         it.color = color;
@@ -1519,10 +1338,7 @@ fn poly_hit(q: &[f32], x: f32, y: f32, lim: f32) -> bool {
 // ---------------------------------------------------------------- JSON-Helfer
 
 /// Vom Kern selbst geschriebene Item-Felder; alle anderen landen in `Item::extra`.
-const KNOWN_KEYS: [&str; 21] = [
-    "an", "bg", "c", "f", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "q", "s", "sh", "t", "tx",
-    "v", "w", "x", "y",
-];
+const KNOWN_KEYS: [&str; 21] = ["an", "bg", "c", "f", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "q", "s", "sh", "t", "tx", "v", "w", "x", "y"];
 
 /// f32 als JSON-Zahl (kuerzeste Darstellung; NaN/Unendlich werden 0).
 pub fn num(v: f32) -> Value {
@@ -1568,10 +1384,7 @@ impl Item {
         let box_f = |own: f32| -> (f32, f32) {
             let d = own - ang;
             let (c, s) = (d.cos(), d.sin());
-            (
-                ((sx * c).powi(2) + (sy * s).powi(2)).sqrt(),
-                ((sx * s).powi(2) + (sy * c).powi(2)).sqrt(),
-            )
+            (((sx * c).powi(2) + (sy * s).powi(2)).sqrt(), ((sx * s).powi(2) + (sy * c).powi(2)).sqrt())
         };
         match &mut self.kind {
             Kind::Stroke(st) => {
@@ -1638,10 +1451,7 @@ impl Item {
 }
 
 fn farr(v: &Value) -> Option<Vec<f32>> {
-    v.as_array()?
-        .iter()
-        .map(|x| x.as_f64().map(|f| f as f32))
-        .collect()
+    v.as_array()?.iter().map(|x| x.as_f64().map(|f| f as f32)).collect()
 }
 
 /// Ganzzahl; akzeptiert vorzeichenbehaftete und vorzeichenlose 32-Bit-Werte (Farben).
@@ -1674,12 +1484,7 @@ mod tests {
           {"t":"i","c":-15658735,"w":4,"x":0,"y":0,"iw":100,"ih":50,"f":"abc.png","ly":1}
         ]"#;
         let v: Value = serde_json::from_str(src).unwrap();
-        let items: Vec<Item> = v
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(Item::from_json)
-            .collect();
+        let items: Vec<Item> = v.as_array().unwrap().iter().filter_map(Item::from_json).collect();
         assert_eq!(items.len(), 4);
         assert_eq!(items[0].color, INK);
         assert_eq!(items[0].layer, 2);
@@ -1702,12 +1507,7 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert!(parts[0][parts[0].len() - 3] < 50.0 && parts[1][0] > 50.0);
         assert!(erase_split(&p, 2.0, 50.0, 40.0, 5.0).is_none());
-        assert_eq!(
-            erase_split(&[1.0, 1.0, 0.5], 2.0, 1.0, 1.0, 5.0)
-                .unwrap()
-                .len(),
-            0
-        );
+        assert_eq!(erase_split(&[1.0, 1.0, 0.5], 2.0, 1.0, 1.0, 5.0).unwrap().len(), 0);
     }
 
     #[test]
@@ -1732,12 +1532,7 @@ mod tests {
         let mut r = Item::shape(ELLIPSE, vec![0.0, 0.0, 100.0, 50.0], INK, 2.0);
         r.xf_axis(1.0, 2.0, 0.0, 0.0, 0.0);
         assert_eq!(r.as_shape().unwrap().q, vec![0.0, 0.0, 100.0, 100.0]);
-        let mut p = Item::shape(
-            POLY,
-            vec![0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0],
-            INK,
-            2.0,
-        );
+        let mut p = Item::shape(POLY, vec![0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0], INK, 2.0);
         p.xf_axis(3.0, 1.0, 0.0, 0.0, 0.0);
         assert_eq!(p.bounds().width() > 29.0, true);
         assert!(is_linear(ARROW) && is_linear(8) && !is_linear(ELLIPSE));
@@ -1747,11 +1542,7 @@ mod tests {
     fn arrow_eng_angle_and_length() {
         for w in [0.5f32, 1.0, 2.0, 4.0] {
             let h = arrow_eng_head(0.0, 0.0, 100.0, 40.0, w);
-            let (tip, l, r) = (
-                (h[0] as f64, h[1] as f64),
-                (h[2] as f64, h[3] as f64),
-                (h[4] as f64, h[5] as f64),
-            );
+            let (tip, l, r) = ((h[0] as f64, h[1] as f64), (h[2] as f64, h[3] as f64), (h[4] as f64, h[5] as f64));
             let (vl, vr) = ((l.0 - tip.0, l.1 - tip.1), (r.0 - tip.0, r.1 - tip.1));
             let dot = vl.0 * vr.0 + vl.1 * vr.1;
             let cos = dot / ((vl.0.hypot(vl.1)) * (vr.0.hypot(vr.1)));
@@ -1760,10 +1551,7 @@ mod tests {
             // Spitzenlaenge: Abstand Spitze -> Basismitte
             let base = ((l.0 + r.0) / 2.0, (l.1 + r.1) / 2.0);
             let len = (tip.0 - base.0).hypot(tip.1 - base.1);
-            assert!(
-                (len - arrow_eng_len(w) as f64).abs() < 1e-3,
-                "w={w}: Laenge {len}"
-            );
+            assert!((len - arrow_eng_len(w) as f64).abs() < 1e-3, "w={w}: Laenge {len}");
         }
     }
 
@@ -1789,10 +1577,7 @@ mod tests {
         assert_eq!(again.as_shape().unwrap().kind, ARROW_ENG);
         assert_eq!(again.json(), j);
         // Datei-Eintrag wie von der Java-Version/anderen Clients geschrieben
-        let v: Value = serde_json::from_str(
-            r#"{"t":"g","c":-16776961,"w":2,"k":6,"h":false,"q":[0,0,50,0],"ly":1}"#,
-        )
-        .unwrap();
+        let v: Value = serde_json::from_str(r#"{"t":"g","c":-16776961,"w":2,"k":6,"h":false,"q":[0,0,50,0],"ly":1}"#).unwrap();
         let it = Item::from_json(&v).unwrap();
         assert_eq!(it.as_shape().unwrap().kind, ARROW_ENG);
         assert_eq!(it.as_shape().unwrap().q, vec![0.0, 0.0, 50.0, 0.0]);
@@ -1874,4 +1659,5 @@ mod extra_tests {
         assert!(d.to_strokes().len() > 4, "gestrichelter Schaft in Stücken");
         assert!(d.filled_heads().is_empty());
     }
+
 }

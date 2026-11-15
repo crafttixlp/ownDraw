@@ -22,65 +22,34 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
     let canvas = lay.canvas;
     if lay.env.ff == FormFactor::Compact {
         // Bottom-Sheet über der Werkzeugleiste
-        let bottom = canvas.bottom()
-            - if lay.tb_edge == Some(BarPos::Bottom) {
-                lay.thick + 2.0 * M
-            } else {
-                0.0
-            };
+        let bottom = canvas.bottom() - if lay.tb_edge == Some(BarPos::Bottom) { lay.thick + 2.0 * M } else { 0.0 };
         let w = canvas.width();
         let max_h = (canvas.height() * 0.55).max(160.0);
-        let r = Editor::float(
-            ctx,
-            "opts-sheet",
-            Pos2::new(canvas.left(), bottom),
-            Align2::LEFT_BOTTOM,
-            canvas,
-            Order::Foreground,
-            |ui| {
-                style::sheet(20).show(ui, |ui| {
-                    ui.set_width(w - 34.0);
-                    // Griff
-                    let (hr, resp) = ui
-                        .allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::click());
-                    ui.painter().rect_filled(
-                        egui::Rect::from_center_size(hr.center(), Vec2::new(40.0, 4.0)),
-                        CornerRadius::same(2),
-                        c(style::pal().line),
-                    );
-                    if resp.clicked() {
-                        ed.st.opts_open = false;
-                    }
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(t.label()).size(16.0).strong());
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if style::plain_btn(ui, "Fertig", min_touch(sh.env.touch).max(36.0))
-                                .clicked()
-                            {
-                                ed.st.opts_open = false;
-                            }
-                        });
+        let r = Editor::float(ctx, "opts-sheet", Pos2::new(canvas.left(), bottom), Align2::LEFT_BOTTOM, canvas, Order::Foreground, |ui| {
+            style::sheet(20).show(ui, |ui| {
+                ui.set_width(w - 34.0);
+                // Griff
+                let (hr, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::click());
+                ui.painter().rect_filled(egui::Rect::from_center_size(hr.center(), Vec2::new(40.0, 4.0)), CornerRadius::same(2), c(style::pal().line));
+                if resp.clicked() {
+                    ed.st.opts_open = false;
+                }
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(t.label()).size(16.0).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if style::plain_btn(ui, "Fertig", min_touch(sh.env.touch).max(36.0)).clicked() {
+                            ed.st.opts_open = false;
+                        }
                     });
-                    egui::ScrollArea::vertical()
-                        .max_height(max_h)
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| content(ui, ed, sh, t));
                 });
-            },
-        );
+                egui::ScrollArea::vertical().max_height(max_h).auto_shrink([false, true]).show(ui, |ui| content(ui, ed, sh, t));
+            });
+        });
         ed.st.popup_rects.push(r);
         return;
     }
     // Popover neben dem Werkzeugknopf
-    let Some(anchor) = ed
-        .st
-        .tool_rects
-        .iter()
-        .find(|(x, _)| *x == t)
-        .map(|(_, r)| *r)
-    else {
-        return;
-    };
+    let Some(anchor) = ed.st.tool_rects.iter().find(|(x, _)| *x == t).map(|(_, r)| *r) else { return };
     // Seite nach Lage der Werkzeugleiste: senkrecht -> rechts/links daneben, waagerecht -> darunter/darüber
     let side = if ed.st.tools_vert {
         if anchor.center().x < canvas.center().x {
@@ -94,43 +63,21 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
         BarPos::Bottom
     };
     let (pos, pivot) = match side {
-        BarPos::Left => (
-            Pos2::new(anchor.right() + M + PAD, anchor.top()),
-            Align2::LEFT_TOP,
-        ),
-        BarPos::Right => (
-            Pos2::new(anchor.left() - M - PAD, anchor.top()),
-            Align2::RIGHT_TOP,
-        ),
-        BarPos::Top => (
-            Pos2::new(anchor.center().x, anchor.bottom() + M + PAD),
-            Align2::CENTER_TOP,
-        ),
-        BarPos::Bottom => (
-            Pos2::new(anchor.center().x, anchor.top() - M - PAD),
-            Align2::CENTER_BOTTOM,
-        ),
+        BarPos::Left => (Pos2::new(anchor.right() + M + PAD, anchor.top()), Align2::LEFT_TOP),
+        BarPos::Right => (Pos2::new(anchor.left() - M - PAD, anchor.top()), Align2::RIGHT_TOP),
+        BarPos::Top => (Pos2::new(anchor.center().x, anchor.bottom() + M + PAD), Align2::CENTER_TOP),
+        BarPos::Bottom => (Pos2::new(anchor.center().x, anchor.top() - M - PAD), Align2::CENTER_BOTTOM),
     };
-    let r = Editor::float(
-        ctx,
-        "opts-pop",
-        pos,
-        pivot,
-        canvas.shrink(M),
-        Order::Foreground,
-        |ui| {
-            style::pill(18).show(ui, |ui| {
-                egui::Frame::new()
-                    .inner_margin(egui::Margin::same(8))
-                    .show(ui, |ui| {
-                        ui.set_width(268.0);
-                        ui.label(egui::RichText::new(t.label()).size(15.0).strong());
-                        ui.add_space(2.0);
-                        content(ui, ed, sh, t);
-                    });
+    let r = Editor::float(ctx, "opts-pop", pos, pivot, canvas.shrink(M), Order::Foreground, |ui| {
+        style::pill(18).show(ui, |ui| {
+            egui::Frame::new().inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+                ui.set_width(268.0);
+                ui.label(egui::RichText::new(t.label()).size(15.0).strong());
+                ui.add_space(2.0);
+                content(ui, ed, sh, t);
             });
-        },
-    );
+        });
+    });
     ed.st.popup_rects.push(r);
 }
 
@@ -162,24 +109,10 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
                     let size = sh.env.btn;
                     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
                     style::btn_bg(ui, rect, &resp, on);
-                    let tint = if on {
-                        style::pal().accent
-                    } else {
-                        style::pal().text
-                    };
+                    let tint = if on { style::pal().accent } else { style::pal().text };
                     match icon {
-                        Some(id) => {
-                            sh.icons
-                                .paint(ui, rect, *id, tint, false, (size * 0.55).round())
-                        }
-                        None => style::paint_arrow_eng(
-                            ui.painter(),
-                            egui::Rect::from_center_size(
-                                rect.center(),
-                                Vec2::splat(size * 0.55 + 4.0),
-                            ),
-                            c(tint),
-                        ),
+                        Some(id) => sh.icons.paint(ui, rect, *id, tint, false, (size * 0.55).round()),
+                        None => style::paint_arrow_eng(ui.painter(), egui::Rect::from_center_size(rect.center(), Vec2::splat(size * 0.55 + 4.0)), c(tint)),
                     }
                     if resp.on_hover_text(*name).clicked() {
                         ed.board.shape_kind = i as i32;
@@ -191,11 +124,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             if k == 4 {
                 lbl.push_str(" (15°, gefüllt)");
             }
-            ui.label(
-                egui::RichText::new(lbl)
-                    .size(12.0)
-                    .color(c(style::pal().dim)),
-            );
+            ui.label(egui::RichText::new(lbl).size(12.0).color(c(style::pal().dim)));
             if k == 3 {
                 arrow_styles(ui, ed, sh, "Pfeilstil");
             }
@@ -226,16 +155,8 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
                     }
                 }
             });
-            let hint = if ed.board.sel_mode == 0 {
-                "Objekte freihand umkreisen."
-            } else {
-                "Rechteck über die Objekte aufziehen."
-            };
-            ui.label(
-                egui::RichText::new(hint)
-                    .size(12.0)
-                    .color(c(style::pal().dim)),
-            );
+            let hint = if ed.board.sel_mode == 0 { "Objekte freihand umkreisen." } else { "Rechteck über die Objekte aufziehen." };
+            ui.label(egui::RichText::new(hint).size(12.0).color(c(style::pal().dim)));
         }
         Tool::Text => {
             style::caption(ui, "Art");
@@ -254,13 +175,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
 
 /// Symbol (None = gezeichnet) und Name der Formen; Index = `Board::shape_kind`.
 fn shape_kinds() -> [(Option<i32>, &'static str); 5] {
-    [
-        (Some(ic::RECT), "Rechteck"),
-        (Some(ic::ELLIPSE), "Ellipse"),
-        (Some(ic::LINE), "Linie"),
-        (Some(ic::ARROW), "Pfeil"),
-        (None, "Maschinenbau-Pfeil"),
-    ]
+    [(Some(ic::RECT), "Rechteck"), (Some(ic::ELLIPSE), "Ellipse"), (Some(ic::LINE), "Linie"), (Some(ic::ARROW), "Pfeil"), (None, "Maschinenbau-Pfeil")]
 }
 
 fn colors(ui: &mut Ui, ed: &mut Editor, sh: &Shared) {
@@ -303,17 +218,12 @@ fn widths(ui: &mut Ui, ed: &mut Editor, sh: &Shared, title: &str) {
             let on = ed.board.pen_w == *wd;
             let bg = r.shrink2(Vec2::new(2.0, 4.0));
             if on {
-                ui.painter()
-                    .rect_filled(bg, CornerRadius::same(255), c(p.active));
+                ui.painter().rect_filled(bg, CornerRadius::same(255), c(p.active));
             } else if resp.hovered() {
-                ui.painter()
-                    .rect_filled(bg, CornerRadius::same(255), c(p.hover));
+                ui.painter().rect_filled(bg, CornerRadius::same(255), c(p.hover));
             }
             ui.painter().circle_filled(r.center(), d / 2.0, c(p.text));
-            if resp
-                .on_hover_text(format!("Strichstärke {}", i + 1))
-                .clicked()
-            {
+            if resp.on_hover_text(format!("Strichstärke {}", i + 1)).clicked() {
                 ed.board.pen_w = *wd;
             }
         }
@@ -329,16 +239,8 @@ fn recog(ui: &mut Ui, ed: &mut Editor, h: f32) {
             }
         }
     });
-    let hint = [
-        "Am Ende des Strichs kurz halten, dann wird die Form geglättet.",
-        "Jeder Strich wird, wenn möglich, zur Form.",
-        "Striche bleiben, wie gezeichnet.",
-    ][ed.board.recog.clamp(0, 2) as usize];
-    ui.label(
-        egui::RichText::new(hint)
-            .size(12.0)
-            .color(c(style::pal().dim)),
-    );
+    let hint = ["Am Ende des Strichs kurz halten, dann wird die Form geglättet.", "Jeder Strich wird, wenn möglich, zur Form.", "Striche bleiben, wie gezeichnet."][ed.board.recog.clamp(0, 2) as usize];
+    ui.label(egui::RichText::new(hint).size(12.0).color(c(style::pal().dim)));
 }
 
 /// Auswahl des Pfeilstils mit kleiner Vorschau je Stil (Index = `Board::arrow_style`).
@@ -354,69 +256,30 @@ fn arrow_styles(ui: &mut Ui, ed: &mut Editor, sh: &Shared, title: &str) {
             style::btn_bg(ui, rect, &resp, on);
             let tint = c(if on { p.accent } else { p.text });
             if i == 0 {
-                ui.painter().text(
-                    rect.center(),
-                    Align2::CENTER_CENTER,
-                    "Auto",
-                    egui::FontId::proportional(12.0),
-                    tint,
-                );
+                ui.painter().text(rect.center(), Align2::CENTER_CENTER, "Auto", egui::FontId::proportional(12.0), tint);
             } else {
-                paint_arrow_preview(
-                    ui.painter(),
-                    rect.shrink2(Vec2::new(10.0, rect.height() * 0.3)),
-                    *single,
-                    i == 4 || i == 5,
-                    tint,
-                );
+                paint_arrow_preview(ui.painter(), rect.shrink2(Vec2::new(10.0, rect.height() * 0.3)), *single, i == 4 || i == 5, tint);
             }
             if resp.on_hover_text(*name).clicked() {
                 ed.board.arrow_style = i as i32;
             }
         }
     });
-    let n = item::ARROW_STYLES
-        .get(ed.board.arrow_style.max(0) as usize)
-        .map(|s| s.0)
-        .unwrap_or("");
+    let n = item::ARROW_STYLES.get(ed.board.arrow_style.max(0) as usize).map(|s| s.0).unwrap_or("");
     ui.label(egui::RichText::new(n).size(12.0).color(c(p.dim)));
 }
 
 /// Kleine Pfeil-Vorschau von links nach rechts im Rechteck r.
-fn paint_arrow_preview(
-    pt: &egui::Painter,
-    r: egui::Rect,
-    kind: i32,
-    double: bool,
-    col: egui::Color32,
-) {
-    let (a, b) = (
-        Pos2::new(r.left(), r.center().y),
-        Pos2::new(r.right(), r.center().y),
-    );
+fn paint_arrow_preview(pt: &egui::Painter, r: egui::Rect, kind: i32, double: bool, col: egui::Color32) {
+    let (a, b) = (Pos2::new(r.left(), r.center().y), Pos2::new(r.right(), r.center().y));
     let st = Stroke::new(1.8, col);
-    let (filled, dashed, eng) = (
-        matches!(kind, item::ARROW_FILLED | item::ARROW2_FILLED),
-        kind == item::ARROW_DASHED,
-        kind == item::ARROW_ENG,
-    );
+    let (filled, dashed, eng) = (matches!(kind, item::ARROW_FILLED | item::ARROW2_FILLED), kind == item::ARROW_DASHED, kind == item::ARROW_ENG);
     let head = |tip: Pos2, dir: f32| {
-        let (len, half) = if eng {
-            (11.0, 11.0 * 7.5f32.to_radians().tan())
-        } else {
-            (8.0, 5.0)
-        };
+        let (len, half) = if eng { (11.0, 11.0 * 7.5f32.to_radians().tan()) } else { (8.0, 5.0) };
         let base = Pos2::new(tip.x - dir * len, tip.y);
-        let (p1, p2) = (
-            Pos2::new(base.x, base.y - half),
-            Pos2::new(base.x, base.y + half),
-        );
+        let (p1, p2) = (Pos2::new(base.x, base.y - half), Pos2::new(base.x, base.y + half));
         if filled || eng {
-            pt.add(egui::Shape::convex_polygon(
-                vec![tip, p1, p2],
-                col,
-                Stroke::NONE,
-            ));
+            pt.add(egui::Shape::convex_polygon(vec![tip, p1, p2], col, Stroke::NONE));
         } else {
             pt.line_segment([tip, p1], st);
             pt.line_segment([tip, p2], st);

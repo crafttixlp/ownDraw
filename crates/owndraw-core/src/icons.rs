@@ -1,7 +1,7 @@
 //! Vektor-Icons auf 24er-Raster (Port von Ic.java).
 
 use crate::canvas::{arc_to, round_rect_path, Canvas, Cap, Paint, Style};
-use tiny_skia::{PathBuilder, Pixmap, Rect};
+use tiny_skia::{Pixmap, PathBuilder, Rect};
 
 pub const BACK: i32 = 0;
 pub const UNDO: i32 = 1;
@@ -88,14 +88,7 @@ fn flush(c: &mut Canvas, pb: PathBuilder, p: &Paint, fill_stroke: bool) {
 
 /// Zeichnet das Icon id in das 24x24-Feld des aktuellen Koordinatensystems.
 pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
-    let mut p = Paint {
-        color: tint,
-        style: Style::Stroke,
-        stroke_width: 1.9,
-        cap: Cap::Round,
-        dash: None,
-        text_size: 12.0,
-    };
+    let mut p = Paint { color: tint, style: Style::Stroke, stroke_width: 1.9, cap: Cap::Round, dash: None, text_size: 12.0 };
     let mut pb = PathBuilder::new();
     match id {
         BACK => poly(&mut pb, false, &[15.0, 5.0, 8.0, 12.0, 15.0, 19.0]),
@@ -114,35 +107,19 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             pb.line_to(9.0, 19.0);
         }
         PEN => {
-            poly(
-                &mut pb,
-                true,
-                &[5.0, 19.0, 6.0, 15.0, 16.0, 5.0, 19.0, 8.0, 9.0, 18.0],
-            );
+            poly(&mut pb, true, &[5.0, 19.0, 6.0, 15.0, 16.0, 5.0, 19.0, 8.0, 9.0, 18.0]);
             poly(&mut pb, false, &[14.0, 7.0, 17.0, 10.0]);
         }
         MARKER => {
-            poly(
-                &mut pb,
-                true,
-                &[8.0, 14.0, 15.5, 4.0, 20.0, 8.5, 12.0, 18.0, 8.0, 18.0],
-            );
+            poly(&mut pb, true, &[8.0, 14.0, 15.5, 4.0, 20.0, 8.5, 12.0, 18.0, 8.0, 18.0]);
             poly(&mut pb, false, &[4.0, 21.0, 14.0, 21.0]);
         }
         ERASER => {
-            poly(
-                &mut pb,
-                true,
-                &[4.0, 14.0, 12.0, 5.0, 20.0, 12.0, 13.0, 19.0, 8.0, 19.0],
-            );
+            poly(&mut pb, true, &[4.0, 14.0, 12.0, 5.0, 20.0, 12.0, 13.0, 19.0, 8.0, 19.0]);
             poly(&mut pb, false, &[8.0, 9.5, 16.0, 16.0]);
         }
         ERASER_PART => {
-            poly(
-                &mut pb,
-                true,
-                &[9.2, 10.4, 15.0, 4.0, 20.8, 9.0, 15.7, 14.0, 12.1, 14.0],
-            );
+            poly(&mut pb, true, &[9.2, 10.4, 15.0, 4.0, 20.8, 9.0, 15.7, 14.0, 12.1, 14.0]);
             poly(&mut pb, false, &[12.1, 7.2, 17.9, 11.9]);
             flush(c, pb, &p, false);
             // gestrichelte Linie
@@ -175,11 +152,7 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, true, &[20.0, 4.0, 16.2, 11.5, 12.5, 7.8]);
         }
         NOTE => {
-            poly(
-                &mut pb,
-                true,
-                &[5.0, 5.0, 19.0, 5.0, 19.0, 14.0, 14.0, 19.0, 5.0, 19.0],
-            );
+            poly(&mut pb, true, &[5.0, 5.0, 19.0, 5.0, 19.0, 14.0, 14.0, 19.0, 5.0, 19.0]);
             poly(&mut pb, false, &[19.0, 14.0, 14.0, 14.0, 14.0, 19.0]);
         }
         TEXT => {
@@ -187,14 +160,7 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, false, &[12.0, 6.0, 12.0, 19.0]);
             poly(&mut pb, false, &[9.5, 19.0, 14.5, 19.0]);
         }
-        MAGIC => poly(
-            &mut pb,
-            true,
-            &[
-                12.0, 3.0, 14.0, 10.0, 21.0, 12.0, 14.0, 14.0, 12.0, 21.0, 10.0, 14.0, 3.0, 12.0,
-                10.0, 10.0,
-            ],
-        ),
+        MAGIC => poly(&mut pb, true, &[12.0, 3.0, 14.0, 10.0, 21.0, 12.0, 14.0, 14.0, 12.0, 21.0, 10.0, 14.0, 3.0, 12.0, 10.0, 10.0]),
         FINGER => {
             pb.push_circle(12.0, 12.0, 3.0);
             pb.push_circle(12.0, 12.0, 8.0);
@@ -223,28 +189,16 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
         EXPORT => {
             poly(&mut pb, false, &[12.0, 15.0, 12.0, 4.0]);
             poly(&mut pb, false, &[8.0, 8.0, 12.0, 4.0, 16.0, 8.0]);
-            poly(
-                &mut pb,
-                false,
-                &[5.0, 14.0, 5.0, 20.0, 19.0, 20.0, 19.0, 14.0],
-            );
+            poly(&mut pb, false, &[5.0, 14.0, 5.0, 20.0, 19.0, 20.0, 19.0, 14.0]);
         }
         TRASH => {
             poly(&mut pb, false, &[5.0, 7.0, 19.0, 7.0]);
             poly(&mut pb, false, &[9.0, 7.0, 9.0, 4.5, 15.0, 4.5, 15.0, 7.0]);
-            poly(
-                &mut pb,
-                false,
-                &[7.0, 7.0, 8.0, 20.0, 16.0, 20.0, 17.0, 7.0],
-            );
+            poly(&mut pb, false, &[7.0, 7.0, 8.0, 20.0, 16.0, 20.0, 17.0, 7.0]);
         }
         COPY => {
             rect(&mut pb, 8.5, 8.5, 20.0, 20.0);
-            poly(
-                &mut pb,
-                false,
-                &[15.5, 8.5, 15.5, 4.0, 4.0, 4.0, 4.0, 15.5, 8.5, 15.5],
-            );
+            poly(&mut pb, false, &[15.5, 8.5, 15.5, 4.0, 4.0, 4.0, 4.0, 15.5, 8.5, 15.5]);
         }
         LAYERS => {
             poly(&mut pb, true, &[12.0, 4.0, 20.0, 8.5, 12.0, 13.0, 4.0, 8.5]);
@@ -272,11 +226,7 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
         IMAGE => {
             rect(&mut pb, 4.5, 5.0, 19.5, 19.0);
             pb.push_circle(9.0, 10.0, 1.5);
-            poly(
-                &mut pb,
-                false,
-                &[5.0, 18.0, 10.0, 13.0, 13.0, 16.0, 15.5, 13.5, 19.0, 17.0],
-            );
+            poly(&mut pb, false, &[5.0, 18.0, 10.0, 13.0, 13.0, 16.0, 15.5, 13.5, 19.0, 17.0]);
         }
         PLAY => poly(&mut pb, true, &[8.0, 5.5, 18.0, 12.0, 8.0, 18.5]),
         MORE => {
@@ -322,20 +272,10 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             rect(&mut pb, 9.5, 9.5, 20.0, 20.0);
             flush(c, pb, &p, true);
             pb = PathBuilder::new();
-            poly(
-                &mut pb,
-                false,
-                &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5],
-            );
+            poly(&mut pb, false, &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5]);
         }
         BACKWARD => {
-            poly(
-                &mut pb,
-                true,
-                &[
-                    4.0, 4.0, 14.5, 4.0, 14.5, 9.5, 9.5, 9.5, 9.5, 14.5, 4.0, 14.5,
-                ],
-            );
+            poly(&mut pb, true, &[4.0, 4.0, 14.5, 4.0, 14.5, 9.5, 9.5, 9.5, 9.5, 14.5, 4.0, 14.5]);
             flush(c, pb, &p, true);
             pb = PathBuilder::new();
             rect(&mut pb, 9.5, 9.5, 20.0, 20.0);
@@ -344,11 +284,7 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             rect(&mut pb, 9.5, 9.5, 20.0, 20.0);
             poly(&mut pb, false, &[14.75, 12.5, 14.75, 17.0]);
             poly(&mut pb, false, &[12.5, 14.75, 17.0, 14.75]);
-            poly(
-                &mut pb,
-                false,
-                &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5],
-            );
+            poly(&mut pb, false, &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5]);
         }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
@@ -396,17 +332,8 @@ mod tests {
         for id in 0..=37 {
             let pm = render(id, cell, 0xFFFFFFFF, false).expect("pixmap");
             let (x, y) = ((id as u32 % cols) * cell, (id as u32 / cols) * cell);
-            sheet.draw_pixmap(
-                x as i32,
-                y as i32,
-                pm.as_ref(),
-                &PixmapPaint::default(),
-                Transform::identity(),
-                None,
-            );
+            sheet.draw_pixmap(x as i32, y as i32, pm.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
         }
-        sheet
-            .save_png("/home/claude/agents/icons/icons-sheet.png")
-            .expect("png");
+        sheet.save_png("/home/claude/agents/icons/icons-sheet.png").expect("png");
     }
 }

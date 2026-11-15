@@ -63,12 +63,8 @@ pub fn import_xopp(bytes: &[u8]) -> Result<Document> {
     }
     // Seiten zuerst anlegen, damit die Lage jeder Seite feststeht.
     for n in &page_nodes {
-        let w = attr_f(n, "width")
-            .filter(|v| *v > 0.0)
-            .unwrap_or(PageFormat::A4.size().0);
-        let h = attr_f(n, "height")
-            .filter(|v| *v > 0.0)
-            .unwrap_or(PageFormat::A4.size().1);
+        let w = attr_f(n, "width").filter(|v| *v > 0.0).unwrap_or(PageFormat::A4.size().0);
+        let h = attr_f(n, "height").filter(|v| *v > 0.0).unwrap_or(PageFormat::A4.size().1);
         let mut pg = Page::new(w, h, PageBg::Plain);
         if let Some(bg) = n.children().find(|c| c.has_tag_name("background")) {
             let attrs = attr_list(&bg);
@@ -84,12 +80,7 @@ pub fn import_xopp(bytes: &[u8]) -> Result<Document> {
         pages.push(Page::new(w, h, PageBg::Plain));
     }
     let first = pages[0].clone();
-    let mut setup = PageSetup {
-        w: first.w,
-        h: first.h,
-        bg: first.bg,
-        pages,
-    };
+    let mut setup = PageSetup { w: first.w, h: first.h, bg: first.bg, pages };
     let rects = setup.rects();
 
     let mut doc = Document::new(&doc_name(&title), BoardMode::Infinite);
@@ -134,17 +125,8 @@ pub fn import_xopp(bytes: &[u8]) -> Result<Document> {
     if names.is_empty() {
         names.push(None);
     }
-    let layers: Vec<Value> = names
-        .iter()
-        .enumerate()
-        .map(|(k, nm)| {
-            Layer::new(
-                k as i32 + 1,
-                nm.as_deref().unwrap_or(&default_layer_name(k)),
-            )
-            .json()
-        })
-        .collect();
+    let layers: Vec<Value> =
+        names.iter().enumerate().map(|(k, nm)| Layer::new(k as i32 + 1, nm.as_deref().unwrap_or(&default_layer_name(k))).json()).collect();
     doc.board["layers"] = Value::Array(layers);
     doc.board["items"] = Value::Array(items);
     doc.board["active"] = json!(0);
@@ -165,10 +147,7 @@ pub fn import_xopp(bytes: &[u8]) -> Result<Document> {
 fn unpack(bytes: &[u8]) -> Result<String> {
     let raw = if bytes.starts_with(&[0x1f, 0x8b]) {
         let mut v = Vec::new();
-        flate2::read::MultiGzDecoder::new(bytes)
-            .take(MAX_XML + 1)
-            .read_to_end(&mut v)
-            .map_err(fmt_err("gzip"))?;
+        flate2::read::MultiGzDecoder::new(bytes).take(MAX_XML + 1).read_to_end(&mut v).map_err(fmt_err("gzip"))?;
         v
     } else if bytes.starts_with(b"PK\x03\x04") {
         let mut z = zip::ZipArchive::new(Cursor::new(bytes)).map_err(fmt_err("ZIP"))?;
@@ -200,69 +179,33 @@ fn default_layer_name(k: usize) -> String {
 }
 
 fn node_text(n: &roxmltree::Node) -> String {
-    n.descendants()
-        .filter(|d| d.is_text())
-        .filter_map(|d| d.text())
-        .collect()
+    n.descendants().filter(|d| d.is_text()).filter_map(|d| d.text()).collect()
 }
 
 fn attr_f(n: &roxmltree::Node, k: &str) -> Option<f32> {
-    n.attribute(k)?
-        .trim()
-        .parse::<f32>()
-        .ok()
-        .filter(|v| v.is_finite())
+    n.attribute(k)?.trim().parse::<f32>().ok().filter(|v| v.is_finite())
 }
 
 /// Alle Attribute als Liste `[[name, wert], …]` (Reihenfolge bleibt erhalten).
 fn attr_list(n: &roxmltree::Node) -> Value {
-    Value::Array(
-        n.attributes()
-            .map(|a| json!([a.name(), a.value()]))
-            .collect(),
-    )
+    Value::Array(n.attributes().map(|a| json!([a.name(), a.value()])).collect())
 }
 
 /// Attribute außer `skip` als Liste `[[name, wert], …]`.
 fn extra_attrs(n: &roxmltree::Node, skip: &[&str]) -> Value {
-    Value::Array(
-        n.attributes()
-            .filter(|a| !skip.contains(&a.name()))
-            .map(|a| json!([a.name(), a.value()]))
-            .collect(),
-    )
+    Value::Array(n.attributes().filter(|a| !skip.contains(&a.name())).map(|a| json!([a.name(), a.value()])).collect())
 }
 
 /// Ein Element einer Ebene als Item-JSON (Weltkoordinaten); None → roh erhalten.
-fn import_elem(
-    e: &roxmltree::Node,
-    xml: &str,
-    ox: f32,
-    oy: f32,
-    layer: i32,
-    doc: &mut Document,
-) -> Option<Value> {
+fn import_elem(e: &roxmltree::Node, xml: &str, ox: f32, oy: f32, layer: i32, doc: &mut Document) -> Option<Value> {
     let mut it = match e.tag_name().name() {
         "stroke" => {
             let tool = e.attribute("tool").unwrap_or("pen");
             let hl = tool == "highlighter";
             let color = parse_color(e.attribute("color").unwrap_or("black"))?;
-            let ws: Vec<f32> = e
-                .attribute("width")
-                .unwrap_or("1")
-                .split_whitespace()
-                .filter_map(|s| s.parse::<f32>().ok())
-                .collect();
-            let base = ws
-                .first()
-                .copied()
-                .filter(|w| *w > 0.0 && w.is_finite())
-                .unwrap_or(1.0);
-            let xy: Vec<f32> = node_text(e)
-                .split_whitespace()
-                .map(|s| s.parse::<f32>())
-                .collect::<std::result::Result<_, _>>()
-                .ok()?;
+            let ws: Vec<f32> = e.attribute("width").unwrap_or("1").split_whitespace().filter_map(|s| s.parse::<f32>().ok()).collect();
+            let base = ws.first().copied().filter(|w| *w > 0.0 && w.is_finite()).unwrap_or(1.0);
+            let xy: Vec<f32> = node_text(e).split_whitespace().map(|s| s.parse::<f32>()).collect::<std::result::Result<_, _>>().ok()?;
             let n = xy.len() / 2;
             if n == 0 || xy.iter().any(|v| !v.is_finite()) {
                 return None;
@@ -300,25 +243,11 @@ fn import_elem(
             (it, extra_attrs(e, &["size", "x", "y", "color"]))
         }
         "image" | "teximage" => {
-            let (l, t, r, b) = (
-                attr_f(e, "left")?,
-                attr_f(e, "top")?,
-                attr_f(e, "right")?,
-                attr_f(e, "bottom")?,
-            );
+            let (l, t, r, b) = (attr_f(e, "left")?, attr_f(e, "top")?, attr_f(e, "right")?, attr_f(e, "bottom")?);
             let data = b64_decode(&node_text(e))?;
-            let ext = image::guess_format(&data)
-                .ok()
-                .and_then(|f| f.extensions_str().first().copied())?;
+            let ext = image::guess_format(&data).ok().and_then(|f| f.extensions_str().first().copied())?;
             let file = doc.images.add(data, ext);
-            let mut it = Item::new(Kind::Img(crate::item::Img {
-                x: l + ox,
-                y: t + oy,
-                w: r - l,
-                h: b - t,
-                ang: 0.0,
-                file,
-            }));
+            let mut it = Item::new(Kind::Img(crate::item::Img { x: l + ox, y: t + oy, w: r - l, h: b - t, ang: 0.0, file }));
             it.color = crate::item::INK;
             let mut v = it.json();
             v["ly"] = json!(layer);
@@ -392,17 +321,8 @@ struct OutPage<'a> {
 
 /// Schreibt das Dokument als gzip-komprimiertes Xournal++-XML (fileversion 4).
 pub fn export_xopp(doc: &Document, opt: XoppExport) -> Result<Vec<u8>> {
-    let layers: Vec<Layer> = doc
-        .board
-        .get("layers")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter(|v| v.is_object())
-                .map(Layer::from_json)
-                .collect()
-        })
-        .unwrap_or_default();
+    let layers: Vec<Layer> =
+        doc.board.get("layers").and_then(Value::as_array).map(|a| a.iter().filter(|v| v.is_object()).map(Layer::from_json).collect()).unwrap_or_default();
     let layer_idx = |id: i32| layers.iter().position(|l| l.id == id).unwrap_or(0);
     let objs: Vec<Obj> = doc
         .board
@@ -417,23 +337,8 @@ pub fn export_xopp(doc: &Document, opt: XoppExport) -> Result<Vec<u8>> {
     let (mut pages, assign): (Vec<OutPage>, Vec<usize>) = match &doc.mode {
         BoardMode::Pages(s) if !s.pages.is_empty() => {
             let rs = s.rects();
-            let pages = s
-                .pages
-                .iter()
-                .zip(&rs)
-                .map(|(p, r)| OutPage {
-                    w: p.w,
-                    h: p.h,
-                    ox: r.left,
-                    oy: r.top,
-                    page: Some(p),
-                    layers: Vec::new(),
-                })
-                .collect();
-            (
-                pages,
-                objs.iter().map(|o| s.page_of(&o.it).unwrap_or(0)).collect(),
-            )
+            let pages = s.pages.iter().zip(&rs).map(|(p, r)| OutPage { w: p.w, h: p.h, ox: r.left, oy: r.top, page: Some(p), layers: Vec::new() }).collect();
+            (pages, objs.iter().map(|o| s.page_of(&o.it).unwrap_or(0)).collect())
         }
         _ => infinite_pages(&objs, opt),
     };
@@ -449,28 +354,14 @@ pub fn export_xopp(doc: &Document, opt: XoppExport) -> Result<Vec<u8>> {
 
     let mut out = String::with_capacity(1 << 16);
     out.push_str("<?xml version=\"1.0\" standalone=\"no\"?>\n");
-    let _ = writeln!(
-        out,
-        "<xournal creator=\"OwnDraw {}\" fileversion=\"4\">",
-        env!("CARGO_PKG_VERSION")
-    );
+    let _ = writeln!(out, "<xournal creator=\"OwnDraw {}\" fileversion=\"4\">", env!("CARGO_PKG_VERSION"));
     let xo = doc.meta.extra.get("xopp");
-    let title = xo
-        .and_then(|x| x.get("title"))
-        .and_then(Value::as_str)
-        .filter(|t| !t.is_empty())
-        .unwrap_or(&doc.meta.name);
+    let title = xo.and_then(|x| x.get("title")).and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or(&doc.meta.name);
     let _ = writeln!(out, "<title>{}</title>", esc(title, false));
     if let Some(t) = &doc.thumb {
         let _ = writeln!(out, "<preview>{}</preview>", b64_encode(t));
     }
-    for r in xo
-        .and_then(|x| x.get("raw"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-    {
+    for r in xo.and_then(|x| x.get("raw")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
         out.push_str(r);
         out.push('\n');
     }
@@ -496,42 +387,18 @@ fn infinite_pages<'a>(objs: &[Obj], opt: XoppExport) -> (Vec<OutPage<'a>>, Vec<u
         }
     }
     let Some(b) = b else {
-        return (
-            vec![OutPage {
-                w: aw,
-                h: ah,
-                ox: 0.0,
-                oy: 0.0,
-                page: None,
-                layers: Vec::new(),
-            }],
-            Vec::new(),
-        );
+        return (vec![OutPage { w: aw, h: ah, ox: 0.0, oy: 0.0, page: None, layers: Vec::new() }], Vec::new());
     };
     let (x0, y0) = (b.left - MARGIN, b.top - MARGIN);
     let (w, h) = (b.width() + 2.0 * MARGIN, b.height() + 2.0 * MARGIN);
     if !opt.tile_a4 {
-        let pg = OutPage {
-            w,
-            h,
-            ox: x0,
-            oy: y0,
-            page: None,
-            layers: Vec::new(),
-        };
+        let pg = OutPage { w, h, ox: x0, oy: y0, page: None, layers: Vec::new() };
         return (vec![pg], vec![0; objs.len()]);
     }
     let cols = ((w / aw).ceil() as usize).max(1);
     let rows = ((h / ah).ceil() as usize).max(1);
     let pages = (0..rows * cols)
-        .map(|i| OutPage {
-            w: aw,
-            h: ah,
-            ox: x0 + (i % cols) as f32 * aw,
-            oy: y0 + (i / cols) as f32 * ah,
-            page: None,
-            layers: Vec::new(),
-        })
+        .map(|i| OutPage { w: aw, h: ah, ox: x0 + (i % cols) as f32 * aw, oy: y0 + (i / cols) as f32 * ah, page: None, layers: Vec::new() })
         .collect();
     let assign = objs
         .iter()
@@ -547,24 +414,14 @@ fn infinite_pages<'a>(objs: &[Obj], opt: XoppExport) -> (Vec<OutPage<'a>>, Vec<u
 
 fn write_page(out: &mut String, pg: &OutPage, layers: &[Layer]) {
     let xo = pg.page.and_then(|p| p.extra.get("xopp"));
-    let _ = writeln!(
-        out,
-        "<page width=\"{}\" height=\"{}\">",
-        fnum(pg.w),
-        fnum(pg.h)
-    );
+    let _ = writeln!(out, "<page width=\"{}\" height=\"{}\">", fnum(pg.w), fnum(pg.h));
     // Hintergrund
     let stored: Vec<(String, String)> = xo
         .and_then(|x| x.get("bg"))
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|a| {
-            Some((
-                a.get(0)?.as_str()?.to_string(),
-                a.get(1)?.as_str()?.to_string(),
-            ))
-        })
+        .filter_map(|a| Some((a.get(0)?.as_str()?.to_string(), a.get(1)?.as_str()?.to_string())))
         .collect();
     let get = |k: &str| stored.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
     out.push_str("<background");
@@ -582,16 +439,10 @@ fn write_page(out: &mut String, pg: &OutPage, layers: &[Layer]) {
             PageBg::Grid => "graph",
             PageBg::Dotted => "dotted",
         });
-        let _ = write!(
-            out,
-            " type=\"solid\" color=\"{}\" style=\"{}\"",
-            esc(get("color").unwrap_or("#ffffffff"), true),
-            esc(style, true)
-        );
+        let _ = write!(out, " type=\"solid\" color=\"{}\" style=\"{}\"", esc(get("color").unwrap_or("#ffffffff"), true), esc(style, true));
         for (k, v) in &stored {
             // `config` gehört zum Stil: nur behalten, wenn der Stil unverändert ist
-            if matches!(k.as_str(), "type" | "color" | "style") || (k == "config" && old.is_none())
-            {
+            if matches!(k.as_str(), "type" | "color" | "style") || (k == "config" && old.is_none()) {
                 continue;
             }
             let _ = write!(out, " {k}=\"{}\"", esc(v, true));
@@ -606,16 +457,8 @@ fn write_page(out: &mut String, pg: &OutPage, layers: &[Layer]) {
         .flatten()
         .filter_map(|r| Some((r.get("l")?.as_i64()?, r.get("x")?.as_str()?)))
         .collect();
-    let stored_n = xo
-        .and_then(|x| x.get("layers"))
-        .and_then(Value::as_u64)
-        .map(|n| n as usize)
-        .unwrap_or(layers.len());
-    let raw_n = raw
-        .iter()
-        .map(|(l, _)| (*l + 1).max(0) as usize)
-        .max()
-        .unwrap_or(0);
+    let stored_n = xo.and_then(|x| x.get("layers")).and_then(Value::as_u64).map(|n| n as usize).unwrap_or(layers.len());
+    let raw_n = raw.iter().map(|(l, _)| (*l + 1).max(0) as usize).max().unwrap_or(0);
     let n = stored_n.max(pg.layers.len()).max(raw_n).max(1);
     for k in 0..n {
         out.push_str("<layer");
@@ -641,26 +484,14 @@ fn write_page(out: &mut String, pg: &OutPage, layers: &[Layer]) {
 
 /// Zusatz-Attribute `"xa"` eines Items.
 fn xattrs(raw: &Value) -> Vec<(&str, &str)> {
-    raw.get("xa")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|a| Some((a.get(0)?.as_str()?, a.get(1)?.as_str()?)))
-        .collect()
+    raw.get("xa").and_then(Value::as_array).into_iter().flatten().filter_map(|a| Some((a.get(0)?.as_str()?, a.get(1)?.as_str()?))).collect()
 }
 
 /// Schreibt die Attribute `known` (Name, Wert) und danach die übrigen Zusatz-Attribute; Zusatz-Attribute
 /// mit gleichem Namen ersetzen die berechneten nur bei `tool` (z. B. Radierer).
 fn write_attrs(out: &mut String, known: &[(&str, String)], xa: &[(&str, &str)]) {
     for (k, v) in known {
-        let v = if *k == "tool" {
-            xa.iter()
-                .find(|(n, _)| n == k)
-                .map(|(_, v)| v.to_string())
-                .unwrap_or_else(|| v.clone())
-        } else {
-            v.clone()
-        };
+        let v = if *k == "tool" { xa.iter().find(|(n, _)| n == k).map(|(_, v)| v.to_string()).unwrap_or_else(|| v.clone()) } else { v.clone() };
         let _ = write!(out, " {k}=\"{}\"", esc(&v, true));
     }
     for (k, v) in xa {
@@ -672,24 +503,11 @@ fn write_attrs(out: &mut String, known: &[(&str, String)], xa: &[(&str, &str)]) 
 }
 
 fn valid_name(k: &str) -> bool {
-    !k.is_empty()
-        && k.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'))
-        && !k.starts_with(|c: char| c.is_ascii_digit())
+    !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.')) && !k.starts_with(|c: char| c.is_ascii_digit())
 }
 
 /// Ein Strich: Punkte (Tripel, Weltkoordinaten), Breite, Druck ja/nein.
-fn emit_stroke(
-    out: &mut String,
-    it: &Item,
-    p: &[f32],
-    hl: bool,
-    var: bool,
-    ox: f32,
-    oy: f32,
-    xa: &[(&str, &str)],
-    fill: Option<u8>,
-) {
+fn emit_stroke(out: &mut String, it: &Item, p: &[f32], hl: bool, var: bool, ox: f32, oy: f32, xa: &[(&str, &str)], fill: Option<u8>) {
     let n = p.len() / 3;
     if n == 0 {
         return;
@@ -702,20 +520,12 @@ fn emit_stroke(
     if var && !hl && n > 1 {
         width.push_str(&fnum(it.width * 2.0));
         for i in 0..n - 1 {
-            let _ = write!(
-                width,
-                " {}",
-                fnum(it.width * (0.35 + 1.3 * p[i * 3 + 2]).max(0.0))
-            );
+            let _ = write!(width, " {}", fnum(it.width * (0.35 + 1.3 * p[i * 3 + 2]).max(0.0)));
         }
     } else {
         width.push_str(&fnum(it.width));
     }
-    let mut known = vec![
-        ("tool", if hl { "highlighter" } else { "pen" }.to_string()),
-        ("color", fmt_color(color)),
-        ("width", width),
-    ];
+    let mut known = vec![("tool", if hl { "highlighter" } else { "pen" }.to_string()), ("color", fmt_color(color)), ("width", width)];
     if let Some(f) = fill {
         known.push(("fill", f.to_string()));
     }
@@ -733,27 +543,9 @@ fn emit_stroke(
     out.push_str("</stroke>\n");
 }
 
-fn emit_text(
-    out: &mut String,
-    text: &str,
-    color: u32,
-    size: f32,
-    x: f32,
-    y: f32,
-    xa: &[(&str, &str)],
-) {
-    let font = xa
-        .iter()
-        .find(|(k, _)| *k == "font")
-        .map(|(_, v)| v.to_string())
-        .unwrap_or_else(|| "Sans".into());
-    let known = [
-        ("font", font),
-        ("size", fnum(size)),
-        ("x", fnum(x)),
-        ("y", fnum(y)),
-        ("color", fmt_color(color)),
-    ];
+fn emit_text(out: &mut String, text: &str, color: u32, size: f32, x: f32, y: f32, xa: &[(&str, &str)]) {
+    let font = xa.iter().find(|(k, _)| *k == "font").map(|(_, v)| v.to_string()).unwrap_or_else(|| "Sans".into());
+    let known = [("font", font), ("size", fnum(size)), ("x", fnum(x)), ("y", fnum(y)), ("color", fmt_color(color))];
     out.push_str("<text");
     write_attrs(out, &known, xa);
     let _ = writeln!(out, ">{}</text>", esc(text, false));
@@ -770,16 +562,11 @@ fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
             let heads = it.filled_heads();
             let first_head = parts.len().saturating_sub(heads.len());
             for (i, part) in parts.iter().enumerate() {
-                let Kind::Stroke(s) = &part.kind else {
-                    continue;
-                };
+                let Kind::Stroke(s) = &part.kind else { continue };
                 if i >= first_head {
                     // Linienbreite 0 → scharfe Spitze
                     let h = heads[i - first_head];
-                    let p: Vec<f32> = [0, 1, 2, 0]
-                        .iter()
-                        .flat_map(|&k| [h[k * 2], h[k * 2 + 1], 0.5])
-                        .collect();
+                    let p: Vec<f32> = [0, 1, 2, 0].iter().flat_map(|&k| [h[k * 2], h[k * 2 + 1], 0.5]).collect();
                     let mut tri = part.clone();
                     tri.width = 0.01;
                     emit_stroke(out, &tri, &p, s.hl, false, ox, oy, &[], Some(255));
@@ -808,15 +595,7 @@ fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
                     fnum(t)
                 );
                 let pad = n.size * 0.7;
-                emit_text(
-                    out,
-                    &n.text,
-                    0xFF1B1B1F,
-                    n.size,
-                    n.x + pad - ox,
-                    n.y + pad - oy,
-                    &xa,
-                );
+                emit_text(out, &n.text, 0xFF1B1B1F, n.size, n.x + pad - ox, n.y + pad - oy, &xa);
             } else {
                 emit_text(out, &n.text, it.color, n.size, n.x - ox, n.y - oy, &xa);
             }
@@ -824,39 +603,22 @@ fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
         Kind::Img(m) => {
             let (l, t) = (m.x.min(m.x + m.w), m.y.min(m.y + m.h));
             // unverändertes LaTeX-Bild roh zurückschreiben
-            if let (Some(x), Some(g)) = (
-                o.raw.get("xraw").and_then(Value::as_str),
-                o.raw.get("xg").and_then(Value::as_array),
-            ) {
-                let g: Vec<f32> = g
-                    .iter()
-                    .filter_map(Value::as_f64)
-                    .map(|v| v as f32)
-                    .collect();
+            if let (Some(x), Some(g)) = (o.raw.get("xraw").and_then(Value::as_str), o.raw.get("xg").and_then(Value::as_array)) {
+                let g: Vec<f32> = g.iter().filter_map(Value::as_f64).map(|v| v as f32).collect();
                 let cur = [m.x - ox, m.y - oy, m.w, m.h];
-                if g.len() == 4
-                    && m.ang == 0.0
-                    && g.iter().zip(cur).all(|(a, b)| (a - b).abs() < 0.01)
-                {
+                if g.len() == 4 && m.ang == 0.0 && g.iter().zip(cur).all(|(a, b)| (a - b).abs() < 0.01) {
                     out.push_str(x);
                     out.push('\n');
                     return;
                 }
             }
-            let Some(bytes) = doc.images.files.get(&m.file) else {
-                return;
-            };
+            let Some(bytes) = doc.images.files.get(&m.file) else { return };
             let png = if bytes.starts_with(b"\x89PNG") {
                 bytes.clone()
             } else {
-                let Ok(im) = image::load_from_memory(bytes) else {
-                    return;
-                };
+                let Ok(im) = image::load_from_memory(bytes) else { return };
                 let mut v = Vec::new();
-                if im
-                    .write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png)
-                    .is_err()
-                {
+                if im.write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png).is_err() {
                     return;
                 }
                 v
@@ -881,16 +643,8 @@ fn fnum(v: f32) -> String {
     }
     // kürzeste f32-Darstellung (385.6 statt 385.60001), sonst auf 5 Stellen gerundet
     let short = v.to_string();
-    let s = if short.split_once('.').is_none_or(|(_, d)| d.len() <= 5) {
-        short
-    } else {
-        format!("{:.5}", v as f64)
-    };
-    let s = if s.contains('.') {
-        s.trim_end_matches('0').trim_end_matches('.')
-    } else {
-        &s
-    };
+    let s = if short.split_once('.').is_none_or(|(_, d)| d.len() <= 5) { short } else { format!("{:.5}", v as f64) };
+    let s = if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.') } else { &s };
     if s == "-0" {
         "0".into()
     } else {
@@ -925,9 +679,7 @@ const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012
 fn b64_encode(d: &[u8]) -> String {
     let mut o = String::with_capacity(d.len().div_ceil(3) * 4);
     for c in d.chunks(3) {
-        let n = (c[0] as u32) << 16
-            | (*c.get(1).unwrap_or(&0) as u32) << 8
-            | *c.get(2).unwrap_or(&0) as u32;
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
         for i in 0..4 {
             if i <= c.len() {
                 o.push(B64[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -1004,10 +756,7 @@ mod tests {
         assert_eq!(fnum(1.5), "1.5");
         assert_eq!(fnum(2.0), "2");
         assert_eq!(fnum(-0.000001), "0");
-        assert_eq!(
-            esc("a<b & \"c\"\n", true),
-            "a&lt;b &amp; &quot;c&quot;&#10;"
-        );
+        assert_eq!(esc("a<b & \"c\"\n", true), "a&lt;b &amp; &quot;c&quot;&#10;");
         assert_eq!(esc("a\nb", false), "a\nb");
     }
 }

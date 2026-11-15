@@ -10,12 +10,7 @@ pub struct RectF {
 
 impl RectF {
     pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
-        RectF {
-            left,
-            top,
-            right,
-            bottom,
-        }
+        RectF { left, top, right, bottom }
     }
     pub fn width(&self) -> f32 {
         self.right - self.left
@@ -46,12 +41,7 @@ impl RectF {
         a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
     }
     pub fn contains_pt(&self, x: f32, y: f32) -> bool {
-        self.left < self.right
-            && self.top < self.bottom
-            && x >= self.left
-            && x < self.right
-            && y >= self.top
-            && y < self.bottom
+        self.left < self.right && self.top < self.bottom && x >= self.left && x < self.right && y >= self.top && y < self.bottom
     }
     pub fn contains(&self, o: &RectF) -> bool {
         self.left < self.right

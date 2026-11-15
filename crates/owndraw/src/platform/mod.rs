@@ -23,10 +23,7 @@ impl FileRef {
     /// Anzeigename (Dateiname ohne Ordner).
     pub fn display_name(&self) -> String {
         match self {
-            FileRef::Path(p) => p
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default(),
+            FileRef::Path(p) => p.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
             FileRef::Uri(u) => {
                 let d = percent_decode(u);
                 d.rsplit(['/', ':']).next().unwrap_or(&d).to_string()
@@ -107,13 +104,7 @@ impl FileKind {
     /// Art anhand des Dateinamens.
     pub fn of_name(name: &str) -> FileKind {
         let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-        for k in [
-            FileKind::Owndraw,
-            FileKind::Xopp,
-            FileKind::Image,
-            FileKind::Pdf,
-            FileKind::Zip,
-        ] {
+        for k in [FileKind::Owndraw, FileKind::Xopp, FileKind::Image, FileKind::Pdf, FileKind::Zip] {
             if k.extensions().contains(&ext.as_str()) {
                 return k;
             }
@@ -126,16 +117,9 @@ impl FileKind {
 #[derive(Clone, Debug)]
 pub enum ClipData {
     /// Bild als RGBA8 (nicht vormultipliziert).
-    Image {
-        w: u32,
-        h: u32,
-        rgba: Vec<u8>,
-    },
+    Image { w: u32, h: u32, rgba: Vec<u8> },
     /// Interne OwnDraw-Items (JSON-Text, Format von board.rs) plus gerenderte Vorschau als Bild.
-    Items {
-        json: String,
-        image: Option<(u32, u32, Vec<u8>)>,
-    },
+    Items { json: String, image: Option<(u32, u32, Vec<u8>)> },
     Text(String),
 }
 

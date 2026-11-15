@@ -45,18 +45,7 @@ fn strokes(n: usize, ext_w: f32, ext_h: f32, seed: u64) -> Vec<Rc<Item>> {
 }
 
 fn mv(a: Action, x: f32, y: f32, t: ToolType) -> Motion {
-    Motion {
-        action: a,
-        pointers: vec![Pointer {
-            id: 1,
-            x,
-            y,
-            pressure: 0.5,
-            tool: t,
-        }],
-        history: Vec::new(),
-        stylus_button: false,
-    }
+    Motion { action: a, pointers: vec![Pointer { id: 1, x, y, pressure: 0.5, tool: t }], history: Vec::new(), stylus_button: false }
 }
 
 #[derive(Default)]
@@ -75,10 +64,7 @@ impl Stat {
         let mean = self.ms.iter().sum::<f64>() / n as f64;
         let p95 = self.ms[((n as f64 * 0.95) as usize).min(n - 1)];
         let max = *self.ms.last().unwrap_or(&0.0);
-        println!(
-            "{name:<34} {mean:8.2} {p95:8.2} {max:8.2}   {:5.1} %",
-            100.0 * self.area / n as f64
-        );
+        println!("{name:<34} {mean:8.2} {p95:8.2} {max:8.2}   {:5.1} %", 100.0 * self.area / n as f64);
     }
 }
 
@@ -97,22 +83,12 @@ fn frame(b: &mut Board, pm: &mut Pixmap, up: &mut Vec<u8>) -> (f64, f64) {
             area += p.area();
         }
     }
-    (
-        t.elapsed().as_secs_f64() * 1000.0,
-        area as f64 / (pm.width() * pm.height()) as f64,
-    )
+    (t.elapsed().as_secs_f64() * 1000.0, area as f64 / (pm.width() * pm.height()) as f64)
 }
 
 fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
-    println!(
-        "\n== {title}: {n} Striche, {}×{} px ==",
-        (W * ps) as u32,
-        (H * ps) as u32
-    );
-    println!(
-        "{:<34} {:>8} {:>8} {:>8}   {:>7}",
-        "Szenario (ms je Bild)", "Mittel", "95 %", "Max", "Upload"
-    );
+    println!("\n== {title}: {n} Striche, {}×{} px ==", (W * ps) as u32, (H * ps) as u32);
+    println!("{:<34} {:>8} {:>8} {:>8}   {:>7}", "Szenario (ms je Bild)", "Mittel", "95 %", "Max", "Upload");
     let mut b = Board::new(1.0);
     b.set_size(W, H, ps);
     if pages {
@@ -151,22 +127,13 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     let t = Instant::now();
     let th = b.thumb();
     let png = th.encode_png().unwrap();
-    println!(
-        "{:<34} {:8.2}   (PNG {} kB)",
-        "Vorschaubild + PNG",
-        t.elapsed().as_secs_f64() * 1000.0,
-        png.len() / 1000
-    );
+    println!("{:<34} {:8.2}   (PNG {} kB)", "Vorschaubild + PNG", t.elapsed().as_secs_f64() * 1000.0, png.len() / 1000);
     let t = Instant::now();
     let v: serde_json::Value = serde_json::from_str(&s).unwrap();
     let mut b2 = Board::new(1.0);
     b2.from_json(&v);
     let load = t.elapsed().as_secs_f64() * 1000.0;
-    println!(
-        "{:<34} {save:8.2}   (JSON {:.1} MB)",
-        "Speichern (JSON)",
-        s.len() as f64 / 1e6
-    );
+    println!("{:<34} {save:8.2}   (JSON {:.1} MB)", "Speichern (JSON)", s.len() as f64 / 1e6);
     println!("{:<34} {load:8.2}", "Laden (JSON)");
     drop(b2);
 
@@ -175,10 +142,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     st.add(ms, f);
     st.line("Erstes Bild");
     if let Ok(d) = std::env::var("OWNDRAW_DUMP") {
-        let _ = pm.save_png(format!(
-            "{d}/{}-{ps}.png",
-            if pages { "pages" } else { "inf" }
-        ));
+        let _ = pm.save_png(format!("{d}/{}-{ps}.png", if pages { "pages" } else { "inf" }));
     }
     if pages {
         b.show_page(0);
@@ -192,12 +156,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     frame(&mut b, &mut pm, &mut up);
     for k in 1..400 {
         let a = k as f32 * 0.05;
-        b.on_touch(&mv(
-            Action::Move,
-            cx + a * 40.0,
-            cy + (a * 3.0).sin() * 120.0,
-            ToolType::Stylus,
-        ));
+        b.on_touch(&mv(Action::Move, cx + a * 40.0, cy + (a * 3.0).sin() * 120.0, ToolType::Stylus));
         let (ms, f) = frame(&mut b, &mut pm, &mut up);
         st.add(ms, f);
     }
@@ -205,11 +164,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     let t = Instant::now();
     b.on_touch(&mv(Action::Up, cx + 800.0, cy, ToolType::Stylus));
     frame(&mut b, &mut pm, &mut up);
-    println!(
-        "{:<34} {:8.2}",
-        "Strich beenden + Bild",
-        t.elapsed().as_secs_f64() * 1000.0
-    );
+    println!("{:<34} {:8.2}", "Strich beenden + Bild", t.elapsed().as_secs_f64() * 1000.0);
 
     // Marker (halbtransparent)
     let mut st = Stat::default();
@@ -218,12 +173,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     frame(&mut b, &mut pm, &mut up);
     for k in 1..400 {
         let a = k as f32 * 0.05;
-        b.on_touch(&mv(
-            Action::Move,
-            cx + a * 40.0,
-            cy + 200.0 + (a * 3.0).sin() * 60.0,
-            ToolType::Stylus,
-        ));
+        b.on_touch(&mv(Action::Move, cx + a * 40.0, cy + 200.0 + (a * 3.0).sin() * 60.0, ToolType::Stylus));
         let (ms, f) = frame(&mut b, &mut pm, &mut up);
         st.add(ms, f);
     }
@@ -236,21 +186,11 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     let mut st = Stat::default();
     b.on_touch(&mv(Action::Down, 900.0, 500.0, ToolType::Finger));
     for k in 1..120 {
-        b.on_touch(&mv(
-            Action::Move,
-            900.0 - k as f32 * 7.3,
-            500.0 - k as f32 * 3.1,
-            ToolType::Finger,
-        ));
+        b.on_touch(&mv(Action::Move, 900.0 - k as f32 * 7.3, 500.0 - k as f32 * 3.1, ToolType::Finger));
         let (ms, f) = frame(&mut b, &mut pm, &mut up);
         st.add(ms, f);
     }
-    b.on_touch(&mv(
-        Action::Up,
-        900.0 - 120.0 * 7.3,
-        500.0 - 120.0 * 3.1,
-        ToolType::Finger,
-    ));
+    b.on_touch(&mv(Action::Up, 900.0 - 120.0 * 7.3, 500.0 - 120.0 * 3.1, ToolType::Finger));
     st.line("Verschieben (Finger)");
     let mut st = Stat::default();
     let (ms, f) = frame(&mut b, &mut pm, &mut up);
@@ -290,12 +230,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     let mut st = Stat::default();
     b.on_touch(&mv(Action::Down, 300.0, 300.0, ToolType::Eraser));
     for k in 1..100 {
-        b.on_touch(&mv(
-            Action::Move,
-            300.0 + k as f32 * 6.0,
-            300.0 + k as f32 * 2.0,
-            ToolType::Eraser,
-        ));
+        b.on_touch(&mv(Action::Move, 300.0 + k as f32 * 6.0, 300.0 + k as f32 * 2.0, ToolType::Eraser));
         let (ms, f) = frame(&mut b, &mut pm, &mut up);
         st.add(ms, f);
     }
@@ -308,10 +243,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     if let Ok(d) = std::env::var("OWNDRAW_DUMP") {
         b.refresh();
         frame(&mut b, &mut pm, &mut up);
-        let _ = pm.save_png(format!(
-            "{d}/{}-{ps}-end.png",
-            if pages { "pages" } else { "inf" }
-        ));
+        let _ = pm.save_png(format!("{d}/{}-{ps}-end.png", if pages { "pages" } else { "inf" }));
     }
     let mut st = Stat::default();
     for _ in 0..20 {
@@ -335,10 +267,7 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
 fn main() {
     let t = Instant::now();
     let _ = owndraw_core::text::measure("Start", 14.0);
-    println!(
-        "Schrift laden: {:.2} ms",
-        t.elapsed().as_secs_f64() * 1000.0
-    );
+    println!("Schrift laden: {:.2} ms", t.elapsed().as_secs_f64() * 1000.0);
     scenario("Unendlich, Desktop", 1.0, 3000, false);
     scenario("Unendlich, HiDPI ×2", 2.0, 3000, false);
     scenario("Seitenmodus 20 Seiten", 1.0, 4000, true);

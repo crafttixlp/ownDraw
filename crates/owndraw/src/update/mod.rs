@@ -90,19 +90,14 @@ impl Config {
         Config {
             api_base: "https://api.github.com".into(),
             repo: settings.update_repo.clone(),
-            current: Version::parse(env!("CARGO_PKG_VERSION"))
-                .unwrap_or_else(|_| Version::new(0, 0, 0)),
+            current: Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0)),
             pubkey: verify::PUBKEY.to_string(),
             work_dir: cache.join("update"),
             build_dir: cache.join("build"),
             versions_dir: crate::data_dir().join("versions"),
             target: install::running_appimage(),
             skip: settings.update_skip.clone(),
-            mode: if cfg!(target_os = "android") {
-                UpdateMode::Package
-            } else {
-                settings.update_mode
-            },
+            mode: if cfg!(target_os = "android") { UpdateMode::Package } else { settings.update_mode },
             allow_http: false,
             cargo: None,
             #[cfg(not(target_os = "android"))]
@@ -112,11 +107,7 @@ impl Config {
     }
 
     fn api<'a>(&'a self, http: &'a dyn Http) -> Api<'a> {
-        Api {
-            http,
-            base: &self.api_base,
-            repo: &self.repo,
-        }
+        Api { http, base: &self.api_base, repo: &self.repo }
     }
 
     /// Ob ein echter Signaturschlüssel einkompiliert ist.
@@ -204,25 +195,9 @@ pub struct CheckResult {
 /// Fragt `/releases/latest` ab und vergleicht mit der laufenden Version.
 pub fn check(cfg: &Config, http: &dyn Http) -> Result<CheckResult, Error> {
     let latest = cfg.api(http).latest()?;
-    let newer = latest
-        .as_ref()
-        .map(|r| r.version > cfg.current && !r.prerelease)
-        .unwrap_or(false);
-    let skipped = newer
-        && latest
-            .as_ref()
-            .and_then(|r| {
-                cfg.skip
-                    .as_deref()
-                    .and_then(versions::parse_tag)
-                    .map(|s| s == r.version)
-            })
-            .unwrap_or(false);
-    Ok(CheckResult {
-        latest,
-        newer,
-        skipped,
-    })
+    let newer = latest.as_ref().map(|r| r.version > cfg.current && !r.prerelease).unwrap_or(false);
+    let skipped = newer && latest.as_ref().and_then(|r| cfg.skip.as_deref().and_then(versions::parse_tag).map(|s| s == r.version)).unwrap_or(false);
+    Ok(CheckResult { latest, newer, skipped })
 }
 
 /// Alle Releases (neueste zuerst).
@@ -249,30 +224,16 @@ fn check_url(cfg: &Config, url: &str) -> Result<(), Error> {
     if url.starts_with("https://") || (cfg.allow_http && url.starts_with("http://")) {
         Ok(())
     } else {
-        Err(Error::Other(
-            "Download-Adresse ist nicht HTTPS; abgelehnt.".into(),
-        ))
+        Err(Error::Other("Download-Adresse ist nicht HTTPS; abgelehnt.".into()))
     }
 }
 
 /// Lädt Asset + `.minisig` nach `dir`, prüft die Signatur und liefert den Pfad der geprüften Datei.
-fn fetch_verified(
-    cfg: &Config,
-    http: &dyn Http,
-    rel: &Release,
-    name: &str,
-    dir: &Path,
-    ctl: &Ctl,
-) -> Result<PathBuf, Error> {
+fn fetch_verified(cfg: &Config, http: &dyn Http, rel: &Release, name: &str, dir: &Path, ctl: &Ctl) -> Result<PathBuf, Error> {
     if !cfg.configured() {
         return Err(Error::NotConfigured);
     }
-    let asset = rel.asset(name).ok_or_else(|| {
-        Error::Other(format!(
-            "Das Release {} enthält kein Asset „{name}“.",
-            rel.tag
-        ))
-    })?;
+    let asset = rel.asset(name).ok_or_else(|| Error::Other(format!("Das Release {} enthält kein Asset „{name}“.", rel.tag)))?;
     let sig = rel
         .asset(&format!("{name}.minisig"))
         .ok_or_else(|| Error::BadSignature(format!("zu {name} gibt es keine .minisig-Datei")))?;
@@ -286,9 +247,7 @@ fn fetch_verified(
     }
     ctl.step(&format!("{name} laden …"));
     let part = dir.join(format!("{name}.part"));
-    let r = http.download(&asset.url, &part, &ctl.cancel, &mut |d, t| {
-        ctl.progress(d, t)
-    });
+    let r = http.download(&asset.url, &part, &ctl.cancel, &mut |d, t| ctl.progress(d, t));
     if let Err(e) = r {
         let _ = std::fs::remove_file(&part);
         return Err(e);
@@ -304,27 +263,16 @@ fn fetch_verified(
 }
 
 /// Lädt und installiert `rel` im Modus `cfg.mode` (Android: immer fertige APK).
-pub fn install_release(
-    cfg: &Config,
-    http: &dyn Http,
-    rel: &Release,
-    ctl: &Ctl,
-) -> Result<Installed, Error> {
+pub fn install_release(cfg: &Config, http: &dyn Http, rel: &Release, ctl: &Ctl) -> Result<Installed, Error> {
     let dir = cfg.work_dir.join(&rel.tag);
     #[cfg(target_os = "android")]
     {
         let name = package_asset(&rel.version).unwrap_or_default();
         let apk = fetch_verified(cfg, http, rel, &name, &dir, ctl)?;
         ctl.step("System-Installer öffnen …");
-        let note = crate::platform::android::install_apk(&apk)
-            .map_err(|e| Error::Other(format!("Installer nicht startbar: {e}")))?;
+        let note = crate::platform::android::install_apk(&apk).map_err(|e| Error::Other(format!("Installer nicht startbar: {e}")))?;
         ctl.log(&note);
-        Ok(Installed {
-            version: rel.version.clone(),
-            path: apk.clone(),
-            backup: apk,
-            restart: false,
-        })
+        Ok(Installed { version: rel.version.clone(), path: apk.clone(), backup: apk, restart: false })
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -339,11 +287,7 @@ pub fn install_release(
                 fetch_verified(cfg, http, rel, &name, &dir, ctl)?
             }
             UpdateMode::Source => {
-                let cargo = cfg
-                    .cargo
-                    .clone()
-                    .or_else(build::find_cargo)
-                    .ok_or(Error::NoToolchain)?;
+                let cargo = cfg.cargo.clone().or_else(build::find_cargo).ok_or(Error::NoToolchain)?;
                 let tar = fetch_verified(cfg, http, rel, &source_asset(&rel.version), &dir, ctl)?;
                 ctl.step("Quellcode entpacken …");
                 // Ältere Quellbäume aufräumen (sparen Platz), nur der aktuelle bleibt.
@@ -366,13 +310,7 @@ pub fn install_release(
             return Err(Error::Cancelled);
         }
         ctl.step("Installieren …");
-        let r = install::install_appimage(
-            &new_file,
-            &rel.version,
-            &target,
-            &cfg.current,
-            &cfg.versions_dir,
-        )?;
+        let r = install::install_appimage(&new_file, &rel.version, &target, &cfg.current, &cfg.versions_dir)?;
         let _ = std::fs::remove_dir_all(&dir);
         Ok(r)
     }
@@ -382,13 +320,7 @@ pub fn install_release(
 pub fn install_saved(cfg: &Config, saved: &versions::Saved, ctl: &Ctl) -> Result<Installed, Error> {
     let target = install::require_target(cfg.target.as_deref())?;
     ctl.step("Vorherige Version wiederherstellen …");
-    install::install_appimage(
-        &saved.path,
-        &saved.version,
-        &target,
-        &cfg.current,
-        &cfg.versions_dir,
-    )
+    install::install_appimage(&saved.path, &saved.version, &target, &cfg.current, &cfg.versions_dir)
 }
 
 /// Hintergrunddienst für die Oberfläche. Der Konstruktor tut nichts im Netz.
@@ -418,11 +350,7 @@ impl Updater {
     }
 
     pub fn with_http(http: Arc<dyn Http>) -> Updater {
-        Updater {
-            ctl: Ctl::default(),
-            http,
-            busy: Arc::new(AtomicBool::new(false)),
-        }
+        Updater { ctl: Ctl::default(), http, busy: Arc::new(AtomicBool::new(false)) }
     }
 
     pub fn status(&self) -> Status {
@@ -467,11 +395,7 @@ impl Updater {
         out
     }
 
-    fn spawn(
-        &self,
-        what: &str,
-        f: impl FnOnce(&Ctl, &dyn Http) -> Result<(), Error> + Send + 'static,
-    ) -> bool {
+    fn spawn(&self, what: &str, f: impl FnOnce(&Ctl, &dyn Http) -> Result<(), Error> + Send + 'static) -> bool {
         if self.busy.swap(true, Ordering::SeqCst) {
             return false;
         }
@@ -501,29 +425,22 @@ impl Updater {
 
     /// „Nach Updates suchen“ (Klick). `silent`: Start-Check, nur Hinweis, Fehler werden verschluckt.
     pub fn check(&self, cfg: Config, silent: bool) -> bool {
-        self.spawn("Suche nach Updates …", move |ctl, http| {
-            match check(&cfg, http) {
-                Ok(r) => {
-                    ctl.with(|s| {
-                        if silent && r.newer && !r.skipped {
-                            s.notice = r.latest.as_ref().map(|l| {
-                                format!(
-                                    "OwnDraw {} ist verfügbar – Einstellungen → Updates",
-                                    l.version
-                                )
-                            });
-                        }
-                        s.dismissed = false;
-                        s.check = Some(r);
-                    });
-                    Ok(())
-                }
-                Err(e) if silent => {
-                    let _ = e;
-                    Ok(())
-                }
-                Err(e) => Err(e),
+        self.spawn("Suche nach Updates …", move |ctl, http| match check(&cfg, http) {
+            Ok(r) => {
+                ctl.with(|s| {
+                    if silent && r.newer && !r.skipped {
+                        s.notice = r.latest.as_ref().map(|l| format!("OwnDraw {} ist verfügbar – Einstellungen → Updates", l.version));
+                    }
+                    s.dismissed = false;
+                    s.check = Some(r);
+                });
+                Ok(())
             }
+            Err(e) if silent => {
+                let _ = e;
+                Ok(())
+            }
+            Err(e) => Err(e),
         })
     }
 
@@ -538,26 +455,20 @@ impl Updater {
 
     /// Lädt und installiert (Update oder gezielt ältere Version).
     pub fn install(&self, cfg: Config, rel: Release) -> bool {
-        self.spawn(
-            &format!("Version {} installieren", rel.version),
-            move |ctl, http| {
-                let r = install_release(&cfg, http, &rel, ctl)?;
-                ctl.with(|s| s.done = Some(r));
-                Ok(())
-            },
-        )
+        self.spawn(&format!("Version {} installieren", rel.version), move |ctl, http| {
+            let r = install_release(&cfg, http, &rel, ctl)?;
+            ctl.with(|s| s.done = Some(r));
+            Ok(())
+        })
     }
 
     /// Gespeicherte Vorversion zurückholen (offline).
     pub fn restore(&self, cfg: Config, saved: versions::Saved) -> bool {
-        self.spawn(
-            &format!("Version {} wiederherstellen", saved.version),
-            move |ctl, _| {
-                let r = install_saved(&cfg, &saved, ctl)?;
-                ctl.with(|s| s.done = Some(r));
-                Ok(())
-            },
-        )
+        self.spawn(&format!("Version {} wiederherstellen", saved.version), move |ctl, _| {
+            let r = install_saved(&cfg, &saved, ctl)?;
+            ctl.with(|s| s.done = Some(r));
+            Ok(())
+        })
     }
 }
 
@@ -565,11 +476,7 @@ static START_DONE: AtomicBool = AtomicBool::new(false);
 
 /// Einmal pro Frame aus der App-Hülle aufrufen. Beim ersten Aufruf: Start-Check, falls `update_check_on_start`
 /// eingeschaltet ist (Standard aus; sucht nur, installiert nie). Liefert einmalig einen Hinweistext für einen Toast.
-pub fn frame_hook(
-    settings: &Settings,
-    platform: &dyn crate::platform::Platform,
-    ctx: &egui::Context,
-) -> Option<String> {
+pub fn frame_hook(settings: &Settings, platform: &dyn crate::platform::Platform, ctx: &egui::Context) -> Option<String> {
     if !START_DONE.swap(true, Ordering::SeqCst) {
         if settings.update_check_on_start {
             let cfg = Config::new(settings, platform);

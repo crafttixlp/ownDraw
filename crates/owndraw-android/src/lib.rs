@@ -14,11 +14,7 @@ use owndraw_app::android_bridge as bridge;
 /// Wird von `android-activity` im eigenen Thread aufgerufen, sobald die NativeActivity steht.
 #[no_mangle]
 fn android_main(app: AndroidApp) {
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_max_level(log::LevelFilter::Info)
-            .with_tag("OwnDraw"),
-    );
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("OwnDraw"));
     std::panic::set_hook(Box::new(|p| log::error!("Panik: {p}")));
     if let Err(e) = owndraw_app::run_android(app) {
         log::error!("OwnDraw beendet mit Fehler: {e}");
@@ -35,32 +31,20 @@ fn opt_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
 
 /// Ergebnis eines SAF-Dialogs (`onActivityResult`): `tag` = requestCode, `uri` null bei Abbruch.
 #[no_mangle]
-pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnPicked<'l>(
-    mut env: JNIEnv<'l>,
-    _this: JObject<'l>,
-    tag: jint,
-    uri: JString<'l>,
-) {
+pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnPicked<'l>(mut env: JNIEnv<'l>, _this: JObject<'l>, tag: jint, uri: JString<'l>) {
     let uri = opt_string(&mut env, &uri);
     bridge::on_picked(tag, uri);
 }
 
 /// `onPause`: blockiert kurz, bis die App das Ereignis abgeholt hat (Speichern vor dem Hintergrund).
 #[no_mangle]
-pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnPause<'l>(
-    _env: JNIEnv<'l>,
-    _this: JObject<'l>,
-) {
+pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnPause<'l>(_env: JNIEnv<'l>, _this: JObject<'l>) {
     bridge::on_pause();
 }
 
 /// Start-Intent bzw. `onNewIntent` („Öffnen mit“, „Teilen“).
 #[no_mangle]
-pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnOpen<'l>(
-    mut env: JNIEnv<'l>,
-    _this: JObject<'l>,
-    uri: JString<'l>,
-) {
+pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnOpen<'l>(mut env: JNIEnv<'l>, _this: JObject<'l>, uri: JString<'l>) {
     if let Some(u) = opt_string(&mut env, &uri) {
         bridge::on_open(u);
     }
@@ -85,10 +69,6 @@ pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnDrop<'l>(
 
 /// Ziehen über dem Fenster begonnen/beendet (Ablage-Hinweis).
 #[no_mangle]
-pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnDragHover<'l>(
-    _env: JNIEnv<'l>,
-    _this: JObject<'l>,
-    hover: jboolean,
-) {
+pub extern "system" fn Java_de_owndraw_OwnDrawActivity_nativeOnDragHover<'l>(_env: JNIEnv<'l>, _this: JObject<'l>, hover: jboolean) {
     bridge::on_drag_hover(hover != 0);
 }

@@ -18,12 +18,9 @@ pub fn verify_bytes(pubkey: &str, data: &[u8], sig_text: &str) -> Result<(), Err
     if is_placeholder(pubkey) {
         return Err(Error::NotConfigured);
     }
-    let pk = PublicKey::decode(pubkey)
-        .map_err(|e| Error::Other(format!("Öffentlicher Schlüssel unlesbar: {e}")))?;
-    let sig = Signature::decode(sig_text)
-        .map_err(|e| Error::BadSignature(format!("Signatur unlesbar: {e}")))?;
-    pk.verify(data, &sig, true)
-        .map_err(|e| Error::BadSignature(e.to_string()))
+    let pk = PublicKey::decode(pubkey).map_err(|e| Error::Other(format!("Öffentlicher Schlüssel unlesbar: {e}")))?;
+    let sig = Signature::decode(sig_text).map_err(|e| Error::BadSignature(format!("Signatur unlesbar: {e}")))?;
+    pk.verify(data, &sig, true).map_err(|e| Error::BadSignature(e.to_string()))
 }
 
 /// Prüft eine Datei gegen ihre Signatur (die Datei wird dafür vollständig gelesen).
@@ -43,13 +40,7 @@ mod tests {
     #[test]
     fn platzhalter_wird_erkannt() {
         assert!(is_placeholder(PLACEHOLDER));
-        assert!(matches!(
-            verify_bytes(PLACEHOLDER, b"x", "y"),
-            Err(Error::NotConfigured)
-        ));
-        assert!(
-            !is_placeholder(PUBKEY),
-            "eingebauter Release-Schlüssel muss gültig sein"
-        );
+        assert!(matches!(verify_bytes(PLACEHOLDER, b"x", "y"), Err(Error::NotConfigured)));
+        assert!(!is_placeholder(PUBKEY), "eingebauter Release-Schlüssel muss gültig sein");
     }
 }

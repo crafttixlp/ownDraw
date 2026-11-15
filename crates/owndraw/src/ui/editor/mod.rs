@@ -17,10 +17,7 @@ use crate::platform::{FileKind, FileRef};
 use crate::session;
 use crate::settings::{BarPos, Settings, ALL_TOOLS, DEFAULT_TOOLS};
 use crate::ui::dialogs::{AnimDlg, ConfirmAction, RenameWhat};
-use egui::{
-    Align2, Color32, CursorIcon, Event, Key, Order, PointerButton, Pos2, Rect, Sense,
-    TextureHandle, TouchPhase, Ui,
-};
+use egui::{Align2, Color32, CursorIcon, Event, Key, Order, PointerButton, Pos2, Rect, Sense, TextureHandle, TouchPhase, Ui};
 use owndraw_core::board::{self, Action, Board, Motion, Pointer, ToolType};
 use owndraw_core::doc::Document;
 use owndraw_core::item::{self, INK};
@@ -110,10 +107,7 @@ pub fn visible_tools(s: &Settings) -> Vec<Tool> {
         }
     }
     if v.is_empty() {
-        v = DEFAULT_TOOLS
-            .iter()
-            .filter_map(|i| Tool::from_id(i))
-            .collect();
+        v = DEFAULT_TOOLS.iter().filter_map(|i| Tool::from_id(i)).collect();
     }
     v
 }
@@ -212,22 +206,14 @@ impl Editor {
         board.recog = geti("recog", 0).clamp(0, 2) as i32;
         board.sel_mode = geti("selmode", 0).clamp(0, 1) as i32;
         board.erase_mode = geti("erasemode", 0).clamp(0, 1) as i32;
-        board.pen_w = x
-            .get("w")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(3.0);
+        board.pen_w = x.get("w").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(3.0);
         if !WIDTHS.contains(&board.pen_w) {
             board.pen_w = 3.0;
         }
         board.shape_kind = geti("shape", 0).clamp(0, 4) as i32;
-        board.arrow_style =
-            geti("arrow", 0).clamp(0, owndraw_core::item::ARROW_STYLES.len() as i64 - 1) as i32;
+        board.arrow_style = geti("arrow", 0).clamp(0, owndraw_core::item::ARROW_STYLES.len() as i64 - 1) as i32;
         // Auf Touch-Geräten zeichnet der Finger standardmäßig (Schalter im Werkzeug-Popover).
-        board.finger_draw = x
-            .get("finger")
-            .and_then(|v| v.as_bool())
-            .unwrap_or_else(|| sh.platform.is_touch());
+        board.finger_draw = x.get("finger").and_then(|v| v.as_bool()).unwrap_or_else(|| sh.platform.is_touch());
         Editor {
             doc,
             board,
@@ -286,18 +272,9 @@ impl Editor {
     /// Speichert sofort, falls Änderungen anstehen (Zurück, Schließen, App pausiert).
     pub fn flush(&mut self, sh: &mut Shared) {
         self.sync_modified(sh.now);
-        let Self {
-            autosave,
-            board,
-            doc,
-            ..
-        } = self;
+        let Self { autosave, board, doc, .. } = self;
         let fmt = autosave.format();
-        autosave.flush(
-            sh.now,
-            || Self::snapshot_bytes(board, doc, fmt),
-            &*sh.platform,
-        );
+        autosave.flush(sh.now, || Self::snapshot_bytes(board, doc, fmt), &*sh.platform);
         if let Some(e) = self.autosave.error() {
             sh.toast_for(e, 4.0);
         }
@@ -307,12 +284,7 @@ impl Editor {
     fn show_save_error(&mut self, sh: &mut Shared) {
         let e = self.autosave.error().unwrap_or("").to_string();
         if self.autosave.permission_error() && sh.dialog.is_none() {
-            sh.dialog = Some(crate::ui::dialogs::Dialog::Confirm {
-                title: "Speichern nicht möglich",
-                text: e,
-                ok: "Kopie speichern unter …",
-                action: ConfirmAction::SaveCopy,
-            });
+            sh.dialog = Some(crate::ui::dialogs::Dialog::Confirm { title: "Speichern nicht möglich", text: e, ok: "Kopie speichern unter …", action: ConfirmAction::SaveCopy });
         } else {
             sh.toast_for(&e, 5.0);
         }
@@ -344,10 +316,7 @@ impl Editor {
         match a {
             ConfirmAction::SaveCopy => sh.reqs.push(crate::app::Req::PickSave {
                 purpose: PickPurpose::SaveCopy,
-                name: format!(
-                    "{}.owndraw",
-                    crate::app::safe_file_name(&self.doc.meta.name)
-                ),
+                name: format!("{}.owndraw", crate::app::safe_file_name(&self.doc.meta.name)),
                 kind: FileKind::Owndraw,
             }),
             ConfirmAction::DeleteLayer(i) => self.board.remove_layer(i),
@@ -372,14 +341,7 @@ impl Editor {
     pub fn apply_pick(&mut self, sh: &mut Shared, purpose: PickPurpose, f: FileRef) {
         let with_ext = |f: FileRef, ext: &str| -> FileRef {
             match f {
-                FileRef::Path(p)
-                    if !p
-                        .extension()
-                        .map(|e| e.eq_ignore_ascii_case(ext))
-                        .unwrap_or(false) =>
-                {
-                    FileRef::Path(PathBuf::from(format!("{}.{ext}", p.display())))
-                }
+                FileRef::Path(p) if !p.extension().map(|e| e.eq_ignore_ascii_case(ext)).unwrap_or(false) => FileRef::Path(PathBuf::from(format!("{}.{ext}", p.display()))),
                 other => other,
             }
         };
@@ -391,35 +353,15 @@ impl Editor {
             None => sh.toast("Export fehlgeschlagen"),
         };
         match purpose {
-            PickPurpose::ExportPng => write(
-                sh,
-                &with_ext(f, "png"),
-                self.board.export_png(),
-                "Export gespeichert",
-            ),
-            PickPurpose::ExportPdf => write(
-                sh,
-                &with_ext(f, "pdf"),
-                self.board.export_pdf(),
-                "Export gespeichert",
-            ),
+            PickPurpose::ExportPng => write(sh, &with_ext(f, "png"), self.board.export_png(), "Export gespeichert"),
+            PickPurpose::ExportPdf => write(sh, &with_ext(f, "pdf"), self.board.export_pdf(), "Export gespeichert"),
             PickPurpose::ExportZip => {
                 let mut cur = std::io::Cursor::new(Vec::new());
-                let ok =
-                    owndraw_core::export::write_zip(&self.board, &self.doc.meta.name, &mut cur);
-                write(
-                    sh,
-                    &with_ext(f, "zip"),
-                    ok.then(|| cur.into_inner()),
-                    "Export gespeichert",
-                );
+                let ok = owndraw_core::export::write_zip(&self.board, &self.doc.meta.name, &mut cur);
+                write(sh, &with_ext(f, "zip"), ok.then(|| cur.into_inner()), "Export gespeichert");
             }
             PickPurpose::ExportLayer(i) => {
-                let png = self
-                    .board
-                    .layers
-                    .get(i)
-                    .and_then(|l| owndraw_core::export::layer_png(&self.board, l));
+                let png = self.board.layers.get(i).and_then(|l| owndraw_core::export::layer_png(&self.board, l));
                 write(sh, &with_ext(f, "png"), png, "Ebene exportiert");
             }
             PickPurpose::SaveCopy => {
@@ -469,40 +411,23 @@ impl Editor {
         let (purpose, name, k) = match kind {
             0 => (PickPurpose::ExportPng, format!("{base}.png"), FileKind::Png),
             1 => (PickPurpose::ExportPdf, format!("{base}.pdf"), FileKind::Pdf),
-            _ => (
-                PickPurpose::ExportZip,
-                format!("{base}-website.zip"),
-                FileKind::Zip,
-            ),
+            _ => (PickPurpose::ExportZip, format!("{base}-website.zip"), FileKind::Zip),
         };
-        sh.reqs.push(Req::PickSave {
-            purpose,
-            name,
-            kind: k,
-        });
+        sh.reqs.push(Req::PickSave { purpose, name, kind: k });
     }
 
     pub fn export_layer(&mut self, sh: &mut Shared, i: usize) {
-        let Some(l) = self.board.layers.get(i) else {
-            return;
-        };
+        let Some(l) = self.board.layers.get(i) else { return };
         if !self.board.items.iter().any(|it| it.layer == l.id) {
             sh.toast(&format!("Die Ebene „{}“ ist leer", l.name));
         } else {
             let name = format!("{}.png", l.file_name());
-            sh.reqs.push(Req::PickSave {
-                purpose: PickPurpose::ExportLayer(i),
-                name,
-                kind: FileKind::Png,
-            });
+            sh.reqs.push(Req::PickSave { purpose: PickPurpose::ExportLayer(i), name, kind: FileKind::Png });
         }
     }
 
     pub fn pick_image(&self, sh: &mut Shared) {
-        sh.reqs.push(Req::PickOpen {
-            purpose: PickPurpose::ImportImage,
-            kinds: vec![FileKind::Image],
-        });
+        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::ImportImage, kinds: vec![FileKind::Image] });
     }
 
     pub fn preview(&mut self, sh: &mut Shared) {
@@ -558,35 +483,18 @@ impl Editor {
 
     fn layout(&self, sh: &Shared, full: Rect, ntools: usize) -> Lay {
         let env = sh.env;
-        let pages_mode = matches!(
-            self.board.board_mode,
-            owndraw_core::pages::BoardMode::Pages(_)
-        );
+        let pages_mode = matches!(self.board.board_mode, owndraw_core::pages::BoardMode::Pages(_));
         let mut canvas = full;
         let mut dock_layers = None;
         let mut dock_pages = None;
         if env.ff == FormFactor::Expanded {
             if self.st.layers_open {
-                let r = Rect::from_min_max(
-                    Pos2::new(canvas.right() - DOCK_LAYERS, canvas.top()),
-                    canvas.max,
-                );
+                let r = Rect::from_min_max(Pos2::new(canvas.right() - DOCK_LAYERS, canvas.top()), canvas.max);
                 canvas.max.x -= DOCK_LAYERS;
                 dock_layers = Some(r);
             }
-            if pages_mode
-                && self.st.pages_open.unwrap_or_else(|| {
-                    sh.settings
-                        .extra
-                        .get("pages_dock")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true)
-                })
-            {
-                let r = Rect::from_min_max(
-                    canvas.min,
-                    Pos2::new(canvas.left() + DOCK_PAGES, canvas.bottom()),
-                );
+            if pages_mode && self.st.pages_open.unwrap_or_else(|| sh.settings.extra.get("pages_dock").and_then(|v| v.as_bool()).unwrap_or(true)) {
+                let r = Rect::from_min_max(canvas.min, Pos2::new(canvas.left() + DOCK_PAGES, canvas.bottom()));
                 canvas.min.x += DOCK_PAGES;
                 dock_pages = Some(r);
             }
@@ -604,9 +512,7 @@ impl Editor {
         // per Griff angedockte/verschobene Werkzeugleiste
         let key = toolbar::tile_key("bar-tools", env.ff);
         let custom = if let Some(d) = sh.settings.tile_dock.get(&key) {
-            tb = d
-                .edge
-                .unwrap_or(if d.vert { BarPos::Left } else { BarPos::Top });
+            tb = d.edge.unwrap_or(if d.vert { BarPos::Left } else { BarPos::Top });
             tb_edge = d.edge;
             true
         } else if sh.settings.tile_pos.contains_key(&key) {
@@ -621,26 +527,11 @@ impl Editor {
             y_below += thick + M;
         }
         // Seitliche Leiste, die nicht in die Höhe passt (Handy quer): automatisch nach unten, solange nichts Festes gewählt ist.
-        if !custom
-            && matches!(tb, BarPos::Left | BarPos::Right)
-            && sh.settings.toolbar_pos.is_none()
-            && y_below + length + M + (thick + M) > canvas.bottom()
-        {
+        if !custom && matches!(tb, BarPos::Left | BarPos::Right) && sh.settings.toolbar_pos.is_none() && y_below + length + M + (thick + M) > canvas.bottom() {
             tb = BarPos::Bottom;
             tb_edge = Some(tb);
         }
-        Lay {
-            canvas,
-            env,
-            tb,
-            tb_edge,
-            row2,
-            y_below,
-            thick,
-            dock_layers,
-            dock_pages,
-            pages_mode,
-        }
+        Lay { canvas, env, tb, tb_edge, row2, y_below, thick, dock_layers, dock_pages, pages_mode }
     }
 
     // ---------------------------------------------------------------- Haupt-UI
@@ -648,11 +539,7 @@ impl Editor {
     /// Zeichnet den Editor.
     pub fn ui(&mut self, ui: &mut Ui, sh: &mut Shared) {
         let ctx = ui.ctx().clone();
-        let tools = if self.st.edit_tools.is_some() {
-            ALL_TOOLS.iter().filter_map(|i| Tool::from_id(i)).collect()
-        } else {
-            visible_tools(&sh.settings)
-        };
+        let tools = if self.st.edit_tools.is_some() { ALL_TOOLS.iter().filter_map(|i| Tool::from_id(i)).collect() } else { visible_tools(&sh.settings) };
         let lay = self.layout(sh, ui.max_rect(), tools.len());
         let rect = lay.canvas;
         self.canvas = rect;
@@ -674,27 +561,10 @@ impl Editor {
         let popup_open = self.st.opts_open || self.st.menu_open;
         let mut swallow = false;
         if popup_open && !modal {
-            let press = ctx
-                .input(|i| i.pointer.any_pressed())
-                .then(|| ctx.input(|i| i.pointer.interact_pos()))
-                .flatten();
-            let touch = ctx.input(|i| {
-                i.events.iter().find_map(|e| {
-                    if let Event::Touch {
-                        phase: TouchPhase::Start,
-                        pos,
-                        ..
-                    } = e
-                    {
-                        Some(*pos)
-                    } else {
-                        None
-                    }
-                })
-            });
+            let press = ctx.input(|i| i.pointer.any_pressed()).then(|| ctx.input(|i| i.pointer.interact_pos())).flatten();
+            let touch = ctx.input(|i| i.events.iter().find_map(|e| if let Event::Touch { phase: TouchPhase::Start, pos, .. } = e { Some(*pos) } else { None }));
             if let Some(p) = press.or(touch) {
-                let on_canvas =
-                    rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
+                let on_canvas = rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
                 if on_canvas {
                     self.st.opts_open = false;
                     self.st.menu_open = false;
@@ -709,27 +579,14 @@ impl Editor {
             self.shortcuts(&ctx, sh);
         }
         self.drain_events(sh);
-        if !modal
-            && self.text.is_none()
-            && (self.board.tool == board::SELECT
-                || !self.board.finger_draw
-                || !sh.platform.is_touch())
-        {
+        if !modal && self.text.is_none() && (self.board.tool == board::SELECT || !self.board.finger_draw || !sh.platform.is_touch()) {
             clip::context_menu(self, &resp, sh);
         }
 
         // Fläche zeichnen: nur geänderte Bereiche zur GPU (Dirty-Rects), Zoom-Gesten skaliert die GPU
         if self.board.needs_redraw || self.tex.is_none() {
-            let (w, h) = (
-                ((rect.width() * ppp).round() as u32).max(1),
-                ((rect.height() * ppp).round() as u32).max(1),
-            );
-            if self
-                .pix
-                .as_ref()
-                .map(|p| p.width() != w || p.height() != h)
-                .unwrap_or(true)
-            {
+            let (w, h) = (((rect.width() * ppp).round() as u32).max(1), ((rect.height() * ppp).round() as u32).max(1));
+            if self.pix.as_ref().map(|p| p.width() != w || p.height() != h).unwrap_or(true) {
                 self.pix = Pixmap::new(w, h);
                 self.board.force_full_frame();
             }
@@ -741,42 +598,17 @@ impl Editor {
                 self.scaled = fr.scaled;
                 self.org = fr.org;
                 let linear = fr.scaled.is_some();
-                let opts = if linear {
-                    egui::TextureOptions::LINEAR
-                } else {
-                    egui::TextureOptions::NEAREST
-                };
-                let full =
-                    fr.damage.len() == 1 && fr.damage[0] == board::IRect { x: 0, y: 0, w, h };
+                let opts = if linear { egui::TextureOptions::LINEAR } else { egui::TextureOptions::NEAREST };
+                let full = fr.damage.len() == 1 && fr.damage[0] == board::IRect { x: 0, y: 0, w, h };
                 match self.tex.as_mut() {
-                    None => {
-                        self.tex = Some(ctx.load_texture(
-                            "board",
-                            egui::ColorImage::from_rgba_premultiplied(
-                                [w as usize, h as usize],
-                                pm.data(),
-                            ),
-                            opts,
-                        ))
-                    }
-                    Some(t) if full => t.set(
-                        egui::ColorImage::from_rgba_premultiplied(
-                            [w as usize, h as usize],
-                            pm.data(),
-                        ),
-                        opts,
-                    ),
+                    None => self.tex = Some(ctx.load_texture("board", egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pm.data()), opts)),
+                    Some(t) if full => t.set(egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], pm.data()), opts),
                     Some(t) => {
                         // Teilbilder (Zielbild ist ein Ring-Speicher); beim Filterwechsel mindestens ein Pixel,
                         // damit die Option ankommt
                         let mut dmg = fr.damage.clone();
                         if dmg.is_empty() && linear != self.tex_linear {
-                            dmg.push(board::IRect {
-                                x: 0,
-                                y: 0,
-                                w: 1,
-                                h: 1,
-                            });
+                            dmg.push(board::IRect { x: 0, y: 0, w: 1, h: 1 });
                         }
                         for d in dmg {
                             for (_, p) in board::torus_parts(d, fr.org, w, h) {
@@ -786,14 +618,7 @@ impl Editor {
                                     let o = y * row + p.x as usize * 4;
                                     buf.extend_from_slice(&pm.data()[o..o + p.w as usize * 4]);
                                 }
-                                t.set_partial(
-                                    [p.x as usize, p.y as usize],
-                                    egui::ColorImage::from_rgba_premultiplied(
-                                        [p.w as usize, p.h as usize],
-                                        &buf,
-                                    ),
-                                    opts,
-                                );
+                                t.set_partial([p.x as usize, p.y as usize], egui::ColorImage::from_rgba_premultiplied([p.w as usize, p.h as usize], &buf), opts);
                             }
                         }
                     }
@@ -811,22 +636,13 @@ impl Editor {
             let p = ui.painter().with_clip_rect(rect);
             if self.scaled.is_some() {
                 let c = self.board.backdrop_color();
-                p.rect_filled(
-                    rect,
-                    0.0,
-                    Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8),
-                );
+                p.rect_filled(rect, 0.0, Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8));
             }
             let (sx, sy) = (rect.width() / w as f32, rect.height() / h as f32);
             for (v, q) in board::torus_parts(board::IRect { x: 0, y: 0, w, h }, self.org, w, h) {
                 let min = rect.min + off + egui::vec2(v.x as f32 * sx, v.y as f32 * sy) * k;
-                let max = rect.min
-                    + off
-                    + egui::vec2((v.x + v.w) as f32 * sx, (v.y + v.h) as f32 * sy) * k;
-                let uv = Rect::from_min_max(
-                    Pos2::new(q.x as f32 / w as f32, q.y as f32 / h as f32),
-                    Pos2::new((q.x + q.w) as f32 / w as f32, (q.y + q.h) as f32 / h as f32),
-                );
+                let max = rect.min + off + egui::vec2((v.x + v.w) as f32 * sx, (v.y + v.h) as f32 * sy) * k;
+                let uv = Rect::from_min_max(Pos2::new(q.x as f32 / w as f32, q.y as f32 / h as f32), Pos2::new((q.x + q.w) as f32 / w as f32, (q.y + q.h) as f32 / h as f32));
                 p.image(t.id(), Rect::from_min_max(min, max), uv, Color32::WHITE);
             }
         }
@@ -838,9 +654,7 @@ impl Editor {
                 CursorIcon::Grab
             } else {
                 match self.board.tool {
-                    board::PEN | board::MARKER | board::SHAPE | board::ERASER => {
-                        CursorIcon::Crosshair
-                    }
+                    board::PEN | board::MARKER | board::SHAPE | board::ERASER => CursorIcon::Crosshair,
                     board::TEXT | board::NOTE => CursorIcon::Text,
                     _ => CursorIcon::Default,
                 }
@@ -863,18 +677,9 @@ impl Editor {
         // Autosave
         self.sync_modified(sh.now);
         if !self.board.busy() {
-            let Self {
-                autosave,
-                board,
-                doc,
-                ..
-            } = self;
+            let Self { autosave, board, doc, .. } = self;
             let fmt = autosave.format();
-            autosave.tick(
-                sh.now,
-                || Self::snapshot_bytes(board, doc, fmt),
-                &*sh.platform,
-            );
+            autosave.tick(sh.now, || Self::snapshot_bytes(board, doc, fmt), &*sh.platform);
         }
         if self.autosave.error().is_some() {
             if !self.st.error_toast_shown {
@@ -902,10 +707,7 @@ impl Editor {
     }
 
     fn close_popups_on_esc(&mut self, ctx: &egui::Context) {
-        if (self.st.opts_open || self.st.menu_open)
-            && self.text.is_none()
-            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape))
-        {
+        if (self.st.opts_open || self.st.menu_open) && self.text.is_none() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
             self.st.opts_open = false;
             self.st.menu_open = false;
         }
@@ -946,24 +748,14 @@ impl Editor {
     fn handle_pointer(&mut self, ctx: &egui::Context, rect: Rect, layer: egui::LayerId) {
         let events = ctx.input(|i| i.events.clone());
         let hover = ctx.input(|i| i.pointer.hover_pos());
-        let space = ctx.input(|i| i.key_down(Key::Space))
-            && !ctx.egui_wants_keyboard_input()
-            && self.text.is_none();
-        let on_board =
-            |p: Pos2| rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
-        let has_touch =
-            !self.touches.is_empty() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
+        let space = ctx.input(|i| i.key_down(Key::Space)) && !ctx.egui_wants_keyboard_input() && self.text.is_none();
+        let on_board = |p: Pos2| rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
+        let has_touch = !self.touches.is_empty() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
         let rel = |p: Pos2| p - rect.min;
         self.hover = hover.filter(|p| on_board(*p));
         for ev in events {
             match ev {
-                Event::Touch {
-                    id,
-                    phase,
-                    pos,
-                    force,
-                    ..
-                } => {
+                Event::Touch { id, phase, pos, force, .. } => {
                     // Ein Finger, der auf einer Leiste beginnt, gehört nicht zur Zeichenfläche.
                     // Während der Texteingabe beendet ein Tippen daneben nur die Eingabe.
                     if phase == TouchPhase::Start && (!on_board(pos) || self.text.is_some()) {
@@ -971,96 +763,46 @@ impl Editor {
                     }
                     self.touch(id.0, phase, rel(pos).to_pos2(), force.unwrap_or(0.5))
                 }
-                _ if has_touch
-                    && matches!(ev, Event::PointerMoved(_) | Event::PointerButton { .. }) => {}
+                _ if has_touch && matches!(ev, Event::PointerMoved(_) | Event::PointerButton { .. }) => {}
                 Event::PointerMoved(p) => {
                     let r = rel(p);
                     if self.drawing {
-                        self.board.on_touch(&Motion::single(
-                            Action::Move,
-                            r.x,
-                            r.y,
-                            0.5,
-                            ToolType::Stylus,
-                        ));
+                        self.board.on_touch(&Motion::single(Action::Move, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if let Some((last, b)) = self.panning {
                         self.board.pan_by(p.x - last.x, p.y - last.y);
                         self.panning = Some((p, b));
                     }
                 }
-                Event::PointerButton {
-                    pos,
-                    button,
-                    pressed,
-                    ..
-                } => {
+                Event::PointerButton { pos, button, pressed, .. } => {
                     let r = rel(pos);
                     if pressed {
-                        if self.drawing
-                            || self.panning.is_some()
-                            || !on_board(pos)
-                            || self.text.is_some()
-                        {
+                        if self.drawing || self.panning.is_some() || !on_board(pos) || self.text.is_some() {
                             continue;
                         }
                         if button == PointerButton::Primary && !space {
                             self.drawing = true;
-                            self.board.on_touch(&Motion::single(
-                                Action::Down,
-                                r.x,
-                                r.y,
-                                0.5,
-                                ToolType::Stylus,
-                            ));
-                        } else if matches!(
-                            button,
-                            PointerButton::Primary
-                                | PointerButton::Secondary
-                                | PointerButton::Middle
-                        ) {
+                            self.board.on_touch(&Motion::single(Action::Down, r.x, r.y, 0.5, ToolType::Stylus));
+                        } else if matches!(button, PointerButton::Primary | PointerButton::Secondary | PointerButton::Middle) {
                             self.panning = Some((pos, button));
                             self.pan_start = Some(pos);
                         }
                     } else if self.drawing && button == PointerButton::Primary {
                         self.drawing = false;
-                        self.board.on_touch(&Motion::single(
-                            Action::Up,
-                            r.x,
-                            r.y,
-                            0.5,
-                            ToolType::Stylus,
-                        ));
+                        self.board.on_touch(&Motion::single(Action::Up, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if self.panning.map(|(_, b)| b == button).unwrap_or(false) {
                         self.panning = None;
                         // Mittlere Maustaste ohne Verschieben: Objekt darunter auswählen (erweitertes Menü)
-                        let still = self
-                            .pan_start
-                            .take()
-                            .map(|s| s.distance(pos) < 10.0)
-                            .unwrap_or(false);
-                        if button == PointerButton::Middle
-                            && still
-                            && !self.board.select_at_screen(r.x, r.y, false)
-                            && self.board.tool == board::SELECT
-                        {
+                        let still = self.pan_start.take().map(|s| s.distance(pos) < 10.0).unwrap_or(false);
+                        if button == PointerButton::Middle && still && !self.board.select_at_screen(r.x, r.y, false) && self.board.tool == board::SELECT {
                             self.board.deselect();
                         }
                     }
                 }
-                Event::MouseWheel {
-                    unit,
-                    delta,
-                    modifiers,
-                    ..
-                } => {
-                    let Some(h) = hover.filter(|h| on_board(*h)) else {
-                        continue;
-                    };
+                Event::MouseWheel { unit, delta, modifiers, .. } => {
+                    let Some(h) = hover.filter(|h| on_board(*h)) else { continue };
                     let r = rel(h);
                     match unit {
-                        egui::MouseWheelUnit::Point if !modifiers.ctrl && !modifiers.command => {
-                            self.board.pan_by(delta.x, delta.y)
-                        }
+                        egui::MouseWheelUnit::Point if !modifiers.ctrl && !modifiers.command => self.board.pan_by(delta.x, delta.y),
                         _ => {
                             let lines = match unit {
                                 egui::MouseWheelUnit::Line => delta.y,
@@ -1087,47 +829,23 @@ impl Editor {
     /// Touchscreen: Finger verschieben/zoomen wie auf dem Tablet (Zeichnen mit der Maus bzw. dem Stift als Maus).
     fn touch(&mut self, id: u64, phase: TouchPhase, p: Pos2, force: f32) {
         let ptrs = |t: &Vec<(u64, Pos2)>| -> Vec<Pointer> {
-            t.iter()
-                .map(|(i, q)| Pointer {
-                    id: *i as i64,
-                    x: q.x,
-                    y: q.y,
-                    pressure: force,
-                    tool: ToolType::Finger,
-                })
-                .collect()
+            t.iter().map(|(i, q)| Pointer { id: *i as i64, x: q.x, y: q.y, pressure: force, tool: ToolType::Finger }).collect()
         };
         match phase {
             TouchPhase::Start => {
                 self.touches.retain(|t| t.0 != id);
                 self.touches.push((id, p));
-                let action = if self.touches.len() == 1 {
-                    Action::Down
-                } else {
-                    Action::PointerDown(self.touches.len() - 1)
-                };
-                self.board.on_touch(&Motion {
-                    action,
-                    pointers: ptrs(&self.touches),
-                    history: Vec::new(),
-                    stylus_button: false,
-                });
+                let action = if self.touches.len() == 1 { Action::Down } else { Action::PointerDown(self.touches.len() - 1) };
+                self.board.on_touch(&Motion { action, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
             }
             TouchPhase::Move => {
                 if let Some(t) = self.touches.iter_mut().find(|t| t.0 == id) {
                     t.1 = p;
-                    self.board.on_touch(&Motion {
-                        action: Action::Move,
-                        pointers: ptrs(&self.touches),
-                        history: Vec::new(),
-                        stylus_button: false,
-                    });
+                    self.board.on_touch(&Motion { action: Action::Move, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
                 }
             }
             TouchPhase::End | TouchPhase::Cancel => {
-                let Some(i) = self.touches.iter().position(|t| t.0 == id) else {
-                    return;
-                };
+                let Some(i) = self.touches.iter().position(|t| t.0 == id) else { return };
                 self.touches[i].1 = p;
                 let action = if self.touches.len() == 1 {
                     if phase == TouchPhase::End {
@@ -1138,12 +856,7 @@ impl Editor {
                 } else {
                     Action::PointerUp(i)
                 };
-                self.board.on_touch(&Motion {
-                    action,
-                    pointers: ptrs(&self.touches),
-                    history: Vec::new(),
-                    stylus_button: false,
-                });
+                self.board.on_touch(&Motion { action, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
                 self.touches.remove(i);
             }
         }
@@ -1163,13 +876,7 @@ impl Editor {
                 Event::Copy => copy = true,
                 Event::Cut => cut = true,
                 Event::Paste(_) => paste = true,
-                Event::Key {
-                    key,
-                    pressed: true,
-                    modifiers,
-                    repeat,
-                    ..
-                } => {
+                Event::Key { key, pressed: true, modifiers, repeat, .. } => {
                     let cmd = modifiers.command || modifiers.ctrl;
                     let sel = self.board.tool == board::SELECT && !self.board.sel.is_empty();
                     match key {
@@ -1236,30 +943,13 @@ impl Editor {
     pub(super) fn save_state(&self) -> (&'static str, bool) {
         match self.autosave.status() {
             AutosaveStatus::Error(_) => ("Speichern fehlgeschlagen", true),
-            AutosaveStatus::Dirty | AutosaveStatus::Saving => {
-                ("Änderungen werden gespeichert …", false)
-            }
+            AutosaveStatus::Dirty | AutosaveStatus::Saving => ("Änderungen werden gespeichert …", false),
             AutosaveStatus::Saved(_) => ("Gespeichert", false),
             AutosaveStatus::Idle => ("", false),
         }
     }
 
-    pub(super) fn float(
-        ctx: &egui::Context,
-        id: &str,
-        pos: Pos2,
-        pivot: Align2,
-        bounds: Rect,
-        order: Order,
-        content: impl FnOnce(&mut Ui),
-    ) -> Rect {
-        egui::Area::new(egui::Id::unique(id))
-            .order(order)
-            .fixed_pos(pos)
-            .pivot(pivot)
-            .constrain_to(bounds)
-            .show(ctx, content)
-            .response
-            .rect
+    pub(super) fn float(ctx: &egui::Context, id: &str, pos: Pos2, pivot: Align2, bounds: Rect, order: Order, content: impl FnOnce(&mut Ui)) -> Rect {
+        egui::Area::new(egui::Id::unique(id)).order(order).fixed_pos(pos).pivot(pivot).constrain_to(bounds).show(ctx, content).response.rect
     }
 }

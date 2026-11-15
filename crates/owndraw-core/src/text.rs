@@ -80,12 +80,7 @@ impl OutlineBuilder for Sink<'_> {
         self.pb.line_to(self.ox + x * self.k, self.oy - y * self.k);
     }
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        self.pb.quad_to(
-            self.ox + x1 * self.k,
-            self.oy - y1 * self.k,
-            self.ox + x * self.k,
-            self.oy - y * self.k,
-        );
+        self.pb.quad_to(self.ox + x1 * self.k, self.oy - y1 * self.k, self.ox + x * self.k, self.oy - y * self.k);
     }
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
         self.pb.cubic_to(
@@ -110,12 +105,7 @@ pub fn append_text(pb: &mut PathBuilder, s: &str, x: f32, y: f32, size: f32) {
             if let Some((i, g)) = glyph(faces, ch) {
                 if ch != '\t' {
                     let f = &faces[i];
-                    let mut sink = Sink {
-                        pb,
-                        k: size / f.units_per_em() as f32,
-                        ox: pen,
-                        oy: y,
-                    };
+                    let mut sink = Sink { pb, k: size / f.units_per_em() as f32, ox: pen, oy: y };
                     let _ = f.outline_glyph(g, &mut sink);
                 }
             }
@@ -143,12 +133,7 @@ impl TextLayout {
         if lines.is_empty() {
             lines.push(String::new());
         }
-        TextLayout {
-            lines,
-            size,
-            line_h: (asc + desc) * spacing_mult,
-            ascent: asc,
-        }
+        TextLayout { lines, size, line_h: (asc + desc) * spacing_mult, ascent: asc }
     }
 
     pub fn height(&self) -> f32 {
@@ -159,20 +144,10 @@ impl TextLayout {
     pub fn draw(&self, c: &mut Canvas, color: u32) {
         let mut pb = PathBuilder::new();
         for (i, l) in self.lines.iter().enumerate() {
-            append_text(
-                &mut pb,
-                l,
-                0.0,
-                i as f32 * self.line_h + self.ascent,
-                self.size,
-            );
+            append_text(&mut pb, l, 0.0, i as f32 * self.line_h + self.ascent, self.size);
         }
         if let Some(path) = pb.finish() {
-            let p = Paint {
-                color,
-                style: Style::Fill,
-                ..Paint::default()
-            };
+            let p = Paint { color, style: Style::Fill, ..Paint::default() };
             c.draw_path(&path, &p);
         }
     }

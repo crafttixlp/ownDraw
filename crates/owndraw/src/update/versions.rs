@@ -25,11 +25,7 @@ pub fn format_of(v: &Version) -> i64 {
 pub fn format_warning(target: &Version, recent: usize) -> Option<String> {
     let cur = owndraw_core::doc::FORMAT_VERSION;
     if format_of(target) < cur {
-        let boards = if recent > 0 {
-            format!(" Das betrifft auch Ihre {recent} zuletzt geöffneten Boards.")
-        } else {
-            String::new()
-        };
+        let boards = if recent > 0 { format!(" Das betrifft auch Ihre {recent} zuletzt geöffneten Boards.") } else { String::new() };
         Some(format!(
             "Die ältere Version {target} kann neue Boards (Format {cur}, ab 4.0.0) nicht öffnen.{boards} Sichern Sie wichtige Boards vorher."
         ))
@@ -58,12 +54,8 @@ pub fn list_saved(dir: &Path) -> Vec<Saved> {
         .flatten()
         .filter_map(|e| {
             let n = e.file_name().to_string_lossy().into_owned();
-            let ver =
-                Version::parse(n.strip_prefix("OwnDraw-")?.strip_suffix(".AppImage")?).ok()?;
-            Some(Saved {
-                version: ver,
-                path: e.path(),
-            })
+            let ver = Version::parse(n.strip_prefix("OwnDraw-")?.strip_suffix(".AppImage")?).ok()?;
+            Some(Saved { version: ver, path: e.path() })
         })
         .collect();
     v.sort_by(|a, b| b.version.cmp(&a.version));
@@ -74,14 +66,7 @@ pub fn list_saved(dir: &Path) -> Vec<Saved> {
 pub fn prune(dir: &Path, keep: usize) {
     let mut v: Vec<(std::time::SystemTime, PathBuf)> = list_saved(dir)
         .into_iter()
-        .map(|s| {
-            (
-                std::fs::metadata(&s.path)
-                    .and_then(|m| m.modified())
-                    .unwrap_or(std::time::UNIX_EPOCH),
-                s.path,
-            )
-        })
+        .map(|s| (std::fs::metadata(&s.path).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), s.path))
         .collect();
     v.sort_by_key(|b| std::cmp::Reverse(b.0));
     for (_, p) in v.into_iter().skip(keep) {
@@ -91,11 +76,7 @@ pub fn prune(dir: &Path, keep: usize) {
 
 /// Die zuletzt gespeicherte Vorversion (die, die zuletzt abgelöst wurde).
 pub fn newest_saved(dir: &Path) -> Option<Saved> {
-    list_saved(dir).into_iter().max_by_key(|s| {
-        std::fs::metadata(&s.path)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::UNIX_EPOCH)
-    })
+    list_saved(dir).into_iter().max_by_key(|s| std::fs::metadata(&s.path).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH))
 }
 
 #[cfg(test)]

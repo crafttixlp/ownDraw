@@ -14,24 +14,11 @@ struct Keys {
 
 fn keys() -> Keys {
     let kp = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
-    Keys {
-        pk_text: kp.pk.to_box().unwrap().to_string(),
-        pk: kp.pk,
-        sk: kp.sk,
-    }
+    Keys { pk_text: kp.pk.to_box().unwrap().to_string(), pk: kp.pk, sk: kp.sk }
 }
 
 fn sign(k: &Keys, data: &[u8]) -> Vec<u8> {
-    minisign::sign(
-        Some(&k.pk),
-        &k.sk,
-        Cursor::new(data),
-        Some("trusted"),
-        Some("test"),
-    )
-    .unwrap()
-    .to_string()
-    .into_bytes()
+    minisign::sign(Some(&k.pk), &k.sk, Cursor::new(data), Some("trusted"), Some("test")).unwrap().to_string().into_bytes()
 }
 
 /// Antwort, die ihren Inhalt langsam liefert (für den Abbruch-Test).
@@ -69,31 +56,16 @@ impl Server {
                 let body = f.lock().unwrap().get(&url).cloned();
                 let is_slow = sl.lock().unwrap().contains(&url);
                 std::thread::spawn(move || match body {
-                    None => drop(req.respond(
-                        tiny_http::Response::from_string("nicht gefunden").with_status_code(404),
-                    )),
+                    None => drop(req.respond(tiny_http::Response::from_string("nicht gefunden").with_status_code(404))),
                     Some(b) if is_slow => {
                         let len = b.len();
-                        drop(req.respond(tiny_http::Response::new(
-                            tiny_http::StatusCode(200),
-                            vec![],
-                            Slow {
-                                data: Cursor::new(b),
-                            },
-                            Some(len),
-                            None,
-                        )));
+                        drop(req.respond(tiny_http::Response::new(tiny_http::StatusCode(200), vec![], Slow { data: Cursor::new(b) }, Some(len), None)));
                     }
                     Some(b) => drop(req.respond(tiny_http::Response::from_data(b))),
                 });
             }
         });
-        Server {
-            base: format!("http://127.0.0.1:{port}"),
-            files,
-            slow,
-            hits,
-        }
+        Server { base: format!("http://127.0.0.1:{port}"), files, slow, hits }
     }
 
     fn put(&self, path: &str, data: Vec<u8>) {
@@ -116,16 +88,8 @@ impl Server {
     }
 
     fn publish(&self, releases: &[serde_json::Value]) {
-        self.put(
-            "/repos/o/r/releases/latest",
-            releases[0].to_string().into_bytes(),
-        );
-        self.put(
-            "/repos/o/r/releases?per_page=50",
-            serde_json::Value::Array(releases.to_vec())
-                .to_string()
-                .into_bytes(),
-        );
+        self.put("/repos/o/r/releases/latest", releases[0].to_string().into_bytes());
+        self.put("/repos/o/r/releases?per_page=50", serde_json::Value::Array(releases.to_vec()).to_string().into_bytes());
     }
 }
 
@@ -169,19 +133,10 @@ fn fixture(current: &str) -> Fix {
         mode: UpdateMode::Package,
         allow_http: true,
         cargo: None,
-        spec: build::BuildSpec {
-            package: "mini".into(),
-            bin: "mini".into(),
-            appimage_script: false,
-        },
+        spec: build::BuildSpec { package: "mini".into(), bin: "mini".into(), appimage_script: false },
         recent_boards: 3,
     };
-    Fix {
-        dir,
-        srv,
-        keys,
-        cfg,
-    }
+    Fix { dir, srv, keys, cfg }
 }
 
 fn http() -> Box<dyn Http> {
@@ -196,13 +151,7 @@ fn konstruktor_und_status_starten_kein_netz() {
             self.0.fetch_add(1, Ordering::SeqCst);
             Err(Error::Other("x".into()))
         }
-        fn download(
-            &self,
-            _: &str,
-            _: &Path,
-            _: &AtomicBool,
-            _: &mut dyn FnMut(u64, Option<u64>),
-        ) -> Result<(), Error> {
+        fn download(&self, _: &str, _: &Path, _: &AtomicBool, _: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Err(Error::Other("x".into()))
         }
@@ -212,11 +161,7 @@ fn konstruktor_und_status_starten_kein_netz() {
     let _ = up.status();
     let _ = Updater::new().status();
     std::thread::sleep(Duration::from_millis(100));
-    assert_eq!(
-        n.load(Ordering::SeqCst),
-        0,
-        "ohne Klick darf nichts passieren"
-    );
+    assert_eq!(n.load(Ordering::SeqCst), 0, "ohne Klick darf nichts passieren");
     assert!(!up.is_busy());
     // Erst der Aufruf sucht.
     let f = fixture("4.0.0");
@@ -243,10 +188,7 @@ fn update_wird_erkannt() {
     f.cfg.current = Version::new(4, 1, 0);
     assert!(!check(&f.cfg, &*h).unwrap().newer);
     let l = list_releases(&f.cfg, &*h).unwrap();
-    assert_eq!(
-        l.iter().map(|r| r.version.to_string()).collect::<Vec<_>>(),
-        ["4.1.0", "4.0.0"]
-    );
+    assert_eq!(l.iter().map(|r| r.version.to_string()).collect::<Vec<_>>(), ["4.1.0", "4.0.0"]);
 }
 
 #[test]
@@ -272,12 +214,7 @@ fn falsche_signatur_wird_abgelehnt() {
     assert!(matches!(err, Error::BadSignature(_)), "{err:?}");
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.0.0");
     assert!(!f.dir.path().join("OwnDraw.AppImage.bak").exists());
-    assert!(!f
-        .cfg
-        .work_dir
-        .join("v4.2.0")
-        .join(app_name("4.2.0"))
-        .exists());
+    assert!(!f.cfg.work_dir.join("v4.2.0").join(app_name("4.2.0")).exists());
 }
 
 #[test]
@@ -286,10 +223,7 @@ fn fehlende_signatur_wird_abgelehnt() {
     let mut a = f.srv.asset(&app_name("4.2.0"), b"APPIMAGE-4.2.0", &f.keys);
     a.pop(); // .minisig weglassen
     let rel = github::parse_release(&f.srv.release("4.2.0", a)).unwrap();
-    assert!(matches!(
-        install_release(&f.cfg, &*http(), &rel, &Ctl::default()),
-        Err(Error::BadSignature(_))
-    ));
+    assert!(matches!(install_release(&f.cfg, &*http(), &rel, &Ctl::default()), Err(Error::BadSignature(_))));
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.0.0");
 }
 
@@ -298,27 +232,10 @@ fn platzhalterschluessel_installiert_nichts() {
     let mut f = fixture("4.0.0");
     f.cfg.pubkey = include_str!("placeholder.pub").to_string();
     assert!(!f.cfg.configured());
-    let rel = check(
-        &{
-            let mut c = f.cfg.clone();
-            c.pubkey = f.keys.pk_text.clone();
-            c
-        },
-        &*http(),
-    )
-    .unwrap()
-    .latest
-    .unwrap();
+    let rel = check(&{ let mut c = f.cfg.clone(); c.pubkey = f.keys.pk_text.clone(); c }, &*http()).unwrap().latest.unwrap();
     let before = f.srv.hits.load(Ordering::SeqCst);
-    assert_eq!(
-        install_release(&f.cfg, &*http(), &rel, &Ctl::default()),
-        Err(Error::NotConfigured)
-    );
-    assert_eq!(
-        f.srv.hits.load(Ordering::SeqCst),
-        before,
-        "es darf nichts geladen werden"
-    );
+    assert_eq!(install_release(&f.cfg, &*http(), &rel, &Ctl::default()), Err(Error::NotConfigured));
+    assert_eq!(f.srv.hits.load(Ordering::SeqCst), before, "es darf nichts geladen werden");
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.0.0");
 }
 
@@ -360,10 +277,7 @@ fn paket_installation_ersetzt_datei_und_legt_backups_an() {
     assert_eq!(r.version, Version::new(4, 1, 0));
     assert!(r.restart);
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.1.0");
-    assert_eq!(
-        std::fs::read(f.dir.path().join("OwnDraw.AppImage.bak")).unwrap(),
-        b"APPIMAGE-4.0.0"
-    );
+    assert_eq!(std::fs::read(f.dir.path().join("OwnDraw.AppImage.bak")).unwrap(), b"APPIMAGE-4.0.0");
     let saved = versions::list_saved(&f.cfg.versions_dir);
     assert_eq!(saved.len(), 1);
     assert_eq!(saved[0].version, Version::new(4, 0, 0));
@@ -372,10 +286,7 @@ fn paket_installation_ersetzt_datei_und_legt_backups_an() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            std::fs::metadata(f.target()).unwrap().permissions().mode() & 0o111,
-            0o111
-        );
+        assert_eq!(std::fs::metadata(f.target()).unwrap().permissions().mode() & 0o111, 0o111);
     }
 }
 
@@ -384,11 +295,7 @@ fn abbruch_mitten_im_download_laesst_alte_datei_intakt() {
     let f = fixture("4.0.0");
     let big = vec![7u8; 4 * 1024 * 1024];
     let a = f.srv.asset(&app_name("4.3.0"), &big, &f.keys);
-    f.srv
-        .slow
-        .lock()
-        .unwrap()
-        .push(format!("/dl/{}", app_name("4.3.0")));
+    f.srv.slow.lock().unwrap().push(format!("/dl/{}", app_name("4.3.0")));
     let rel = github::parse_release(&f.srv.release("4.3.0", a)).unwrap();
     let ctl = Ctl::default();
     let c2 = ctl.clone();
@@ -410,11 +317,7 @@ fn abbruch_mitten_im_download_laesst_alte_datei_intakt() {
     assert!(!f.dir.path().join("OwnDraw.AppImage.bak").exists());
     assert!(!f.dir.path().join("OwnDraw.AppImage.new").exists());
     assert!(versions::list_saved(&f.cfg.versions_dir).is_empty());
-    let part = f
-        .cfg
-        .work_dir
-        .join("v4.3.0")
-        .join(format!("{}.part", app_name("4.3.0")));
+    let part = f.cfg.work_dir.join("v4.3.0").join(format!("{}.part", app_name("4.3.0")));
     assert!(!part.exists());
 }
 
@@ -422,11 +325,7 @@ fn abbruch_mitten_im_download_laesst_alte_datei_intakt() {
 fn downgrade_online_und_offline_aus_versions() {
     let f = fixture("4.1.0");
     let h = http();
-    let rel = list_releases(&f.cfg, &*h)
-        .unwrap()
-        .into_iter()
-        .find(|r| r.version == Version::new(4, 0, 0))
-        .unwrap();
+    let rel = list_releases(&f.cfg, &*h).unwrap().into_iter().find(|r| r.version == Version::new(4, 0, 0)).unwrap();
     // Warnung: 4.0.0 liest Format 2, 3.x nicht.
     assert!(versions::format_warning(&rel.version, 2).is_none());
     assert!(versions::format_warning(&Version::new(3, 9, 0), 2).is_some());
@@ -442,9 +341,7 @@ fn downgrade_online_und_offline_aus_versions() {
     install_saved(&cfg2, &newest, &Ctl::default()).unwrap();
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.1.0");
     // Jetzt liegt 4.0.0 in versions/.
-    assert!(versions::list_saved(&f.cfg.versions_dir)
-        .iter()
-        .any(|s| s.version == Version::new(4, 0, 0)));
+    assert!(versions::list_saved(&f.cfg.versions_dir).iter().any(|s| s.version == Version::new(4, 0, 0)));
 }
 
 #[test]
@@ -456,38 +353,19 @@ fn nur_die_letzten_drei_vorversionen_bleiben() {
     let vd = dir.path().join("v");
     for i in 0..5 {
         std::fs::write(&t, format!("alt{i}")).unwrap();
-        install::install_appimage(
-            &new,
-            &Version::new(9, 0, 0),
-            &t,
-            &Version::new(4, i, 0),
-            &vd,
-        )
-        .unwrap();
+        install::install_appimage(&new, &Version::new(9, 0, 0), &t, &Version::new(4, i, 0), &vd).unwrap();
         std::thread::sleep(Duration::from_millis(20));
     }
     let s = versions::list_saved(&vd);
-    assert_eq!(
-        s.iter().map(|s| s.version.to_string()).collect::<Vec<_>>(),
-        ["4.4.0", "4.3.0", "4.2.0"]
-    );
+    assert_eq!(s.iter().map(|s| s.version.to_string()).collect::<Vec<_>>(), ["4.4.0", "4.3.0", "4.2.0"]);
 }
 
 /// Mini-Cargo-Projekt als Tarball (statt OwnDraw); `extra` = zusätzlicher Inhalt für build.rs.
 fn mini_tarball(build_rs: Option<&str>) -> Vec<u8> {
     let mut files: Vec<(&str, String)> = vec![
-        (
-            "Cargo.toml",
-            "[package]\nname = \"mini\"\nversion = \"0.1.0\"\nedition = \"2021\"\n".into(),
-        ),
-        (
-            "Cargo.lock",
-            "version = 4\n\n[[package]]\nname = \"mini\"\nversion = \"0.1.0\"\n".into(),
-        ),
-        (
-            "src/main.rs",
-            "fn main() { println!(\"mini-ok\"); }\n".into(),
-        ),
+        ("Cargo.toml", "[package]\nname = \"mini\"\nversion = \"0.1.0\"\nedition = \"2021\"\n".into()),
+        ("Cargo.lock", "version = 4\n\n[[package]]\nname = \"mini\"\nversion = \"0.1.0\"\n".into()),
+        ("src/main.rs", "fn main() { println!(\"mini-ok\"); }\n".into()),
     ];
     if let Some(b) = build_rs {
         files.push(("build.rs", b.to_string()));
@@ -499,8 +377,7 @@ fn mini_tarball(build_rs: Option<&str>) -> Vec<u8> {
         h.set_size(data.len() as u64);
         h.set_mode(0o644);
         h.set_cksum();
-        tar.append_data(&mut h, format!("OwnDraw-4.1.0/{name}"), data.as_bytes())
-            .unwrap();
+        tar.append_data(&mut h, format!("OwnDraw-4.1.0/{name}"), data.as_bytes()).unwrap();
     }
     tar.into_inner().unwrap().finish().unwrap()
 }
@@ -509,26 +386,15 @@ fn mini_tarball(build_rs: Option<&str>) -> Vec<u8> {
 fn quellbau_mit_mini_projekt() {
     let mut f = fixture("4.0.0");
     f.cfg.mode = UpdateMode::Source;
-    let a = f.srv.asset(
-        &source_asset(&Version::new(4, 1, 0)),
-        &mini_tarball(None),
-        &f.keys,
-    );
+    let a = f.srv.asset(&source_asset(&Version::new(4, 1, 0)), &mini_tarball(None), &f.keys);
     let rel = github::parse_release(&f.srv.release("4.1.0", a)).unwrap();
     let ctl = Ctl::default();
     install_release(&f.cfg, &*http(), &rel, &ctl).unwrap();
     assert!(f.cfg.build_dir.join("v4.1.0").exists());
     let out = std::process::Command::new(f.target()).output().unwrap();
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "mini-ok");
-    assert_eq!(
-        std::fs::read(f.dir.path().join("OwnDraw.AppImage.bak")).unwrap(),
-        b"APPIMAGE-4.0.0"
-    );
-    assert!(ctl
-        .status()
-        .log
-        .iter()
-        .any(|l| l.contains("cargo build --release --locked")));
+    assert_eq!(std::fs::read(f.dir.path().join("OwnDraw.AppImage.bak")).unwrap(), b"APPIMAGE-4.0.0");
+    assert!(ctl.status().log.iter().any(|l| l.contains("cargo build --release --locked")));
 }
 
 #[test]
@@ -537,11 +403,7 @@ fn quellbau_ohne_toolchain_meldet_hinweis() {
     f.cfg.mode = UpdateMode::Source;
     f.cfg.cargo = Some(PathBuf::from("/nicht/vorhanden/cargo"));
     // `cargo` explizit gesetzt, aber nicht startbar → Bauen schlägt fehl; ohne Angabe und ohne cargo im PATH → NoToolchain.
-    let a = f.srv.asset(
-        &source_asset(&Version::new(4, 1, 0)),
-        &mini_tarball(None),
-        &f.keys,
-    );
+    let a = f.srv.asset(&source_asset(&Version::new(4, 1, 0)), &mini_tarball(None), &f.keys);
     let rel = github::parse_release(&f.srv.release("4.1.0", a)).unwrap();
     assert!(install_release(&f.cfg, &*http(), &rel, &Ctl::default()).is_err());
     assert_eq!(std::fs::read(f.target()).unwrap(), b"APPIMAGE-4.0.0");
@@ -552,9 +414,7 @@ fn abbruch_beim_bauen_toetet_den_prozess() {
     let mut f = fixture("4.0.0");
     f.cfg.mode = UpdateMode::Source;
     let tar = mini_tarball(Some("fn main() { println!(\"cargo:warning=baue\"); std::thread::sleep(std::time::Duration::from_secs(60)); }\n"));
-    let a = f
-        .srv
-        .asset(&source_asset(&Version::new(4, 1, 0)), &tar, &f.keys);
+    let a = f.srv.asset(&source_asset(&Version::new(4, 1, 0)), &tar, &f.keys);
     let rel = github::parse_release(&f.srv.release("4.1.0", a)).unwrap();
     let ctl = Ctl::default();
     let c2 = ctl.clone();

@@ -117,10 +117,10 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
             }
             (Some(_), true) => {}
             (Some(rel), false) => {
-                ui.label(egui::RichText::new(format!("OwnDraw ist aktuell (neueste veröffentlichte Version: {}).", rel.version)).color(c(p.dim)));
+                ui.label(egui::RichText::new(format!("Kein Update verfügbar: OwnDraw {} ist aktuell (neueste veröffentlichte Version: {}).", cfg.current, rel.version)).color(c(p.dim)));
             }
             (None, _) => {
-                ui.label(egui::RichText::new("Es gibt noch keine veröffentlichte Version.").color(c(p.dim)));
+                ui.label(egui::RichText::new("Kein Update verfügbar: Auf GitHub gibt es noch keine veröffentlichte Version.").color(c(p.dim)));
             }
         }
     }

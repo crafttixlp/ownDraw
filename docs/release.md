@@ -64,6 +64,19 @@ Die App prüft die Signatur gegen den einkompilierten öffentlichen Schlüssel, 
 
 Die Update-Tests erzeugen ihre Schlüssel zur Laufzeit (Crate `minisign` als dev-dependency) und brauchen den echten Schlüssel nicht.
 
+## 7. Release ohne GitHub Actions (lokal)
+
+Solange Actions nicht laufen (z. B. Abrechnungssperre), erzeugt `packaging/release-lokal.sh` dasselbe Release von Hand:
+
+```sh
+# Probelauf: baut/sammelt und signiert nach dist/v<version>/, veröffentlicht nichts
+MINISIGN_KEY_FILE=~/geheim/owndraw.key packaging/release-lokal.sh --apk OwnDraw-<v>.apk
+# Veröffentlichen (Token mit contents:write)
+MINISIGN_KEY_FILE=~/geheim/owndraw.key GITHUB_TOKEN=… packaging/release-lokal.sh --apk OwnDraw-<v>.apk --veroeffentlichen
+```
+
+minisign fragt nach dem Schlüssel-Passwort. Das Release muss als „Latest“ (kein Entwurf, keine Vorabversion) erscheinen, sonst sieht die App es nicht.
+
 ## Hinweise
 
 - Schlüsselwechsel (minisign oder Android-Keystore) bricht Updates für bestehende Installationen. Nur im Notfall, mit Ankündigung.

@@ -32,7 +32,7 @@ arboard = { version = "3", features = ["image-data", "wayland-data-control"] }
 pollster = "0.4"
 dirs = "6"
 # Netzwerk auf dem Desktop (Android lädt über die Java-Seite, siehe platform/android.rs)
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 

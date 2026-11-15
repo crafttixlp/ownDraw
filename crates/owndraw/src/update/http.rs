@@ -13,6 +13,39 @@ pub trait Http: Send + Sync {
     fn download(&self, url: &str, dest: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error>;
 }
 
+/// Übersetzt eine Fehlermeldung des HTTP-Clients (ureq oder Java) in einen verständlichen [`Error`].
+pub fn classify(msg: &str) -> Error {
+    let l = msg.to_lowercase();
+    if let Some(i) = l.find("http status: ") {
+        let code: String = l[i + 13..].chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(c) = code.parse::<u16>() {
+            return status(c);
+        }
+    }
+    const TIMEOUT: [&str; 3] = ["timeout", "timed out", "sockettimeout"];
+    const OFFLINE: [&str; 11] = [
+        "host not found", "unknownhost", "unable to resolve", "failed to lookup", "dns", "connection refused",
+        "connectexception", "network is unreachable", "no route to host", "connection failed", "enetunreach",
+    ];
+    if TIMEOUT.iter().any(|k| l.contains(k)) {
+        Error::Timeout
+    } else if OFFLINE.iter().any(|k| l.contains(k)) {
+        Error::Offline
+    } else if l.contains("certificate") || l.contains("sslhandshake") {
+        Error::Other(format!("Sichere Verbindung zu GitHub fehlgeschlagen (Zertifikat nicht vertrauenswürdig): {msg}"))
+    } else {
+        Error::Other(format!("Netzwerkfehler: {msg}"))
+    }
+}
+
+/// HTTP-Status → Fehler (403/429 bei GitHub ohne Token = Abfragegrenze).
+pub fn status(code: u16) -> Error {
+    match code {
+        403 | 429 => Error::RateLimit,
+        c => Error::Status(c),
+    }
+}
+
 /// Standard-Implementierung der Plattform. `allow_http` nur für Tests mit lokalem Server.
 pub fn default_http(allow_http: bool) -> Box<dyn Http> {
     #[cfg(not(target_os = "android"))]
@@ -44,13 +77,20 @@ mod desktop {
                 .timeout_recv_response(Some(Duration::from_secs(30)))
                 .timeout_recv_body(Some(Duration::from_secs(30)))
                 .user_agent("OwnDraw-Updater")
+                // System-Zertifikatsspeicher (wie der Browser), damit auch Firmen-Proxys mit eigener CA gehen.
+                .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
                 .build()
                 .into()
         }
     }
 
     fn net(e: ureq::Error) -> Error {
-        Error::Other(format!("Netzwerkfehler: {e}"))
+        match e {
+            ureq::Error::StatusCode(c) => status(c),
+            ureq::Error::Timeout(_) => Error::Timeout,
+            ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => Error::Offline,
+            e => classify(&e.to_string()),
+        }
     }
 
     impl Http for Ureq {
@@ -109,7 +149,7 @@ mod android {
             if !self.allow_http && !url.starts_with("https://") {
                 return Err(Error::Other("Nur HTTPS erlaubt".into()));
             }
-            crate::platform::android::http_get(url).map_err(|e| Error::Other(format!("Netzwerkfehler: {e}")))
+            crate::platform::android::http_get(url).map_err(|e| classify(&e.to_string()))
         }
 
         fn download(&self, url: &str, dest: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error> {
@@ -123,7 +163,10 @@ mod android {
             if cancel.load(Ordering::Relaxed) {
                 return Err(Error::Cancelled);
             }
-            r.map_err(|e| Error::Other(format!("Download fehlgeschlagen: {e}")))
+            r.map_err(|e| match classify(&e.to_string()) {
+                Error::Other(m) => Error::Other(format!("Download fehlgeschlagen: {m}")),
+                e => e,
+            })
         }
     }
 }

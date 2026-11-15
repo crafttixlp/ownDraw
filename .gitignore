@@ -1,3 +1,4 @@
 /target/
 *.AppImage
 packaging/appimage/runtime
+/dist/

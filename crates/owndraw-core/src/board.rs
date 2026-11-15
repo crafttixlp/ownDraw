@@ -650,6 +650,37 @@ impl Board {
         self.refresh();
     }
 
+    /// Strichstärke der Auswahl (ohne Bilder/Notizen) in Weltkoordinaten; None ohne passende Auswahl.
+    pub fn sel_width(&self) -> Option<f32> {
+        let w: Vec<f32> = self.sel_items().iter().filter(|it| !it.is_img() && it.as_note().is_none()).map(|it| it.width).collect();
+        if w.is_empty() {
+            return None;
+        }
+        Some(w.iter().sum::<f32>() / w.len() as f32)
+    }
+
+    /// Setzt die Strichstärke der Auswahl. `undo_step` = true legt einen Rückgängig-Schritt an
+    /// (beim Regler nur zu Beginn des Ziehens, nicht in jedem Frame).
+    pub fn set_sel_width(&mut self, w: f32, undo_step: bool) {
+        if self.sel_width().is_none() {
+            return;
+        }
+        if undo_step {
+            self.checkpoint();
+        }
+        let w = w.clamp(0.2, 200.0);
+        self.sel_mut(|it| {
+            if it.is_img() || it.as_note().is_some() {
+                return;
+            }
+            it.width = w;
+            it.touch();
+        });
+        self.frame_ok = false;
+        self.ensure_frame();
+        self.refresh();
+    }
+
     fn checkpoint(&mut self) {
         let s = self.snapshot();
         self.undo.push(s);

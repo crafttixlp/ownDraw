@@ -350,6 +350,23 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                     if icon_btn(ui, &mut sh.icons, ic::TRASH, p.danger, false, false, btn, &env.tip("Löschen", "Entf")).clicked() {
                         ed.board.delete_sel();
                     }
+                    // Strichstärke der ausgewählten Striche/Formen
+                    if let Some(w0) = ed.board.sel_width() {
+                        let mut w = w0;
+                        ui.add_space(6.0);
+                        ui.spacing_mut().slider_width = 110.0;
+                        let r = ui
+                            .add(egui::Slider::new(&mut w, 0.5..=40.0).logarithmic(true).max_decimals(1).text("Dicke"))
+                            .on_hover_text("Strichstärke der Auswahl");
+                        // Ein Rückgängig-Schritt je Ziehen (bei Beginn), sonst je Änderung (Tastatur/Klick)
+                        if r.drag_started() {
+                            ed.board.set_sel_width(w0, true);
+                        }
+                        if r.changed() {
+                            ed.board.set_sel_width(w, !r.dragged() && !r.drag_started());
+                        }
+                        ui.add_space(6.0);
+                    }
                 }
                 g
             })

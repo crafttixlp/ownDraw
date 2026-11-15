@@ -38,7 +38,7 @@ Voraussetzung: Rust ≥ 1.85.
 ```sh
 cargo run --release      # Desktop starten
 cargo test               # Tests
-./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.4.0-x86_64.AppImage
+./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.5.0-x86_64.AppImage
 crates/owndraw-android/build-apk.sh   # APK (braucht Android SDK + NDK, siehe docs/android.md)
 ```
 
@@ -63,6 +63,6 @@ Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL, `libxkbcommon-x11` (X1
 
 ## Stand
 
-Version 4.4.0. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
+Version 4.5.0. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
 entsteht in CI; auf echten Geräten noch ungetestet. Für Updates muss vor dem ersten Release der echte
 minisign-Schlüssel eingetragen werden (`docs/release.md`).

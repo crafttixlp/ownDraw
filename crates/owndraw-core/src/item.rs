@@ -1126,6 +1126,91 @@ fn arr(a: &[f32]) -> Value {
     )
 }
 
+/// Lineare Formtypen (Linie, Pfeile): zwei Endpunkte q[0..2] und q[2..4].
+pub fn is_linear(kind: i32) -> bool {
+    matches!(kind, LINE | ARROW | ARROW2 | ARROW_ENG) || (7..=10).contains(&kind)
+}
+
+impl Item {
+    /// Skaliert achsenweise um den Pivot (px, py): sx entlang der um `ang` (Bogenmass) gedrehten x-Achse,
+    /// sy entlang der dazu senkrechten y-Achse. Kein Spiegeln (Faktoren > 0 erwartet). Linienbreite bleibt.
+    pub fn xf_axis(&mut self, sx: f32, sy: f32, px: f32, py: f32, ang: f32) {
+        let (cs, sn) = (ang.cos(), ang.sin());
+        let pt = |x: f32, y: f32| -> (f32, f32) {
+            let (dx, dy) = (x - px, y - py);
+            let (u, v) = ((dx * cs + dy * sn) * sx, (-dx * sn + dy * cs) * sy);
+            (px + u * cs - v * sn, py + u * sn + v * cs)
+        };
+        // Faktoren entlang der Achsen eines Objekts, dessen Box um `own` gedreht ist (Projektion; bei 0°/90° exakt).
+        let box_f = |own: f32| -> (f32, f32) {
+            let d = own - ang;
+            let (c, s) = (d.cos(), d.sin());
+            (((sx * c).powi(2) + (sy * s).powi(2)).sqrt(), ((sx * s).powi(2) + (sy * c).powi(2)).sqrt())
+        };
+        match &mut self.kind {
+            Kind::Stroke(st) => {
+                for c in st.p.chunks_exact_mut(3) {
+                    let (x, y) = pt(c[0], c[1]);
+                    c[0] = x;
+                    c[1] = y;
+                }
+            }
+            Kind::Shape(g) => {
+                if g.kind == ELLIPSE || g.kind == HEART {
+                    let q = &mut g.q;
+                    let (hx, hy) = ((q[2] - q[0]) / 2.0, (q[3] - q[1]) / 2.0);
+                    let (cx, cy) = pt((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
+                    let (fx, fy) = box_f(g.ang);
+                    let (hx, hy) = (hx * fx, hy * fy);
+                    q[0] = cx - hx;
+                    q[2] = cx + hx;
+                    q[1] = cy - hy;
+                    q[3] = cy + hy;
+                } else {
+                    for c in g.q.chunks_exact_mut(2) {
+                        let (x, y) = pt(c[0], c[1]);
+                        c[0] = x;
+                        c[1] = y;
+                    }
+                }
+            }
+            Kind::Note(n) => {
+                let (cx, cy) = pt(n.x + n.w / 2.0, n.y + n.h / 2.0);
+                let (fx, fy) = box_f(n.ang);
+                n.w *= fx;
+                n.mh *= fy;
+                if n.bg == 0 {
+                    // freier Text: Breite folgt der Schrift
+                    n.size *= (fx * fy).sqrt();
+                }
+                n.layout();
+                n.x = cx - n.w / 2.0;
+                n.y = cy - n.h / 2.0;
+            }
+            Kind::Img(m) => {
+                let (cx, cy) = pt(m.x + m.w / 2.0, m.y + m.h / 2.0);
+                let (fx, fy) = box_f(m.ang);
+                m.w *= fx;
+                m.h *= fy;
+                m.x = cx - m.w / 2.0;
+                m.y = cy - m.h / 2.0;
+            }
+        }
+        self.touch();
+    }
+
+    /// Setzt bei linearen Formen den Endpunkt `i` (0 = Anfang, 1 = Ende) auf (x, y).
+    pub fn set_end(&mut self, i: usize, x: f32, y: f32) {
+        if let Kind::Shape(g) = &mut self.kind {
+            if is_linear(g.kind) && g.q.len() >= 4 && i < 2 {
+                g.q[i * 2] = x;
+                g.q[i * 2 + 1] = y;
+            }
+        }
+        self.touch();
+    }
+}
+
 fn farr(v: &Value) -> Option<Vec<f32>> {
     v.as_array()?.iter().map(|x| x.as_f64().map(|f| f as f32)).collect()
 }
@@ -1196,6 +1281,22 @@ mod tests {
         it.xf(2.0, 50.0, 25.0, 10.0, 0.0);
         assert_eq!(it.width, 4.0);
         assert_eq!(it.to_strokes().len(), 1);
+    }
+
+    #[test]
+    fn xf_axis_ellipse_und_poly() {
+        let mut e = Item::shape(ELLIPSE, vec![0.0, 0.0, 100.0, 50.0], INK, 2.0);
+        e.xf_axis(2.0, 1.0, 0.0, 0.0, 0.0);
+        assert_eq!(e.as_shape().unwrap().q, vec![0.0, 0.0, 200.0, 50.0]);
+        assert_eq!(e.width, 2.0);
+        // um 90 Grad gedrehter Rahmen: sx wirkt auf die Hoehe
+        let mut r = Item::shape(ELLIPSE, vec![0.0, 0.0, 100.0, 50.0], INK, 2.0);
+        r.xf_axis(1.0, 2.0, 0.0, 0.0, 0.0);
+        assert_eq!(r.as_shape().unwrap().q, vec![0.0, 0.0, 100.0, 100.0]);
+        let mut p = Item::shape(POLY, vec![0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0], INK, 2.0);
+        p.xf_axis(3.0, 1.0, 0.0, 0.0, 0.0);
+        assert_eq!(p.bounds().width() > 29.0, true);
+        assert!(is_linear(ARROW) && is_linear(8) && !is_linear(ELLIPSE));
     }
 
     #[test]

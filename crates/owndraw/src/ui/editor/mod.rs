@@ -692,7 +692,11 @@ impl Editor {
             self.st.error_toast_shown = false;
         }
         self.sync_tool_prefs(&mut sh.settings);
-        self.board.snap_cfg = sh.settings.snap.to_core();
+        let mut snap = sh.settings.snap.to_core();
+        if sh.settings.snap.key.held(&ctx.input(|i| i.modifiers)) {
+            snap = snap.inverted();
+        }
+        self.board.set_snap_cfg(snap);
 
         // Zeitgesteuertes Neuzeichnen (Halte-Timer, Ende von Zoom-Gesten, Autosave)
         let mut wait = 30.0f64;

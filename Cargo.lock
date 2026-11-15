@@ -1965,7 +1965,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw"
-version = "4.4.1"
+version = "4.5.1"
 dependencies = [
  "android-activity",
  "arboard",
@@ -1995,7 +1995,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw-android"
-version = "4.4.1"
+version = "4.5.1"
 dependencies = [
  "android-activity",
  "android_logger",
@@ -2006,7 +2006,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw-core"
-version = "4.4.1"
+version = "4.5.1"
 dependencies = [
  "epaint_default_fonts",
  "flate2",

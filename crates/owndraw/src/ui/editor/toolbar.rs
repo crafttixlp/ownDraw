@@ -373,12 +373,15 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         }
         Tool::Note => ic::NOTE,
         Tool::Image => ic::IMAGE,
+        Tool::Ruler => ic::RULER,
+        Tool::Laser => ic::LASER,
+        Tool::Space => ic::SPACE,
     })
 }
 
 fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
     let p = style::pal();
-    let active = t != Tool::Image && ed.active_tool() == t;
+    let active = t != Tool::Image && (ed.active_tool() == t || (t == Tool::Ruler && ed.ext.ruler.visible));
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     style::btn_bg(ui, rect, &resp, active);
     let tint = if active { p.accent } else { p.text };
@@ -401,6 +404,7 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
         } else if active {
             ed.st.opts_open = !ed.st.opts_open;
             ed.st.menu_open = false;
+            ed.ext.ruler_pop = t == Tool::Ruler && ed.st.opts_open;
         } else {
             ed.select_tool(sh, t);
             ed.st.opts_open = false;

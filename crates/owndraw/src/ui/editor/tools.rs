@@ -97,6 +97,9 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::std(Tool::Text, "text", "Text", Group::Extras, ic::TEXT, "Schreibt Text direkt auf das Blatt.").key("T"),
     ToolDef::std(Tool::Note, "note", "Haftnotiz", Group::Extras, ic::NOTE, "Farbiger Zettel mit Text, erreichbar über das Text-Werkzeug.").key("N").inside("text"),
     ToolDef::std(Tool::Image, "image", "Bild", Group::Extras, ic::IMAGE, "Fügt ein Bild aus einer Datei ein.").key("I"),
+    ToolDef::neu(Tool::Ruler, "ruler", "Lineal", Group::Extras, ic::RULER, "Blendet ein Lineal oder Geodreieck ein; Striche an der Kante werden gerade.").key("U"),
+    ToolDef::neu(Tool::Laser, "laser", "Laserpointer", Group::Extras, ic::LASER, "Leuchtspur zum Zeigen, verblasst nach 1,5 s und wird nicht gespeichert.").key("Q"),
+    ToolDef::neu(Tool::Space, "space", "Platz schaffen", Group::Ordnen, ic::SPACE, "Senkrecht ziehen schiebt alles darunter nach unten oder oben.").key("G"),
 ];
 
 /// Werkzeug nach Kennung.

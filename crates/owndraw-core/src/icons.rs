@@ -42,6 +42,10 @@ pub const DUPLICATE: i32 = 35;
 pub const ERASER_PART: i32 = 36;
 /// Maschinenbau-Pfeil: schmaler gefuellter Pfeil (Form-Menue).
 pub const MACHINE_ARROW: i32 = 37;
+// Lineal, Laserpointer, Platz schaffen (eigener Nummernblock, damit parallel neue Icons nicht kollidieren)
+pub const RULER: i32 = 70;
+pub const LASER: i32 = 71;
+pub const SPACE: i32 = 72;
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -286,6 +290,28 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, false, &[12.5, 14.75, 17.0, 14.75]);
             poly(&mut pb, false, &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5]);
         }
+        RULER => {
+            poly(&mut pb, true, &[2.5, 15.5, 15.5, 2.5, 21.5, 8.5, 8.5, 21.5]);
+            for (i, t) in [0.2f32, 0.35, 0.5, 0.65, 0.8].iter().enumerate() {
+                let (x, y) = (2.5 + 13.0 * t, 15.5 - 13.0 * t);
+                let l = if i % 2 == 0 { 3.2 } else { 1.9 };
+                poly(&mut pb, false, &[x, y, x + l, y + l]);
+            }
+        }
+        LASER => {
+            poly(&mut pb, false, &[4.0, 20.0, 13.0, 11.0]);
+            pb.push_circle(16.5, 7.5, 2.3);
+            for v in [[16.5, 3.0, 16.5, 1.5], [21.0, 7.5, 22.5, 7.5], [19.7, 4.3, 20.8, 3.2], [13.3, 4.3, 12.2, 3.2], [19.7, 10.7, 20.8, 11.8]] {
+                poly(&mut pb, false, &v);
+            }
+        }
+        SPACE => {
+            poly(&mut pb, false, &[3.0, 12.0, 21.0, 12.0]);
+            poly(&mut pb, false, &[12.0, 9.5, 12.0, 3.0]);
+            poly(&mut pb, false, &[8.5, 6.5, 12.0, 3.0, 15.5, 6.5]);
+            poly(&mut pb, false, &[12.0, 14.5, 12.0, 21.0]);
+            poly(&mut pb, false, &[8.5, 17.5, 12.0, 21.0, 15.5, 17.5]);
+        }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
             poly(&mut pb, false, &[5.0, 12.0, 19.0, 12.0]);
@@ -319,6 +345,14 @@ mod tests {
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();
                 assert!(n >= 20, "icon {id} filled={filled}: nur {n} Pixel");
             }
+        }
+    }
+
+    #[test]
+    fn lineal_laser_platz_sichtbar() {
+        for id in [RULER, LASER, SPACE] {
+            let pm = render(id, 48, 0xFFFFFFFF, false).expect("pixmap");
+            assert!(pm.pixels().iter().filter(|p| p.alpha() > 0).count() >= 20, "icon {id}");
         }
     }
 

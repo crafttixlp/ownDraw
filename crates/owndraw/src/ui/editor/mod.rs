@@ -3,6 +3,7 @@
 
 pub mod clip;
 pub mod drop;
+mod extras;
 pub mod keys;
 mod layers;
 #[cfg(target_arch = "wasm32")]
@@ -10,6 +11,7 @@ pub mod live;
 mod menu;
 mod options;
 pub mod pages;
+mod ruler;
 mod text;
 mod toolbar;
 pub mod tools;
@@ -58,6 +60,9 @@ pub enum Tool {
     Text,
     Note,
     Image,
+    Ruler,
+    Laser,
+    Space,
 }
 
 impl Tool {
@@ -76,7 +81,7 @@ impl Tool {
     }
     /// Hat das Werkzeug Optionen (Kontext-Popover bzw. Bottom-Sheet)?
     pub fn has_options(self) -> bool {
-        self != Tool::Image
+        !matches!(self, Tool::Image | Tool::Laser | Tool::Space)
     }
 }
 
@@ -155,6 +160,8 @@ pub struct Editor {
     pub(super) text: Option<text::TextEdState>,
     pub st: UiState,
     pub(super) page_thumbs: pages::PageThumbs,
+    /// Lineal/Geodreieck, Laserpointer, Platz schaffen.
+    pub(super) ext: extras::Extras,
     canvas: Rect,
     /// Mausposition über der Zeichenfläche (Bildschirmpunkte), Ziel für Einfügen.
     hover: Option<Pos2>,
@@ -212,6 +219,7 @@ impl Editor {
             text: None,
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
+            ext: extras::Extras::default(),
             canvas: Rect::NOTHING,
             hover: None,
             menu_pos: None,
@@ -451,6 +459,9 @@ impl Editor {
     // ---------------------------------------------------------------- Werkzeuge
 
     pub fn active_tool(&self) -> Tool {
+        if let Some(t) = self.ext.xtool {
+            return t;
+        }
         match self.board.tool {
             board::PEN => Tool::Pen,
             board::MARKER => Tool::Marker,
@@ -464,6 +475,15 @@ impl Editor {
 
     /// Werkzeug wählen (Bild öffnet die Dateiauswahl).
     pub fn select_tool(&mut self, sh: &mut Shared, t: Tool) {
+        match t {
+            Tool::Ruler => return self.toggle_ruler(),
+            Tool::Laser | Tool::Space => {
+                self.ext.xtool = Some(t);
+                self.board.invalidate();
+                return;
+            }
+            _ => self.ext.xtool = None,
+        }
         let bt = match t {
             Tool::Pen => board::PEN,
             Tool::Marker => board::MARKER,
@@ -482,6 +502,7 @@ impl Editor {
                 self.pick_image(sh);
                 return;
             }
+            Tool::Ruler | Tool::Laser | Tool::Space => return,
         };
         if self.board.tool != bt {
             self.board.set_tool(bt);
@@ -565,6 +586,7 @@ impl Editor {
         let ppp = ctx.pixels_per_point();
         self.board.set_size(rect.width(), rect.height(), ppp);
         self.board.tick(sh.now);
+        self.ext_frame(sh.now);
         if self.first_frame {
             self.first_frame = false;
             if self.fit_on_open {
@@ -670,6 +692,12 @@ impl Editor {
                 CursorIcon::Grabbing
             } else if space {
                 CursorIcon::Grab
+            } else if let Some(t) = self.ext.xtool {
+                if t == Tool::Space {
+                    CursorIcon::ResizeVertical
+                } else {
+                    CursorIcon::Crosshair
+                }
             } else {
                 match self.board.tool {
                     board::PEN | board::MARKER | board::SHAPE | board::ERASER => CursorIcon::Crosshair,
@@ -679,6 +707,7 @@ impl Editor {
             };
             ctx.set_cursor_icon(cur);
         }
+        self.ext_paint(ui, &ctx, rect);
 
         // Leisten und Panels (Reihenfolge: Docks, Leisten, Popups)
         self.st.popup_rects.clear();
@@ -749,7 +778,7 @@ impl Editor {
         let b = &self.board;
         let vals: [(&str, serde_json::Value); 7] = [
             ("arrow", b.arrow_style.into()),
-            ("recog", b.recog.into()),
+            ("recog", self.ext.saved_recog.unwrap_or(b.recog).into()),
             ("selmode", b.sel_mode.into()),
             ("erasemode", b.erase_mode.into()),
             ("w", serde_json::json!(b.pen_w)),
@@ -792,11 +821,23 @@ impl Editor {
                     if phase == TouchPhase::Start && (!on_board(pos) || self.text.is_some()) {
                         continue;
                     }
-                    self.touch(id.0, phase, rel(pos).to_pos2(), force.unwrap_or(0.5))
+                    let ph = match phase {
+                        TouchPhase::Start => extras::Ph::Down,
+                        TouchPhase::Move => extras::Ph::Move,
+                        TouchPhase::End => extras::Ph::Up,
+                        TouchPhase::Cancel => extras::Ph::Cancel,
+                    };
+                    match self.ext_hook(id.0, ph, rel(pos).to_pos2(), true) {
+                        extras::Hook::Eat => {}
+                        extras::Hook::Pass(q) => self.touch(id.0, phase, q, force.unwrap_or(0.5)),
+                    }
                 }
                 _ if has_touch && matches!(ev, Event::PointerMoved(_) | Event::PointerButton { .. }) => {}
                 Event::PointerMoved(p) => {
-                    let r = rel(p);
+                    let r = match self.ext_hook(extras::MOUSE, extras::Ph::Move, rel(p).to_pos2(), false) {
+                        extras::Hook::Eat => continue,
+                        extras::Hook::Pass(q) => q.to_vec2(),
+                    };
                     if self.drawing {
                         self.board.on_touch(&Motion::single(Action::Move, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if let Some((last, b)) = self.panning {
@@ -807,17 +848,27 @@ impl Editor {
                 Event::PointerButton { pos, button, pressed, .. } => {
                     let r = rel(pos);
                     if pressed {
-                        if self.drawing || self.panning.is_some() || !on_board(pos) || self.text.is_some() {
+                        if self.drawing || self.panning.is_some() || !on_board(pos) || self.text.is_some() || self.ext_grabs(extras::MOUSE) {
                             continue;
                         }
                         if button == PointerButton::Primary && !space {
+                            let r = match self.ext_hook(extras::MOUSE, extras::Ph::Down, r.to_pos2(), false) {
+                                extras::Hook::Eat => continue,
+                                extras::Hook::Pass(q) => q.to_vec2(),
+                            };
                             self.drawing = true;
                             self.board.on_touch(&Motion::single(Action::Down, r.x, r.y, 0.5, ToolType::Stylus));
                         } else if matches!(button, PointerButton::Primary | PointerButton::Secondary | PointerButton::Middle) {
                             self.panning = Some((pos, button));
                             self.pan_start = Some(pos);
                         }
+                    } else if button == PointerButton::Primary && self.ext_grabs(extras::MOUSE) {
+                        self.ext_hook(extras::MOUSE, extras::Ph::Up, r.to_pos2(), false);
                     } else if self.drawing && button == PointerButton::Primary {
+                        let r = match self.ext_hook(extras::MOUSE, extras::Ph::Up, r.to_pos2(), false) {
+                            extras::Hook::Pass(q) => q.to_vec2(),
+                            extras::Hook::Eat => r,
+                        };
                         self.drawing = false;
                         self.board.on_touch(&Motion::single(Action::Up, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if self.panning.map(|(_, b)| b == button).unwrap_or(false) {
@@ -938,8 +989,10 @@ impl Editor {
         if let Some(t) = a.tool {
             match t {
                 // T/N wählen Text bzw. Haftnotiz direkt (wie bisher)
-                Tool::Text => self.board.set_tool(board::TEXT),
-                Tool::Note => self.board.set_tool(board::NOTE),
+                Tool::Text | Tool::Note => {
+                    self.ext.xtool = None;
+                    self.board.set_tool(if t == Tool::Text { board::TEXT } else { board::NOTE });
+                }
                 _ => self.select_tool(sh, t),
             }
             return;

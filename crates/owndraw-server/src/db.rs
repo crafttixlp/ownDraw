@@ -114,6 +114,11 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
                  WHERE n2.created > notices.created OR (n2.created = notices.created AND n2.id < notices.id));",
         )?;
     }
+    // 4.21: Board an Mitteilungen anhängen.
+    let has_nb = conn.prepare("SELECT 1 FROM pragma_table_info('notices') WHERE name='board_id'")?.exists([])?;
+    if !has_nb {
+        conn.execute_batch("ALTER TABLE notices ADD COLUMN board_id TEXT;")?;
+    }
     // 4.16: Zwei-Faktor-Anmeldung für Admins (`totp.rs`).
     let has_totp = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='totp_secret'")?.exists([])?;
     if !has_totp {

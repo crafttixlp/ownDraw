@@ -32,7 +32,7 @@ impl Recent {
     /// Lädt `<dir>/recent.json` (fehlt sie oder ist sie kaputt: leere Liste).
     pub fn load(dir: &Path) -> Recent {
         let path = dir.join("recent.json");
-        let items = std::fs::read(&path)
+        let items = crate::kv::read(&path)
             .ok()
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             .and_then(|v| v.as_array().cloned())
@@ -54,10 +54,7 @@ impl Recent {
 
     fn save(&self) {
         let v: Vec<Value> = self.items.iter().map(|e| json!({"file": e.file.to_key(), "name": e.name, "modified": e.modified_ms, "pages": e.pages})).collect();
-        if let Some(d) = self.path.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        let _ = owndraw_core::store::write_atomic(&self.path, Value::Array(v).to_string().as_bytes());
+        let _ = crate::kv::write(&self.path, Value::Array(v).to_string().as_bytes());
     }
 
     /// Fügt vorn ein (ersetzt einen vorhandenen Eintrag derselben Datei) und speichert.

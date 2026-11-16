@@ -90,7 +90,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         ed.export(sh, 2);
         close = true;
     }
-    if style::menu_row(ui, "Website-Vorschau", false, h) {
+    if !crate::platform::WEB && style::menu_row(ui, "Website-Vorschau", false, h) {
         ed.preview(sh);
         close = true;
     }
@@ -102,11 +102,18 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
 
     ui.add_space(4.0);
     style::caption(ui, "Datei");
+    #[cfg(target_arch = "wasm32")]
+    server_rows(ui, ed, sh, h, &mut close);
+    if crate::platform::WEB && style::menu_row(ui, "Herunterladen (.owndraw)", false, h) {
+        let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
+        sh.reqs.push(Req::PickSave { purpose: PickPurpose::SaveCopy, name, kind: FileKind::Owndraw });
+        close = true;
+    }
     if style::menu_row(ui, "Umbenennen …", false, h) {
         sh.dialog = Some(crate::ui::dialogs::Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: ed.name().to_string(), focus: true });
         close = true;
     }
-    if style::menu_row(ui, "Kopie speichern unter …", false, h) {
+    if !crate::platform::WEB && style::menu_row(ui, "Kopie speichern unter …", false, h) {
         let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
         sh.reqs.push(Req::PickSave { purpose: PickPurpose::SaveCopy, name, kind: FileKind::Owndraw });
         close = true;
@@ -129,5 +136,38 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     }
     if close {
         ed.st.menu_open = false;
+    }
+}
+
+/// Browser: „Teilen …“ (Server-Board, Besitzer mit Lizenz) bzw. „Am Server speichern“ (lokales Board, Lizenz).
+#[cfg(target_arch = "wasm32")]
+fn server_rows(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, h: f32, close: &mut bool) {
+    use crate::platform::web::api;
+    if !api::licensed() {
+        return;
+    }
+    match ed.file().and_then(api::srv_id).map(String::from) {
+        Some(id) => {
+            let owner = api::board(&id).is_some_and(|b| b.role == "owner");
+            if owner && style::menu_row(ui, "Teilen …", false, h) {
+                if let Some(l) = ed.live.as_mut() {
+                    l.open_share();
+                }
+                *close = true;
+            }
+        }
+        None if ed.file().is_some() && style::menu_row(ui, "Am Server speichern", false, h) => {
+            let mut d = ed.snapshot_doc();
+            d.thumb = ed.board.thumb().encode_png().ok();
+            match crate::session::serialize(&d) {
+                Ok(b) => {
+                    api::create_board(&d.meta.name, b);
+                    sh.toast("Board wird am Server angelegt …");
+                }
+                Err(e) => sh.toast(&e),
+            }
+            *close = true;
+        }
+        None => {}
     }
 }

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f4f6">
+<title>OwnDraw</title>
+<link rel="icon" type="image/png" href="owndraw.png">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f4f4f6; font-family: system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; color: #303138; }
+  @media (prefers-color-scheme: dark) { html, body { background: #1c1d22; color: #e9eaee; } }
+  /* Canvas über die ganze Seite; eframe übernimmt Größe und Pixeldichte */
+  #owndraw-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+  #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 16px; }
+  #lade img { width: 72px; height: 72px; }
+  #lade .ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(127,127,140,.25); border-top-color: #5b6cff; animation: dreh 0.9s linear infinite; }
+  #lade.fehler .ring { display: none; }
+  #lade.fehler #text { color: #d93a3a; max-width: 36em; }
+  #lade small { opacity: .65; }
+  @keyframes dreh { to { transform: rotate(360deg); } }
+  noscript { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<canvas id="owndraw-canvas"></canvas>
+<div id="lade" role="status" aria-live="polite">
+  <img src="owndraw.png" alt="">
+  <div class="ring"></div>
+  <div id="text">OwnDraw wird geladen …</div>
+  <small>Zeichnen in Ebenen und auf Seiten</small>
+</div>
+<noscript>OwnDraw braucht JavaScript und WebAssembly.</noscript>
+<script type="module">
+  import init, { start } from "./owndraw_web.js";
+  const lade = document.getElementById("lade");
+  const text = document.getElementById("text");
+  function fehler(msg) {
+    lade.classList.add("fehler");
+    lade.style.display = "flex";
+    text.textContent = "OwnDraw konnte nicht starten: " + msg;
+  }
+  try {
+    await init();
+    await start("owndraw-canvas");
+    lade.remove();
+    document.getElementById("owndraw-canvas").focus();
+  } catch (e) {
+    console.error(e);
+    fehler((e && e.message) || String(e));
+  }
+</script>
+</body>
+</html>

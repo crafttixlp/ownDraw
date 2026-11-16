@@ -13,6 +13,9 @@ use std::collections::HashMap;
 #[derive(Default)]
 pub struct StartState {
     thumbs: HashMap<String, Option<TextureHandle>>,
+    /// Konto und Boards am Server (nur Browser).
+    #[cfg(target_arch = "wasm32")]
+    account: super::account::AccountUi,
 }
 
 impl StartState {
@@ -70,6 +73,9 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     }
                 });
             });
+            // Browser: Konto bzw. Gastmodus-Hinweis (dezent)
+            #[cfg(target_arch = "wasm32")]
+            super::account::header(ui, sh, &mut st.account);
             ui.add_space(14.0);
             // Aktionen
             let btn_w = if compact { (ui.available_width() - 8.0) / 2.0 } else { 140.0 };
@@ -81,8 +87,13 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
                 }
             });
+            #[cfg(target_arch = "wasm32")]
+            {
+                super::account::boards(ui, sh, &mut st.account);
+                ui.spacing_mut().item_spacing = egui::style::Spacing::default().item_spacing;
+            }
             ui.add_space(22.0);
-            ui.label(egui::RichText::new("Zuletzt geöffnet").size(18.0).strong());
+            ui.label(egui::RichText::new(if crate::platform::WEB { "Zuletzt geöffnet (in diesem Browser)" } else { "Zuletzt geöffnet" }).size(18.0).strong());
             ui.add_space(8.0);
 
             // Kachelraster
@@ -186,6 +197,8 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
             }
         });
     });
+    #[cfg(target_arch = "wasm32")]
+    super::account::dialogs(&ctx, sh, &mut st.account);
 }
 
 /// Gestrichelte abgerundete Umrandung (für die „Neu“-Kachel).

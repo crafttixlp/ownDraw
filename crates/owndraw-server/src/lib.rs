@@ -1,0 +1,131 @@
+//! OwnDraw-Server: JSON-API, Admin-Panel und Auslieferung der Web-App (Vertrag: `docs/web-api.md`).
+
+pub mod admin;
+pub mod auth;
+pub mod boards;
+pub mod collab;
+pub mod config;
+pub mod db;
+pub mod error;
+pub mod state;
+pub mod update;
+
+use axum::extract::Request;
+use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE};
+use axum::http::HeaderValue;
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse, Response};
+use axum::routing::{get, patch, post};
+use axum::{Json, Router};
+use error::ApiError;
+use serde_json::json;
+use state::AppState;
+use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
+use tower_http::compression::CompressionLayer;
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::services::ServeDir;
+
+/// Admin-Panel (eingebettet, kein Build-Schritt, keine externen Ressourcen).
+const ADMIN_HTML: &str = include_str!("admin.html");
+
+/// Legt Datenordner und Datenbank an und liefert den Zustand.
+pub fn open_state(cfg: config::Config) -> Result<AppState, String> {
+    std::fs::create_dir_all(cfg.boards_dir()).map_err(|e| format!("Datenordner {}: {e}", cfg.data.display()))?;
+    let db = db::Db::open(&cfg.db_path()).map_err(|e| format!("Datenbank: {e}"))?;
+    Ok(AppState::new(db, cfg))
+}
+
+/// Legt beim Start einen Admin an, wenn es noch keinen gibt und `OWNDRAW_ADMIN_EMAIL`/`_PASSWORD` gesetzt sind.
+pub async fn ensure_admin_from_env(state: &AppState) -> Result<(), String> {
+    let (Ok(email), Ok(pw)) = (std::env::var("OWNDRAW_ADMIN_EMAIL"), std::env::var("OWNDRAW_ADMIN_PASSWORD")) else {
+        return Ok(());
+    };
+    if email.trim().is_empty() || pw.is_empty() {
+        return Ok(());
+    }
+    let has_admin = state
+        .db
+        .call(|c| Ok(c.query_row("SELECT COUNT(*) FROM users WHERE admin=1", [], |r| r.get::<_, i64>(0))? > 0))
+        .await
+        .map_err(|e| e.message)?;
+    if has_admin {
+        return Ok(());
+    }
+    auth::create_admin(&state.db, &email, &pw).await.map_err(|e| e.message)?;
+    eprintln!("Admin {email} angelegt.");
+    Ok(())
+}
+
+async fn health() -> Json<serde_json::Value> {
+    Json(json!({"ok": true, "version": update::CURRENT}))
+}
+
+async fn api_not_found() -> ApiError {
+    ApiError::not_found("Diesen Pfad gibt es nicht.")
+}
+
+async fn admin_page() -> Response {
+    let mut r = Html(ADMIN_HTML).into_response();
+    let h = r.headers_mut();
+    h.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h.insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
+    );
+    r
+}
+
+async fn security_headers(req: Request, next: Next) -> Response {
+    let mut r = next.run(req).await;
+    let h = r.headers_mut();
+    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    h.insert("referrer-policy", HeaderValue::from_static("same-origin"));
+    r
+}
+
+/// Übergroße Anfragen (von der Body-Begrenzung) im JSON-Fehlerformat beantworten.
+async fn json_413(res: Response) -> Response {
+    let is_json = res.headers().get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json"));
+    if res.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE && !is_json {
+        return ApiError::too_large("Die Anfrage ist zu groß.").into_response();
+    }
+    res
+}
+
+pub fn build_app(state: AppState) -> Router {
+    let api = Router::new()
+        .route("/health", get(health))
+        .route("/auth/register", post(auth::register))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/logout", post(auth::logout))
+        .route("/me", get(auth::me))
+        .route("/me/password", post(auth::change_password))
+        .route("/license/redeem", post(auth::redeem))
+        .route("/boards", get(boards::list).post(boards::create))
+        .route("/boards/{id}", get(boards::get).put(boards::put).patch(boards::rename).delete(boards::delete))
+        .route("/boards/{id}/members", get(boards::members).post(boards::add_member))
+        .route("/boards/{id}/members/{user_id}", axum::routing::delete(boards::remove_member))
+        .route("/admin/users", get(admin::users))
+        .route("/admin/users/{id}", patch(admin::patch_user).delete(admin::delete_user))
+        .route("/admin/licenses", get(admin::licenses).post(admin::create_licenses))
+        .route("/admin/licenses/{code}", patch(admin::patch_license))
+        .route("/admin/update", get(update::get_state).patch(update::patch_state))
+        .route("/admin/update/check", post(update::post_check))
+        .route("/admin/update/install", post(update::post_install))
+        .route("/boards/{id}/images/{name}", get(collab::get_image).put(collab::put_image))
+        .route("/collab/{board_id}", get(collab::ws))
+        .fallback(api_not_found)
+        .layer(middleware::from_fn(auth::csrf))
+        .with_state(state.clone());
+
+    let body_limit = state.cfg.max_board_bytes as usize + 1024 * 1024;
+    Router::new()
+        .nest("/api", api)
+        .route("/admin", get(admin_page))
+        .route("/admin/", get(admin_page))
+        .fallback_service(ServeDir::new(&state.cfg.web).append_index_html_on_directories(true))
+        .layer(RequestBodyLimitLayer::new(body_limit))
+        .layer(middleware::map_response(json_413))
+        .layer(CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotForContentType::new("application/octet-stream"))))
+        .layer(middleware::from_fn(security_headers))
+}

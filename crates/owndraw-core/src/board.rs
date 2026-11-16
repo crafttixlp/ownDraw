@@ -967,6 +967,50 @@ impl Board {
         Snap { items: self.items.clone(), layers: self.layers.clone(), active: self.active, mode: self.board_mode.clone() }
     }
 
+    /// Zusammenarbeit: wendet `f` auf die Objektlisten aller Undo-/Redo-Schnappschüsse an (fremde Änderungen
+    /// nachtragen, damit Rückgängig nur eigene Schritte zurücknimmt).
+    pub fn patch_history(&mut self, mut f: impl FnMut(&mut Vec<Rc<Item>>)) {
+        for s in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            f(&mut s.items);
+        }
+    }
+
+    /// Zusammenarbeit: Stand von außen übernehmen (ohne Undo-Schritt, ohne `modified`). Auswahl und das gerade
+    /// bearbeitete Objekt bleiben über die uid erhalten; aktive Ebene über ihre id.
+    pub fn set_remote(&mut self, items: Vec<Rc<Item>>, layers: Option<Vec<Layer>>, mode: Option<BoardMode>, bg_dark: Option<(i32, bool)>) {
+        let uid_of = |id: u64, list: &[Rc<Item>]| list.iter().find(|it| it.id == id).map(|it| it.uid);
+        let sel_uids: HashSet<u64> = self.sel.iter().filter_map(|id| uid_of(*id, &self.items)).collect();
+        let hidden_uid = self.hidden.and_then(|id| uid_of(id, &self.items));
+        self.items = items;
+        let before = self.sel.len();
+        self.sel = self.items.iter().filter(|it| sel_uids.contains(&it.uid)).map(|it| it.id).collect();
+        if self.sel.len() != before || !sel_uids.is_empty() {
+            self.frame_ok = false;
+            self.ensure_frame();
+        }
+        if let Some(u) = hidden_uid {
+            self.hidden = self.items.iter().find(|it| it.uid == u).map(|it| it.id);
+        }
+        if let Some(l) = layers.filter(|l| !l.is_empty()) {
+            let act = self.layers.get(self.active).map(|l| l.id);
+            self.layers = l;
+            self.active = act.and_then(|a| self.layers.iter().position(|l| l.id == a)).unwrap_or(self.active).min(self.layers.len() - 1);
+            self.full_dirty = true;
+        }
+        if let Some(m) = mode {
+            if m != self.board_mode {
+                self.board_mode = m;
+                self.full_dirty = true;
+            }
+        }
+        if let Some((bg, dark)) = bg_dark {
+            self.bg = bg;
+            self.dark = dark;
+        }
+        self.refresh();
+        self.changed();
+    }
+
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
@@ -1575,6 +1619,15 @@ impl Board {
             .and_then(Value::as_array)
             .map(|a| a.iter().filter_map(Item::from_json).map(Rc::new).collect())
             .unwrap_or_default();
+        // doppelte uids (z. B. von Hand kopierte Einträge) eindeutig machen
+        let mut seen = std::collections::HashSet::with_capacity(self.items.len());
+        for it in self.items.iter_mut() {
+            if !seen.insert(it.uid) {
+                let n = Rc::make_mut(it);
+                n.uid = item::new_uid();
+                seen.insert(n.uid);
+            }
+        }
         self.full_dirty = true;
         self.refresh();
     }
@@ -2387,7 +2440,7 @@ impl Board {
     /// Kanten-Griffe (Mitte jeder Seite, 0 oben, 1 rechts, 2 unten, 3 links) sind nur sichtbar/greifbar,
     /// wenn die Seite am Bildschirm lang genug ist (>= 3 Grifflaengen), damit die Ecken greifbar bleiben.
     fn edge_visible(&self, k: usize) -> bool {
-        let (len, sep) = if k % 2 == 0 { (self.sel_w, self.sel_h) } else { (self.sel_h, self.sel_w) };
+        let (len, sep) = if k.is_multiple_of(2) { (self.sel_w, self.sel_h) } else { (self.sel_h, self.sel_w) };
         // zusaetzlich: gegenueberliegende Griffe muessen so weit auseinander liegen, dass die Mitte frei zum Verschieben bleibt
         len * self.sc >= 3.0 * 14.0 * self.dp && sep * self.sc >= 44.0 * self.dp
     }

@@ -17,11 +17,19 @@ pub struct StubPlatform {
     clip: RefCell<Option<ClipData>>,
     /// Vorgemerkte Drops (Tests/Demo), werden von `take_drops` geliefert.
     drops: RefCell<Vec<Drop>>,
+    /// Eigener Datenordner (Tests); sonst `OWNDRAW_DATA` bzw. `~/.local/share/OwnDraw`.
+    base: Option<PathBuf>,
 }
 
 impl StubPlatform {
     pub fn new() -> StubPlatform {
         StubPlatform::default()
+    }
+
+    /// Stub mit eigenem Datenordner (ohne die prozessweite Umgebungsvariable `OWNDRAW_DATA` zu ändern).
+    #[allow(dead_code)]
+    pub fn with_base(dir: PathBuf) -> StubPlatform {
+        StubPlatform { base: Some(dir), ..StubPlatform::default() }
     }
 
     /// Merkt einen Drop vor (Tests/Demo).
@@ -35,8 +43,8 @@ impl StubPlatform {
     }
 
     /// Ordner für Konfiguration/Cache im Stub: `OWNDRAW_DATA` bzw. `~/.local/share/OwnDraw`.
-    fn base() -> PathBuf {
-        crate::data_dir()
+    fn base(&self) -> PathBuf {
+        self.base.clone().unwrap_or_else(crate::data_dir)
     }
 }
 
@@ -93,13 +101,13 @@ impl Platform for StubPlatform {
         matches!(f, FileRef::Path(p) if p.exists())
     }
     fn default_dir(&self) -> FileRef {
-        FileRef::Path(Self::base().join("Dokumente"))
+        FileRef::Path(self.base().join("Dokumente"))
     }
     fn config_dir(&self) -> PathBuf {
-        Self::base().join("config")
+        self.base().join("config")
     }
     fn cache_dir(&self) -> PathBuf {
-        Self::base().join("cache")
+        self.base().join("cache")
     }
 
     fn clipboard_get(&self) -> Option<ClipData> {

@@ -4,6 +4,8 @@
 pub mod clip;
 pub mod drop;
 mod layers;
+#[cfg(target_arch = "wasm32")]
+pub mod live;
 mod menu;
 mod options;
 pub mod pages;
@@ -188,6 +190,11 @@ pub struct Editor {
     first_frame: bool,
     /// Beim ersten Frame „Alles zeigen“ (Demo/Abnahme).
     pub fit_on_open: bool,
+    /// Board seit dem letzten Abgleich mit der Live-Sitzung geändert (Browser, Server-Boards).
+    pub live_dirty: bool,
+    /// Live-Zusammenarbeit (nur Browser, Server-Boards `srv:<id>`).
+    #[cfg(target_arch = "wasm32")]
+    pub live: Option<live::Live>,
 }
 
 impl Editor {
@@ -237,7 +244,15 @@ impl Editor {
             menu_pos: None,
             first_frame: true,
             fit_on_open: false,
+            live_dirty: false,
+            #[cfg(target_arch = "wasm32")]
+            live: None,
         }
+    }
+
+    /// Board liegt am Server (Browser: `srv:<id>`)?
+    pub fn is_server(&self) -> bool {
+        crate::platform::WEB && matches!(self.file(), Some(FileRef::Uri(u)) if u.starts_with("srv:"))
     }
 
     pub fn name(&self) -> &str {
@@ -294,6 +309,11 @@ impl Editor {
     fn sync_modified(&mut self, now: f64) {
         if self.board.modified {
             self.board.modified = false;
+            self.live_dirty = true;
+            // Server-Boards speichert der Server bzw. der Autosave per PUT: keine Warnung beim Verlassen
+            if !self.is_server() {
+                crate::platform::note_unsaved(true);
+            }
             self.autosave.mark_changed(now);
             self.page_thumbs.dirty = true;
         }
@@ -301,6 +321,7 @@ impl Editor {
 
     pub fn rename(&mut self, name: String, now: f64) {
         self.doc.meta.name = name;
+        crate::platform::note_unsaved(true);
         self.autosave.mark_changed(now);
     }
 
@@ -367,7 +388,16 @@ impl Editor {
             }
             PickPurpose::SaveCopy => {
                 let f = with_ext(f, "owndraw");
-                match session::save_copy_as(&*sh.platform, &self.snapshot_doc(), &f) {
+                let mut doc = self.snapshot_doc();
+                if crate::platform::WEB {
+                    // Download ist im Browser die eigentliche Sicherung: mit Vorschaubild (für die Kachel beim Öffnen)
+                    doc.thumb = self.board.thumb().encode_png().ok();
+                }
+                match session::save_copy_as(&*sh.platform, &doc, &f) {
+                    Ok(()) if crate::platform::WEB => {
+                        crate::platform::note_unsaved(false);
+                        sh.toast("Board heruntergeladen");
+                    }
                     Ok(()) => sh.toast("Kopie gespeichert"),
                     Err(e) => sh.toast(&e),
                 }
@@ -433,6 +463,10 @@ impl Editor {
 
     pub fn preview(&mut self, sh: &mut Shared) {
         if self.empty_hint(sh) {
+            return;
+        }
+        if crate::platform::WEB {
+            sh.toast("Website-Vorschau gibt es im Browser nicht – exportiere die Website als ZIP");
             return;
         }
         match owndraw_core::export::build_preview(&sh.platform.cache_dir(), &self.board) {
@@ -678,10 +712,17 @@ impl Editor {
 
         // Autosave
         self.sync_modified(sh.now);
+        #[cfg(target_arch = "wasm32")]
+        self.live_frame(ui, &ctx, sh, &lay);
         if !self.board.busy() {
             let Self { autosave, board, doc, .. } = self;
             let fmt = autosave.format();
+            let before = autosave.status().clone();
             autosave.tick(sh.now, || Self::snapshot_bytes(board, doc, fmt), &*sh.platform);
+            // Synchrones Schreiben (URI, Browser) ändert den Status erst nach dem Zeichnen der Leiste
+            if *autosave.status() != before {
+                ctx.request_repaint();
+            }
         }
         if self.autosave.error().is_some() {
             if !self.st.error_toast_shown {
@@ -889,7 +930,8 @@ impl Editor {
                     match key {
                         Key::C if cmd => copy = true,
                         Key::X if cmd => cut = true,
-                        Key::V if cmd => paste = true,
+                        // Im Browser kommt der Inhalt mit dem `paste`-Ereignis (Event::Paste), sonst doppelt.
+                        Key::V if cmd && !crate::platform::WEB => paste = true,
                         Key::D if cmd => {
                             if sel {
                                 self.board.duplicate_sel();
@@ -902,7 +944,12 @@ impl Editor {
                             self.sync_modified(sh.now);
                             self.autosave.mark_changed(sh.now);
                             self.flush(sh);
-                            sh.toast("Gespeichert");
+                            if crate::platform::WEB && !self.is_server() {
+                                // Browser: Strg+S lädt das Board herunter (Server-Boards speichern selbst).
+                                self.apply_confirm(ConfirmAction::SaveCopy, sh);
+                            } else {
+                                sh.toast("Gespeichert");
+                            }
                         }
                         Key::E if cmd => {
                             self.st.menu_open = true;
@@ -948,9 +995,14 @@ impl Editor {
 
     /// Statusanzeige des Autosave für die Leiste.
     pub(super) fn save_state(&self) -> (&'static str, bool) {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(st) = self.srv_save_state() {
+            return st;
+        }
         match self.autosave.status() {
             AutosaveStatus::Error(_) => ("Speichern fehlgeschlagen", true),
             AutosaveStatus::Dirty | AutosaveStatus::Saving => ("Änderungen werden gespeichert …", false),
+            AutosaveStatus::Saved(_) if crate::platform::WEB => ("Im Browser zwischengespeichert – zum Sichern herunterladen (⋯)", false),
             AutosaveStatus::Saved(_) => ("Gespeichert", false),
             AutosaveStatus::Idle => ("", false),
         }
@@ -958,5 +1010,51 @@ impl Editor {
 
     pub(super) fn float(ctx: &egui::Context, id: &str, pos: Pos2, pivot: Align2, bounds: Rect, order: Order, content: impl FnOnce(&mut Ui)) -> Rect {
         egui::Area::new(egui::Id::unique(id)).order(order).fixed_pos(pos).pivot(pivot).constrain_to(bounds).show(ctx, content).response.rect
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Editor {
+    /// Live-Sitzung für Server-Boards: Verbindung, Abgleich, fremde Zeiger, Leiste mit Teilnehmern.
+    fn live_frame(&mut self, ui: &Ui, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
+        let Some(id) = self.file().and_then(crate::platform::web::api::srv_id).map(String::from) else { return };
+        let mut lv = self.live.take().unwrap_or_else(|| live::Live::new(&id, self));
+        lv.frame(self, ctx, sh);
+        lv.paint_cursors(ui, self, sh.now);
+        if self.st.edit_tools.is_none() {
+            lv.overlay(self, ctx, sh, lay);
+        }
+        self.live = Some(lv);
+        // Speicherfehler des Autosave per PUT (kommen asynchron) einmal anzeigen
+        let err = crate::platform::web::api::with(|n| n.save_errors.get(&id).cloned());
+        match err {
+            Some(e) if !self.st.error_toast_shown => {
+                self.st.error_toast_shown = true;
+                sh.toast_for(&e, 5.0);
+            }
+            None if self.autosave.error().is_none() => self.st.error_toast_shown = false,
+            _ => {}
+        }
+    }
+
+    /// Speicheranzeige für Server-Boards.
+    fn srv_save_state(&self) -> Option<(&'static str, bool)> {
+        use crate::platform::web::api;
+        let id = self.file().and_then(api::srv_id)?;
+        if let Some(l) = self.live.as_ref().filter(|l| l.is_live()) {
+            return Some(l.status());
+        }
+        let (conflict, err) = api::with(|n| (n.conflicts.contains(id), n.save_errors.contains_key(id)));
+        Some(if conflict {
+            ("Konflikt: Board wurde anderswo geändert", true)
+        } else if err {
+            ("Speichern am Server fehlgeschlagen", true)
+        } else if api::saving(id) || matches!(self.autosave.status(), AutosaveStatus::Dirty | AutosaveStatus::Saving) {
+            ("Änderungen werden gespeichert …", false)
+        } else if let Some(l) = &self.live {
+            l.status()
+        } else {
+            ("Am Server gespeichert", false)
+        })
     }
 }

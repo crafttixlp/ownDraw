@@ -269,6 +269,13 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     });
 
     // ---- Speichern
+    if crate::platform::WEB {
+        section(ui, "Speichern", |ui| {
+            row(ui, env, "Gastmodus", None, |ui| {
+                ui.add(egui::Label::new(egui::RichText::new("Boards werden nicht auf einem Server gespeichert, nur vorläufig in diesem Browser. Zum Sichern im Board über ⋯ → „Herunterladen“ (Strg+S).").color(c(p.dim))).wrap());
+            });
+        });
+    } else {
     section(ui, "Speichern", |ui| {
         let (dir_name, is_default) = match settings.default_dir.as_deref().and_then(FileRef::from_key) {
             Some(f) => (f.display_name(), false),
@@ -298,13 +305,17 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             ui.checkbox(&mut settings.xopp_autosave_direct, "Direkt ins .xopp speichern");
         });
     });
+    }
 
-    // ---- Updates
-    ui.add_space(14.0);
-    style::card().show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        super::update::section(ui, settings, platform);
-    });
+    // ---- Updates (nicht im Browser: dort liefert der Server die neue Version aus)
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        ui.add_space(14.0);
+        style::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            super::update::section(ui, settings, platform);
+        });
+    }
 
     // ---- Über
     section(ui, "Über", |ui| {

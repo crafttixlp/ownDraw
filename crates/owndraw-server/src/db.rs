@@ -1,0 +1,309 @@
+//! SQLite-Zugriff (eine Verbindung hinter einem Mutex, Aufrufe über `spawn_blocking`)
+//! sowie gemeinsame Abfragen für Nutzer, Lizenzen und Einstellungen.
+
+use crate::error::{ApiError, ApiResult};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::{json, Value};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    pw_hash TEXT NOT NULL,
+    admin INTEGER NOT NULL DEFAULT 0,
+    disabled INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created INTEGER NOT NULL,
+    expires INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS licenses (
+    code TEXT PRIMARY KEY,
+    created INTEGER NOT NULL,
+    days INTEGER,
+    expires_at INTEGER,
+    quota_mb INTEGER NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    revoked INTEGER NOT NULL DEFAULT 0,
+    redeemed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    redeemed_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS boards (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    modified INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS members (
+    board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    PRIMARY KEY (board_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id);
+CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_user ON licenses(redeemed_by);
+";
+
+pub fn now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+#[derive(Clone)]
+pub struct Db {
+    conn: Arc<Mutex<Connection>>,
+}
+
+impl Db {
+    pub fn open(path: &Path) -> rusqlite::Result<Self> {
+        Self::init(Connection::open(path)?)
+    }
+
+    pub fn memory() -> rusqlite::Result<Self> {
+        Self::init(Connection::open_in_memory()?)
+    }
+
+    fn init(conn: Connection) -> rusqlite::Result<Self> {
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")?;
+        conn.execute_batch(SCHEMA)?;
+        Ok(Self { conn: Arc::new(Mutex::new(conn)) })
+    }
+
+    /// Führt `f` auf einem Blocking-Thread mit der DB-Verbindung aus.
+    pub async fn call<T, F>(&self, f: F) -> ApiResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> ApiResult<T> + Send + 'static,
+    {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut guard = conn.lock().unwrap_or_else(|p| p.into_inner());
+            f(&mut guard)
+        })
+        .await
+        .map_err(ApiError::internal)?
+    }
+}
+
+// ---------- Einstellungen ----------
+
+pub fn get_setting(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    conn.query_row("SELECT value FROM settings WHERE key=?1", [key], |r| r.get(0)).optional()
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    conn.execute("INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key, value])?;
+    Ok(())
+}
+
+// ---------- Nutzer ----------
+
+#[derive(Clone, Debug)]
+pub struct UserRow {
+    pub id: String,
+    pub email: String,
+    pub name: String,
+    pub pw_hash: String,
+    pub admin: bool,
+    pub disabled: bool,
+    pub created: i64,
+}
+
+fn user_from_row(r: &rusqlite::Row) -> rusqlite::Result<UserRow> {
+    Ok(UserRow {
+        id: r.get(0)?,
+        email: r.get(1)?,
+        name: r.get(2)?,
+        pw_hash: r.get(3)?,
+        admin: r.get::<_, i64>(4)? != 0,
+        disabled: r.get::<_, i64>(5)? != 0,
+        created: r.get(6)?,
+    })
+}
+
+const USER_COLS: &str = "id,email,name,pw_hash,admin,disabled,created";
+
+pub fn user_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Option<UserRow>> {
+    conn.query_row(&format!("SELECT {USER_COLS} FROM users WHERE email=?1"), [email], user_from_row).optional()
+}
+
+pub fn user_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<UserRow>> {
+    conn.query_row(&format!("SELECT {USER_COLS} FROM users WHERE id=?1"), [id], user_from_row).optional()
+}
+
+pub fn insert_user(conn: &Connection, email: &str, name: &str, pw_hash: &str, admin: bool) -> ApiResult<UserRow> {
+    if user_by_email(conn, email)?.is_some() {
+        return Err(ApiError::conflict("Diese E-Mail-Adresse ist bereits registriert."));
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let created = now();
+    conn.execute(
+        "INSERT INTO users(id,email,name,pw_hash,admin,disabled,created) VALUES(?1,?2,?3,?4,?5,0,?6)",
+        params![id, email, name, pw_hash, admin as i64, created],
+    )?;
+    Ok(UserRow { id, email: email.into(), name: name.into(), pw_hash: pw_hash.into(), admin, disabled: false, created })
+}
+
+pub fn used_bytes(conn: &Connection, user_id: &str) -> rusqlite::Result<i64> {
+    conn.query_row("SELECT COALESCE(SUM(size),0) FROM boards WHERE owner_id=?1", [user_id], |r| r.get(0))
+}
+
+// ---------- Lizenzen ----------
+
+#[derive(Clone, Debug)]
+pub struct LicenseRow {
+    pub code: String,
+    pub created: i64,
+    pub days: Option<i64>,
+    pub expires_at: Option<i64>,
+    pub quota_mb: i64,
+    pub note: String,
+    pub revoked: bool,
+    pub redeemed_by: Option<(String, String)>,
+    pub redeemed_at: Option<i64>,
+}
+
+impl LicenseRow {
+    /// Gültig = eingelöst, nicht widerrufen, `expires_at` leer oder in der Zukunft.
+    pub fn active(&self, now: i64) -> bool {
+        self.redeemed_by.is_some() && !self.revoked && self.expires_at.is_none_or(|e| e > now)
+    }
+
+    pub fn to_json(&self, now: i64) -> Value {
+        json!({
+            "code": self.code,
+            "created": self.created,
+            "days": self.days,
+            "expires_at": self.expires_at,
+            "quota_mb": self.quota_mb,
+            "note": self.note,
+            "revoked": self.revoked,
+            "redeemed_by": self.redeemed_by.as_ref().map(|(id, email)| json!({"id": id, "email": email})),
+            "redeemed_at": self.redeemed_at,
+            "active": self.active(now),
+        })
+    }
+}
+
+const LICENSE_SELECT: &str = "SELECT l.code,l.created,l.days,l.expires_at,l.quota_mb,l.note,l.revoked,l.redeemed_by,u.email,l.redeemed_at
+     FROM licenses l LEFT JOIN users u ON u.id=l.redeemed_by";
+
+fn license_from_row(r: &rusqlite::Row) -> rusqlite::Result<LicenseRow> {
+    let by: Option<String> = r.get(7)?;
+    let email: Option<String> = r.get(8)?;
+    Ok(LicenseRow {
+        code: r.get(0)?,
+        created: r.get(1)?,
+        days: r.get(2)?,
+        expires_at: r.get(3)?,
+        quota_mb: r.get(4)?,
+        note: r.get(5)?,
+        revoked: r.get::<_, i64>(6)? != 0,
+        redeemed_by: by.map(|id| (id, email.unwrap_or_default())),
+        redeemed_at: r.get(9)?,
+    })
+}
+
+pub fn license_by_code(conn: &Connection, code: &str) -> rusqlite::Result<Option<LicenseRow>> {
+    conn.query_row(&format!("{LICENSE_SELECT} WHERE l.code=?1"), [code], license_from_row).optional()
+}
+
+pub fn all_licenses(conn: &Connection) -> rusqlite::Result<Vec<LicenseRow>> {
+    let mut st = conn.prepare(&format!("{LICENSE_SELECT} ORDER BY l.created DESC, l.code"))?;
+    let rows = st.query_map([], license_from_row)?.collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Die Lizenz eines Nutzers (die zuletzt eingelöste).
+pub fn license_of(conn: &Connection, user_id: &str) -> rusqlite::Result<Option<LicenseRow>> {
+    conn.query_row(&format!("{LICENSE_SELECT} WHERE l.redeemed_by=?1 ORDER BY l.redeemed_at DESC LIMIT 1"), [user_id], license_from_row)
+        .optional()
+}
+
+pub fn active_license_of(conn: &Connection, user_id: &str, now: i64) -> rusqlite::Result<Option<LicenseRow>> {
+    Ok(license_of(conn, user_id)?.filter(|l| l.active(now)))
+}
+
+pub fn mb(bytes: i64) -> f64 {
+    ((bytes as f64) / 1_048_576.0 * 100.0).round() / 100.0
+}
+
+/// `Me`-Objekt des Vertrags.
+pub fn me_json(conn: &Connection, u: &UserRow) -> ApiResult<Value> {
+    let t = now();
+    let license = license_of(conn, &u.id)?.map(|l| {
+        json!({
+            "active": l.active(t),
+            "expires_at": l.expires_at,
+            "quota_mb": l.quota_mb,
+            "used_mb": 0.0,
+        })
+    });
+    let license = match license {
+        Some(mut v) => {
+            v["used_mb"] = json!(mb(used_bytes(conn, &u.id)?));
+            v
+        }
+        None => Value::Null,
+    };
+    Ok(json!({"id": u.id, "email": u.email, "name": u.name, "admin": u.admin, "license": license}))
+}
+
+/// Erzeugt einen Lizenzcode `OWND-XXXX-XXXX-XXXX` (ohne 0/O/1/I), kryptografisch zufällig.
+pub fn new_license_code() -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut out = String::from("OWND");
+    let mut buf = [0u8; 1];
+    for i in 0..12 {
+        if i % 4 == 0 {
+            out.push('-');
+        }
+        loop {
+            getrandom::fill(&mut buf).expect("Zufallsquelle nicht verfügbar");
+            // 224 = 7 * 32: Werte darüber verwerfen, damit keine Verzerrung entsteht.
+            if buf[0] < 224 {
+                out.push(ALPHABET[(buf[0] % 32) as usize] as char);
+                break;
+            }
+        }
+    }
+    out
+}
+
+pub fn random_hex(bytes: usize) -> String {
+    let mut buf = vec![0u8; bytes];
+    getrandom::fill(&mut buf).expect("Zufallsquelle nicht verfügbar");
+    hex::encode(buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lizenzcode_format() {
+        for _ in 0..200 {
+            let c = new_license_code();
+            assert_eq!(c.len(), 19);
+            assert!(c.starts_with("OWND-"));
+            for (i, part) in c.split('-').enumerate().skip(1) {
+                assert_eq!(part.len(), 4, "Teil {i} in {c}");
+                assert!(part.chars().all(|ch| ch.is_ascii_uppercase() || ('2'..='9').contains(&ch)));
+                assert!(!part.contains(['O', 'I', '0', '1']));
+            }
+        }
+    }
+}

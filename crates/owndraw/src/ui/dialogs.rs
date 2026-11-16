@@ -72,6 +72,7 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
     let width = (screen.width() - 24.0).clamp(240.0, 420.0);
     let default_dir = sh.platform.default_dir();
     let default_name = match &default_dir {
+        _ if crate::platform::WEB => "Nur in diesem Browser (Gastmodus) – zum Sichern über ⋯ herunterladen.".to_string(),
         FileRef::Path(p) => p.display().to_string(),
         FileRef::Uri(u) => u.clone(),
     };

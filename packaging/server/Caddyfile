@@ -1,0 +1,23 @@
+# Caddy vor dem OwnDraw-Server: automatisches HTTPS (Let's Encrypt), WebSocket, Upload-Limit.
+# Die Domain kommt aus OWNDRAW_DOMAIN (docker-compose.yml), Standard: owndraw.thepepelex.at.
+
+{$OWNDRAW_DOMAIN:owndraw.thepepelex.at} {
+	encode zstd gzip
+
+	# Upload-Limit: etwas über OWNDRAW_MAX_BOARD_MB (Standard 50 MB) anheben, wenn dieser Wert erhöht wird.
+	request_body {
+		max_size 64MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# WebSocket (/api/collab/...) wird von reverse_proxy automatisch durchgereicht.
+	# Caddy setzt X-Forwarded-For auf die echte Client-Adresse (Rate-Limit des Servers nutzt sie).
+	reverse_proxy owndraw:8080 {
+		flush_interval -1
+	}
+}

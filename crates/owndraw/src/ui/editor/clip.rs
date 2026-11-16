@@ -25,7 +25,7 @@ const COPY_MAX_PX: u32 = 4096;
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-fn b64_encode(d: &[u8]) -> String {
+pub(crate) fn b64_encode(d: &[u8]) -> String {
     let mut o = String::with_capacity(d.len().div_ceil(3) * 4);
     for c in d.chunks(3) {
         let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
@@ -37,7 +37,7 @@ fn b64_encode(d: &[u8]) -> String {
     o
 }
 
-fn b64_decode(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn b64_decode(s: &str) -> Option<Vec<u8>> {
     let mut o = Vec::with_capacity(s.len() / 4 * 3);
     let (mut acc, mut bits) = (0u32, 0);
     for ch in s.bytes() {
@@ -224,8 +224,7 @@ pub fn insert_items_json(editor: &mut Editor, json: &str, at: Option<(f32, f32)>
         if editor.doc.images.files.contains_key(&name) {
             continue;
         }
-        let _ = std::fs::create_dir_all(&editor.img_dir);
-        let _ = std::fs::write(editor.img_dir.join(&name), &bytes);
+        let _ = session::put_image(&editor.img_dir, &name, &bytes);
         editor.doc.images.files.insert(name, bytes);
     }
     let n = editor.board.paste_items(&items, at);

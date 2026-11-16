@@ -27,9 +27,11 @@ Komplett in Rust (egui/eframe), eine Oberfläche für Linux/Windows/macOS und An
 | `crates/owndraw-core/` | Kern ohne Oberfläche: Board, Seiten, Formerkennung, Rendering (tiny-skia), `.owndraw` v2 (`doc.rs`), Migration, Xournal++ (`xopp.rs`), Export. |
 | `crates/owndraw/` | App (egui/eframe) als Bibliothek + Desktop-Binary: `ui/` (Start, Editor, Einstellungen), `platform/` (Desktop, Android), Autosave, Zuletzt-Liste, Update-Dienst. |
 | `crates/owndraw-android/` | Android-Einstieg (cdylib), Java-Hilfsklassen, Manifest, `build-apk.sh`. |
+| `crates/owndraw-web/` | Browser-Einstieg (WebAssembly; Gastmodus, mit Server: Konto, Boards am Server, Teilen, Live-Zusammenarbeit) mit `index.html`; bauen mit `build-web.sh` (siehe `docs/web.md`). |
+| `crates/owndraw-server/` | Server für die Web-Version (axum + SQLite): Konten, Lizenzen, Boards, Teilen, Live-Räume per WebSocket, Admin-Panel (siehe `docs/server.md`, `docs/web-api.md`). |
 | `packaging/appimage/` | AppImage-Runtime und AppDir-Vorlage. |
 | `.github/workflows/` | CI (Tests, AppImage, APK als Artefakte) und Release (signierte Assets). |
-| `docs/` | `architektur.md`, `konzept-features.md`, `ui-checkliste.md`, `android.md`, `release.md`. |
+| `docs/` | `architektur.md`, `konzept-features.md`, `ui-checkliste.md`, `android.md`, `web.md`, `web-api.md`, `server.md`, `release.md`. |
 
 ## Bauen
 

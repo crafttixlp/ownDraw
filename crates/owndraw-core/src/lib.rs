@@ -3,6 +3,7 @@
 
 pub mod board;
 pub mod canvas;
+pub mod collab;
 pub mod doc;
 pub mod export;
 pub mod geom;

@@ -143,6 +143,7 @@ impl App {
     }
 
     /// Migration der alten Ablage (siehe `lib.rs`): übernommene Dateien in die Zuletzt-Liste, Hinweis anzeigen.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub fn add_migrated(&mut self, files: Vec<PathBuf>) {
         let n = files.len();
         for p in files {
@@ -153,6 +154,11 @@ impl App {
         if n > 0 {
             self.sh.toast_for(&format!("{n} alte Boards übernommen"), 5.0);
         }
+    }
+
+    /// Server-Boards (Browser, `srv:<id>`) stehen in der Liste „Am Server“, nicht unter „Zuletzt geöffnet“.
+    fn in_recent(f: &FileRef) -> bool {
+        !matches!(f, FileRef::Uri(u) if crate::platform::WEB && u.starts_with("srv:"))
     }
 
     fn recent_entry(f: FileRef, e: &Editor) -> RecentEntry {
@@ -171,6 +177,12 @@ impl App {
             (Some(e), Screen::Editor) => format!("OwnDraw – {}", e.name()),
             _ => "OwnDraw".to_string(),
         };
+        // Browser: Seitentitel (das Web-Backend kennt ViewportCommand::Title nicht)
+        #[cfg(target_arch = "wasm32")]
+        if let Some(d) = web_sys::window().and_then(|w| w.document()) {
+            d.set_title(&t);
+            return;
+        }
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(t));
     }
 
@@ -191,10 +203,21 @@ impl App {
     fn close_editor(&mut self, ctx: &egui::Context) {
         if let Some(mut e) = self.editor.take() {
             e.flush(&mut self.sh);
-            if let Some(f) = e.file().cloned() {
+            // Browser: zwischengespeicherte Bytes eines Server-Boards freigeben (beim Öffnen neu geladen)
+            #[cfg(target_arch = "wasm32")]
+            if let Some(FileRef::Uri(u)) = e.file().filter(|f| crate::platform::web::api::srv_id(f).is_some()) {
+                crate::platform::web::api::with(|n| n.files.remove(u));
+            }
+            if let Some(f) = e.file().cloned().filter(Self::in_recent) {
                 self.recent.add(Self::recent_entry(f.clone(), &e));
                 self.start.forget(&f);
             }
+        }
+        // Browser: Liste der Server-Boards und Speicherplatz auffrischen
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::platform::web::api::refresh_boards();
+            crate::platform::web::api::refresh_me();
         }
         self.screen = Screen::Start;
         self.title(ctx);
@@ -204,7 +227,7 @@ impl App {
         if self.editor.is_some() {
             self.close_editor(ctx);
         }
-        if let Some(f) = ed.file().cloned() {
+        if let Some(f) = ed.file().cloned().filter(Self::in_recent) {
             self.recent.add(Self::recent_entry(f, &ed));
         }
         self.editor = Some(ed);
@@ -254,6 +277,11 @@ impl App {
                         None => self.sh.toast_for("Kein Speicherort für den Import verfügbar", 4.0),
                     }
                 }
+                // Browser: das Board landet neben den anderen im Browser-Speicher.
+                FileRef::Uri(u) if crate::platform::WEB && u.starts_with("mem:") => match self.sh.platform.create_in(&self.default_dir(), &name, FileKind::Owndraw) {
+                    Ok(t) => self.finish_import(ctx, doc, t),
+                    Err(e) => self.sh.toast_for(&format!("Kein Speicherort für den Import verfügbar: {e}"), 4.0),
+                },
                 FileRef::Uri(_) => {
                     // Ohne Ordnerzugriff: Speicherort erfragen.
                     let tag = self.tag(PickPurpose::NewDoc, None);
@@ -282,8 +310,20 @@ impl App {
     }
 
     fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool) {
+        // Browser mit gültiger Lizenz: neue Boards am Server anlegen (öffnet sich, sobald der Server antwortet)
+        #[cfg(target_arch = "wasm32")]
+        if crate::platform::web::api::licensed() {
+            let doc = session::new_document(&params);
+            match session::serialize(&doc) {
+                Ok(b) => crate::platform::web::api::create_board(&params.name, b),
+                Err(e) => self.sh.toast_for(&e, 4.0),
+            }
+            let _ = (ctx, custom);
+            return;
+        }
         let fname = format!("{}.owndraw", safe_file_name(&params.name));
-        if custom {
+        // Im Browser gibt es keinen Speicherort zum Wählen (Speichern unter = Download).
+        if custom && !crate::platform::WEB {
             let tag = self.tag(PickPurpose::NewDoc, Some(params));
             self.sh.platform.pick_save(&fname, FileKind::Owndraw, tag);
             return;
@@ -372,7 +412,7 @@ impl App {
                         self.title(ctx);
                     }
                 }
-                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask)),
+                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask && !crate::platform::WEB)),
                 Req::OpenFile(f) => self.open_ref(ctx, f),
                 Req::RemoveRecent(f) => {
                     self.recent.remove(&f);
@@ -397,6 +437,13 @@ impl App {
             Outcome::Rename(what, text) => {
                 let now = self.sh.now;
                 if let Some(e) = self.editor.as_mut() {
+                    // Browser: Server-Board auch in der Liste umbenennen (nur Besitzer)
+                    #[cfg(target_arch = "wasm32")]
+                    if let (crate::ui::dialogs::RenameWhat::Doc, Some(id)) = (&what, e.file().and_then(crate::platform::web::api::srv_id)) {
+                        if crate::platform::web::api::board(id).is_some_and(|b| b.role == "owner") {
+                            crate::platform::web::api::rename_board(id, &text);
+                        }
+                    }
                     e.apply_rename(what, text, now);
                     self.title(ctx);
                 }
@@ -455,7 +502,8 @@ impl eframe::App for App {
             self.applied = Some(self.sh.settings.clone());
         }
         self.sh.env = Env::new(ctx.content_rect().width(), self.sh.platform.is_touch());
-        // Update-Dienst: optionaler Start-Hinweis (nur Hinweis, installiert nie von selbst)
+        // Update-Dienst: optionaler Start-Hinweis (nur Hinweis, installiert nie von selbst; im Browser aus)
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(n) = crate::update::frame_hook(&self.sh.settings, &*self.sh.platform, &ctx) {
             self.sh.toast_for(&n, 6.0);
         }
@@ -465,6 +513,16 @@ impl eframe::App for App {
         }
         if let Some(d) = self.demo.take() {
             crate::demo::setup(self, &ctx, &d);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let (open, notes) = crate::platform::web::api::with(|n| (std::mem::take(&mut n.open), std::mem::take(&mut n.notices)));
+            for m in notes {
+                self.sh.toast_for(&m, 4.0);
+            }
+            for f in open {
+                self.open_ref(&ctx, f);
+            }
         }
         for ev in self.sh.platform.poll() {
             match ev {
@@ -535,7 +593,7 @@ impl App {
     /// Zuletzt-Liste pflegen: Eintrag nach jedem erfolgreichen Autosave aktualisieren, fehlende Dateien erkennen.
     fn recent_housekeeping(&mut self) {
         if let Some(e) = &self.editor {
-            if let (AutosaveStatus::Saved(t), Some(f)) = (e.autosave.status(), e.file()) {
+            if let (AutosaveStatus::Saved(t), Some(f)) = (e.autosave.status(), e.file().filter(|f| Self::in_recent(f))) {
                 if *t != self.last_saved {
                     self.last_saved = *t;
                     self.recent.add(Self::recent_entry(f.clone(), e));

@@ -95,7 +95,7 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
                     if chk.skipped {
                         ui.label(egui::RichText::new("Du hast diese Version übersprungen.").color(c(p.dim)));
                     }
-                    ui.label(egui::RichText::new(format!("Neue Version {} verfügbar", rel.version)).size(16.0).strong());
+                    ui.label(egui::RichText::new(format!("Neue Version {} verfügbar", rel.version)).size(style::fs::SECTION + 1.0).strong());
                     if !rel.date.is_empty() {
                         ui.label(egui::RichText::new(&rel.date).size(12.0).color(c(p.dim)));
                     }

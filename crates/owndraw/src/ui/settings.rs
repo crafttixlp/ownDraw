@@ -11,7 +11,7 @@ use crate::settings::{BarPos, SaveChoice, Settings, Theme, ACCENTS};
 use crate::style::{self, c, sp, Icons};
 use crate::ui::editor::keys::{self, Chord, Kind};
 use crate::ui::editor::tools::{self, Group};
-use egui::{Color32, CornerRadius, Event, Id, Key, Margin, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, CornerRadius, Event, Id, Key, Sense, Stroke, Ui, Vec2};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsAction {

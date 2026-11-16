@@ -123,14 +123,14 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) -> bool {
     }
     let p = style::pal();
     let compact = sh.env.ff == FormFactor::Compact;
-    ui.add_space(22.0);
+    ui.add_space(style::sp::XL);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Auf dem Server").size(18.0).strong());
+        ui.label(egui::RichText::new("Auf dem Server").size(style::fs::SECTION + 3.0).strong());
         if opening {
             ui.spinner();
         }
     });
-    ui.add_space(8.0);
+    ui.add_space(style::sp::S);
     if !loaded {
         ui.spinner();
         return true;
@@ -258,11 +258,12 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
     let width = (ctx.content_rect().width() - 24.0).clamp(260.0, 420.0);
     let (enter, esc) = ctx.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
     let mut close = esc;
-    egui::Modal::new(egui::Id::unique("account-dlg")).frame(style::card()).show(ctx, |ui| {
-        ui.set_width(width - 40.0);
+    egui::Modal::new(egui::Id::unique("account-dlg")).frame(style::card().inner_margin(egui::Margin::same(style::sp::XL as i8))).show(ctx, |ui| {
+        ui.set_width(width - 2.0 * style::sp::XL - 2.0);
+        ui.spacing_mut().item_spacing.y = style::sp::S;
         match &mut d {
             Dlg::Login { register, email, password, name, focus } => {
-                ui.label(egui::RichText::new(if *register { "Konto erstellen" } else { "Anmelden" }).heading().strong());
+                ui.label(egui::RichText::new(if *register { "Konto erstellen" } else { "Anmelden" }).size(style::fs::SECTION + 5.0).strong());
                 ui.add_space(6.0);
                 if *register {
                     field(ui, "Name", name, false, *focus);
@@ -300,7 +301,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 }
             }
             Dlg::Redeem { code, focus } => {
-                ui.label(egui::RichText::new("Lizenz einlösen").heading().strong());
+                ui.label(egui::RichText::new("Lizenz einlösen").size(style::fs::SECTION + 5.0).strong());
                 ui.label(egui::RichText::new("Mit einer Lizenz werden deine Boards auf dem Server gespeichert, sind auf allen Geräten verfügbar und lassen sich teilen.").size(12.5).color(c(p.dim)));
                 ui.add_space(6.0);
                 field(ui, "Lizenzcode", code, false, *focus);
@@ -320,7 +321,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 });
             }
             Dlg::Rename { id, name } => {
-                ui.label(egui::RichText::new("Board umbenennen").heading().strong());
+                ui.label(egui::RichText::new("Board umbenennen").size(style::fs::SECTION + 5.0).strong());
                 ui.add_space(6.0);
                 let r = ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
                 r.request_focus();
@@ -335,7 +336,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 });
             }
             Dlg::LeaveGuest => {
-                ui.label(egui::RichText::new("Gastzugang beenden?").heading().strong());
+                ui.label(egui::RichText::new("Gastzugang beenden?").size(style::fs::SECTION + 5.0).strong());
                 ui.label("Deine Gast-ID und der Zugriff auf eingeladene Boards gehen verloren.");
                 ui.add_space(10.0);
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -347,7 +348,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 });
             }
             Dlg::ToServer { file, name, size } => {
-                ui.label(egui::RichText::new("Auf den Server verschieben?").heading().strong());
+                ui.label(egui::RichText::new("Auf den Server verschieben?").size(style::fs::SECTION + 5.0).strong());
                 let free = api::free_bytes();
                 let fits = free.is_some_and(|f| *size <= f);
                 ui.label(format!("„{name}“ wird auf den Server hochgeladen und danach aus diesem Browser entfernt. Erst wenn der Server das Board gespeichert hat, wird es hier entfernt. So gehen keine Daten verloren."));
@@ -376,12 +377,12 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
             }
             Dlg::ToLocal { id, name, owner, .. } => {
                 if *owner {
-                    ui.label(egui::RichText::new("In diesem Browser speichern?").heading().strong());
+                    ui.label(egui::RichText::new("In diesem Browser speichern?").size(style::fs::SECTION + 5.0).strong());
                     ui.label(format!("„{name}“ wird in diesem Browser gespeichert und danach vom Server gelöscht. Erst wenn es hier gespeichert ist, wird es am Server gelöscht."));
                     ui.add_space(4.0);
                     ui.add(egui::Label::new(egui::RichText::new("Danach ist es nur noch in diesem Browser. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server: Wer das Board mit dir geteilt bekommen hat, verliert den Zugriff. Einladungslinks werden ungültig.").size(12.5).color(c(p.dim))).wrap());
                 } else {
-                    ui.label(egui::RichText::new("Kopie im Browser speichern?").heading().strong());
+                    ui.label(egui::RichText::new("Kopie im Browser speichern?").size(style::fs::SECTION + 5.0).strong());
                     ui.label(format!("Eine Kopie von „{name}“ wird in diesem Browser gespeichert. Das Board auf dem Server bleibt unverändert. Änderungen an der Kopie sieht niemand sonst."));
                 }
                 ui.add_space(10.0);
@@ -394,7 +395,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 });
             }
             Dlg::Delete { id, name } => {
-                ui.label(egui::RichText::new("Board löschen?").heading().strong());
+                ui.label(egui::RichText::new("Board löschen?").size(style::fs::SECTION + 5.0).strong());
                 ui.label(format!("„{name}“ wird auf dem Server gelöscht. Das gilt auch für alle, mit denen das Board geteilt ist. Der Vorgang lässt sich nicht rückgängig machen."));
                 ui.add_space(10.0);
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -423,9 +424,10 @@ fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
     let mut close = esc;
     let mut login = false;
     let name = &mut st.invite_name;
-    egui::Modal::new(egui::Id::unique("invite-dlg")).frame(style::card()).show(ctx, |ui| {
-        ui.set_width(width - 40.0);
-        ui.label(egui::RichText::new("Einladung").heading().strong());
+    egui::Modal::new(egui::Id::unique("invite-dlg")).frame(style::card().inner_margin(egui::Margin::same(style::sp::XL as i8))).show(ctx, |ui| {
+        ui.set_width(width - 2.0 * style::sp::XL - 2.0);
+        ui.spacing_mut().item_spacing.y = style::sp::S;
+        ui.label(egui::RichText::new("Einladung").size(style::fs::SECTION + 5.0).strong());
         ui.add_space(4.0);
         if server == Server::Offline {
             ui.label(egui::RichText::new("Ohne Verbindung zum Server sind Einladungen nicht möglich.").color(c(p.danger_text)));

@@ -614,3 +614,10 @@ mod tests {
         assert_eq!(cm_label(12.34), "12,3 cm");
     }
 }
+
+impl Editor {
+    /// Abnahme-Demo `ruler`: Lineal eingeblendet (0°).
+    pub fn demo_ruler(&mut self) {
+        self.ext.ruler.visible = true;
+    }
+}

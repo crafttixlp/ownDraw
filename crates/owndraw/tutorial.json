@@ -17,7 +17,7 @@
           "id": "start-aufbau",
           "title": "Aufbau des Editors",
           "text": "Oben links stehen Zurück, der Name des Boards und der Speicherstatus. Oben rechts liegen Rückgängig, Wiederholen, die Zoomanzeige und das Menü „⋯“. Die Werkzeugleiste sitzt je nach Bildschirm oben (PC), links (Tablet) oder unten (Handy).",
-          "how": ["Der farbige Punkt neben dem Namen zeigt den Speicherstatus: grün gespeichert, gelb wird gespeichert, rot Fehler.", "Ein Klick auf den Namen benennt das Board um."],
+          "how": ["Der farbige Punkt neben dem Namen zeigt den Speicherstatus: grün gespeichert, gelb wird gespeichert, rot Fehler.", "Ein Klick auf den Namen benennt das Board um.", "Der kleine Farbpunkt am gewählten Werkzeug zeigt die aktuelle Farbe.", "Das Menü „⋯“ ist in Ansicht, Hintergrund, Export, Datei sowie Einstellungen & Hilfe gegliedert."],
           "covers": ["extra:aufbau"]
         },
         {
@@ -401,9 +401,16 @@
         {
           "id": "einst-werkzeuge",
           "title": "Werkzeuge ein- und ausschalten",
-          "text": "Einstellungen → „Werkzeuge …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
-          "how": ["Mindestens ein Werkzeug bleibt eingeschaltet.", "Ist „Text“ aus, bekommt die Haftnotiz einen eigenen Knopf.", "„Standard“ schaltet alles auf die Vorgabe zurück."],
-          "covers": ["setting:Werkzeuge", "extra:werkzeuge-seite"]
+          "text": "Einstellungen → „Werkzeuge“ (ganz oben) oder Menü „⋯“ → „Werkzeuge anpassen …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
+          "how": ["Antippen der ganzen Zeile schaltet das Werkzeug ein oder aus.", "„Alle neuen Werkzeuge einschalten“ holt alle neuen auf einmal in die Leiste.", "Mindestens ein Werkzeug bleibt eingeschaltet.", "Ist „Text“ aus, bekommt die Haftnotiz einen eigenen Knopf.", "„Auf Standard zurücksetzen“ schaltet alles auf die Vorgabe zurück."],
+          "covers": ["setting:Werkzeuge", "extra:werkzeuge-seite", "menu:Werkzeuge anpassen …"]
+        },
+        {
+          "id": "weitere-werkzeuge",
+          "title": "Weitere Werkzeuge mit „+“ hinzufügen",
+          "text": "Am Ende der Werkzeugleiste sitzt der Knopf „+“, solange Werkzeuge ausgeschaltet sind. Er öffnet die Liste „Weitere Werkzeuge“ mit Beschreibung und Tastenkürzel. Ein Tipp auf ein Werkzeug fügt es zur Leiste hinzu und wählt es gleich aus.",
+          "how": ["Ein Punkt am „+“ zeigt neue Werkzeuge, die du noch nicht angesehen hast.", "„Leiste anordnen …“ ändert die Reihenfolge, „Einstellungen …“ öffnet die Werkzeug-Seite.", "Esc oder ein Klick auf das Blatt schließt die Liste."],
+          "covers": ["extra:weitere-werkzeuge"]
         },
         {
           "id": "einst-kuerzel",

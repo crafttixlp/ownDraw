@@ -8,26 +8,56 @@
 <title>Wartung · OwnDraw</title>
 <link rel="icon" type="image/png" href="/owndraw.png">
 <style>
-  :root { --bg: #f6f6f8; --card: #ffffff; --line: #e2e2e8; --text: #17171c; --muted: #6b6b78; --accent: #5b5bf0; --on-accent: #ffffff; --warn: #d4870f; --danger: #d93f3f; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #111114; --card: #18181c; --line: #2a2a31; --text: #ececf1; --muted: #9a9aa8; --accent: #7c7cff; --on-accent: #111116; --warn: #e0a23a; --danger: #ff8484; } }
-  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; }
-  main { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
-  .card { max-width: 30em; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; text-align: center; box-sizing: border-box; }
-  img { width: 48px; height: 48px; border-radius: 12px; }
-  h1 { font-size: 1.3rem; margin: 12px 0 8px; }
-  p { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .muted { color: var(--muted); font-size: .9rem; }
-  a { color: var(--accent); }
+/* === OwnDraw Design-Tokens (in allen Oberflächen identisch) === */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f8; --surface: #ffffff; --surface-2: #eeeef2; --line: #e2e2e8; --text: #17171c; --muted: #6b6b78;
+  --accent: #5b5bf0; --on-accent: #ffffff; --accent-soft: #ebebfe;
+  --danger: #d93f3f; --ok: #1f9d5a; --warn: #b8730b;
+  --hover: rgba(0,0,0,.05); --overlay: rgba(10,10,16,.45);
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --r-sm: 8px; --r: 12px; --r-lg: 16px;
+  --shadow-1: 0 1px 2px rgba(20,20,40,.06); --shadow-2: 0 8px 28px rgba(20,20,40,.14);
+  --fs-xs: .75rem; --fs-sm: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 1.625rem;
+  --font: system-ui, -apple-system, "Segoe UI", Ubuntu, Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --tap: 40px;
+  --focus: 2px solid var(--accent);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111114; --surface: #18181c; --surface-2: #0c0c0f; --line: #2a2a31; --text: #ececf1; --muted: #9a9aa8;
+    --accent: #7c7cff; --on-accent: #111116; --accent-soft: #23233a;
+    --danger: #ff8484; --ok: #3ccb7f; --warn: #e0a23a;
+    --hover: rgba(255,255,255,.06); --overlay: rgba(0,0,0,.6);
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 8px 28px rgba(0,0,0,.5);
+  }
+}
+@media (pointer: coarse) { :root { --tap: 44px; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: var(--fs-md)/1.5 var(--font); -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: var(--focus); outline-offset: 2px; }
+main { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--s4); }
+.card { max-width: 30em; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s6) var(--s5); text-align: center; box-shadow: var(--shadow-2); }
+img { width: 56px; height: 56px; border-radius: var(--r); display: block; margin: 0 auto; }
+.badge { display: inline-block; margin-top: var(--s4); padding: 2px var(--s3); border-radius: 999px; background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); font-size: var(--fs-xs); font-weight: 600; }
+h1 { font-size: var(--fs-xl); line-height: 1.2; letter-spacing: -.02em; margin: var(--s3) 0 var(--s3); }
+p { margin: var(--s2) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.muted { color: var(--muted); font-size: var(--fs-sm); }
+a { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+@media (max-width: 560px) { .card { padding: var(--s5) var(--s4); } h1 { font-size: var(--fs-lg); } }
 </style>
 </head>
 <body>
 <main>
   <div class="card" data-until="__UNTIL__">
     <img src="/owndraw.png" alt="">
+    <span class="badge">Kurze Pause</span>
     <h1>Wartungsarbeiten</h1>
     <p>__MESSAGE__</p>
     <p class="muted" id="bis" hidden></p>
-    <p class="muted">Die Seite lädt automatisch neu, sobald OwnDraw wieder verfügbar ist.</p>
+    <p class="muted" role="status">Diese Seite lädt automatisch neu, sobald OwnDraw wieder da ist.</p>
   </div>
 </main>
 <script>

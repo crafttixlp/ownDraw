@@ -481,6 +481,7 @@ pub fn card_menu(ui: &mut Ui, ic: &mut Icons, items: &[MenuItem]) -> Option<usiz
 
 /// Kleine Abschnittsüberschrift in Menüs und Optionen.
 pub fn caption(ui: &mut Ui, text: &str) {
+    ui.add_space(4.0);
     ui.label(egui::RichText::new(text).size(12.0).strong().color(c(pal().dim)));
 }
 
@@ -510,4 +511,85 @@ pub fn logo(ctx: &egui::Context) -> Option<TextureHandle> {
     let t = ctx.load_texture("owndraw-logo", img, egui::TextureOptions::LINEAR);
     ctx.data_mut(|d| d.insert_temp(id, t.clone()));
     Some(t)
+}
+
+// ---------------------------------------------------------------- Design-Tokens (UI-Update 4.27)
+
+/// Abstände (Punkte). Überall diese Stufen statt freier Zahlen verwenden.
+pub mod sp {
+    pub const XS: f32 = 4.0;
+    pub const S: f32 = 8.0;
+    pub const M: f32 = 12.0;
+    pub const L: f32 = 16.0;
+    pub const XL: f32 = 24.0;
+    pub const XXL: f32 = 32.0;
+}
+
+/// Schriftgrößen (Punkte): Seitentitel, Abschnitt, Fließtext, Hinweis.
+pub mod fs {
+    pub const TITLE: f32 = 22.0;
+    pub const SECTION: f32 = 15.0;
+    pub const BODY: f32 = 14.5;
+    pub const SMALL: f32 = 12.5;
+    pub const CAPTION: f32 = 11.5;
+}
+
+/// Seitentitel (groß, kräftig).
+pub fn title(text: &str) -> egui::RichText {
+    egui::RichText::new(text).size(fs::TITLE).strong().color(c(pal().text))
+}
+
+/// Gedämpfter Hinweistext.
+pub fn hint(text: &str) -> egui::RichText {
+    egui::RichText::new(text).size(fs::SMALL).color(c(pal().dim))
+}
+
+/// Menüzeile mit Icon links und optionalem Kürzel/Hinweis rechts (Editor-Menü „⋯“).
+pub fn menu_row_ic(ui: &mut Ui, ic: &mut Icons, icon: i32, label: &str, right: &str, danger: bool, min_h: f32) -> bool {
+    let p = pal();
+    let w = ui.available_width();
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(w, min_h), Sense::click());
+    let col = if danger { p.danger_text } else { p.text };
+    if resp.hovered() || resp.has_focus() || resp.is_pointer_button_down_on() {
+        let bg = if danger { with_alpha(p.danger, 0x22) } else if resp.is_pointer_button_down_on() { p.press } else { p.hover };
+        ui.painter().rect_filled(r, CornerRadius::same(if modern() { 6 } else { 10 }), c(bg));
+    }
+    let ir = egui::Rect::from_center_size(egui::pos2(r.left() + 18.0, r.center().y), Vec2::splat(20.0));
+    ic.paint(ui, ir, icon, if danger { p.danger_text } else { p.dim }, false, 17.0);
+    ui.painter().text(egui::pos2(r.left() + 38.0, r.center().y), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(14.0), c(col));
+    if !right.is_empty() {
+        ui.painter().text(egui::pos2(r.right() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, right, egui::FontId::proportional(fs::CAPTION), c(p.dim));
+    }
+    resp.clicked()
+}
+
+/// Dünne Trennlinie über die volle Breite (Menüs, Karten).
+pub fn separator(ui: &mut Ui) {
+    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 9.0), Sense::hover());
+    ui.painter().line_segment([egui::pos2(r.left() + 6.0, r.center().y), egui::pos2(r.right() - 6.0, r.center().y)], Stroke::new(1.0, c(pal().line)));
+}
+
+/// Kleines Abzeichen („Neu“, Kürzel) in Akzentfarbe.
+pub fn badge(ui: &mut Ui, text: &str) {
+    let p = pal();
+    let g = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(fs::CAPTION), c(p.accent));
+    let (r, _) = ui.allocate_exact_size(g.size() + Vec2::new(12.0, 4.0), Sense::hover());
+    ui.painter().rect_filled(r, CornerRadius::same(255), c(p.accent_soft));
+    ui.painter().galley(r.center() - g.size() / 2.0, g, c(p.accent));
+}
+
+/// Hinweiskarte mit Akzentstreifen links (Erklärungen, z. B. „neue Werkzeuge sind aus“).
+pub fn info_card<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
+    let p = pal();
+    let resp = Frame::new()
+        .fill(c(p.accent_soft))
+        .corner_radius(CornerRadius::same(if modern() { 10 } else { 14 }))
+        .inner_margin(Margin { left: 16, right: 14, top: 12, bottom: 12 })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            body(ui)
+        });
+    let r = resp.response.rect;
+    ui.painter().rect_filled(egui::Rect::from_min_size(r.min + Vec2::new(0.0, 8.0), Vec2::new(3.0, (r.height() - 16.0).max(0.0))), CornerRadius::same(2), c(p.accent));
+    resp.inner
 }

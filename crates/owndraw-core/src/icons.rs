@@ -59,6 +59,18 @@ pub const DISTRIBUTE: i32 = 67;
 pub const BLOCK60: [i32; 8] = [CONNECTOR, TABLE, PIN, CROP, GROUP, UNGROUP, ALIGN, DISTRIBUTE];
 /// Mathe-Formel (Wurzelzeichen mit x). Hohe Nummer, damit parallel ergänzte Icons nicht kollidieren.
 pub const FORMULA: i32 = 80;
+/// Icons für Menüs und Startseite (UI-Update 4.27).
+pub const GEAR: i32 = 81;
+pub const HELP: i32 = 82;
+pub const DOWNLOAD: i32 = 83;
+pub const SHARE: i32 = 84;
+pub const BUG: i32 = 85;
+pub const SLIDERS: i32 = 86;
+pub const SEARCH: i32 = 87;
+pub const CLOSE: i32 = 88;
+pub const FOLDER: i32 = 89;
+pub const CLOUD: i32 = 90;
+pub const BLOCK81: [i32; 10] = [GEAR, HELP, DOWNLOAD, SHARE, BUG, SLIDERS, SEARCH, CLOSE, FOLDER, CLOUD];
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -374,6 +386,74 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, false, &[14.0, 9.0, 20.0, 17.0]);
             poly(&mut pb, false, &[20.0, 9.0, 14.0, 17.0]);
         }
+        GEAR => {
+            // Zahnrad: 8 Zähne als Polygon, innen Kreis
+            let mut v = Vec::with_capacity(64);
+            for i in 0..32 {
+                let a = (i as f32 / 32.0) * std::f32::consts::TAU;
+                let r = if (i / 2) % 2 == 0 { 9.0 } else { 6.8 };
+                v.extend_from_slice(&[12.0 + r * a.cos(), 12.0 + r * a.sin()]);
+            }
+            poly(&mut pb, true, &v);
+            pb.push_circle(12.0, 12.0, 2.8);
+        }
+        HELP => {
+            pb.push_circle(12.0, 12.0, 9.0);
+            pb.move_to(9.3, 9.6);
+            pb.quad_to(9.6, 6.8, 12.2, 6.9);
+            pb.quad_to(14.9, 7.1, 14.8, 9.6);
+            pb.quad_to(14.6, 11.4, 12.2, 12.4);
+            pb.line_to(12.2, 14.0);
+            poly(&mut pb, false, &[12.2, 16.8, 12.2, 17.2]);
+        }
+        DOWNLOAD => {
+            poly(&mut pb, false, &[12.0, 4.0, 12.0, 15.0]);
+            poly(&mut pb, false, &[8.0, 11.0, 12.0, 15.0, 16.0, 11.0]);
+            poly(&mut pb, false, &[5.0, 16.0, 5.0, 20.0, 19.0, 20.0, 19.0, 16.0]);
+        }
+        SHARE => {
+            pb.push_circle(6.5, 12.0, 2.6);
+            pb.push_circle(17.5, 6.0, 2.6);
+            pb.push_circle(17.5, 18.0, 2.6);
+            poly(&mut pb, false, &[8.8, 10.8, 15.2, 7.2]);
+            poly(&mut pb, false, &[8.8, 13.2, 15.2, 16.8]);
+        }
+        BUG => {
+            round_rect(&mut pb, 7.5, 8.0, 16.5, 20.0, 4.5);
+            poly(&mut pb, false, &[9.0, 8.0, 9.5, 5.5, 14.5, 5.5, 15.0, 8.0]);
+            poly(&mut pb, false, &[12.0, 11.0, 12.0, 20.0]);
+            poly(&mut pb, false, &[3.5, 12.5, 7.5, 12.5]);
+            poly(&mut pb, false, &[16.5, 12.5, 20.5, 12.5]);
+            poly(&mut pb, false, &[4.0, 18.5, 7.8, 16.5]);
+            poly(&mut pb, false, &[20.0, 18.5, 16.2, 16.5]);
+        }
+        SLIDERS => {
+            poly(&mut pb, false, &[4.0, 7.0, 20.0, 7.0]);
+            poly(&mut pb, false, &[4.0, 17.0, 20.0, 17.0]);
+            pb.push_circle(9.0, 7.0, 2.4);
+            pb.push_circle(15.0, 17.0, 2.4);
+        }
+        SEARCH => {
+            pb.push_circle(10.5, 10.5, 6.0);
+            poly(&mut pb, false, &[15.0, 15.0, 20.0, 20.0]);
+        }
+        CLOSE => {
+            poly(&mut pb, false, &[6.0, 6.0, 18.0, 18.0]);
+            poly(&mut pb, false, &[18.0, 6.0, 6.0, 18.0]);
+        }
+        FOLDER => {
+            poly(&mut pb, true, &[3.5, 6.0, 9.5, 6.0, 11.5, 8.0, 20.5, 8.0, 20.5, 19.0, 3.5, 19.0]);
+        }
+        CLOUD => {
+            pb.move_to(7.0, 18.0);
+            pb.quad_to(3.0, 18.0, 3.5, 14.0);
+            pb.quad_to(4.0, 10.8, 7.5, 11.0);
+            pb.quad_to(8.5, 5.5, 13.5, 6.0);
+            pb.quad_to(17.5, 6.5, 17.8, 10.5);
+            pb.quad_to(21.0, 11.0, 21.0, 14.3);
+            pb.quad_to(20.8, 18.0, 17.0, 18.0);
+            pb.close();
+        }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
             poly(&mut pb, false, &[5.0, 12.0, 19.0, 12.0]);
@@ -401,7 +481,7 @@ mod tests {
 
     #[test]
     fn alle_icons_sichtbar() {
-        for id in (0..=37).chain(BLOCK60).chain([FORMULA]) {
+        for id in (0..=37).chain(BLOCK60).chain([FORMULA]).chain(BLOCK81) {
             for filled in [false, true] {
                 let pm = render(id, 48, 0xFFFFFFFF, filled).expect("pixmap");
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();

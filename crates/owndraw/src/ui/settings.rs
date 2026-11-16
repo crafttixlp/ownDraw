@@ -43,6 +43,11 @@ fn page_id() -> Id {
     Id::unique("settings-page")
 }
 
+/// Öffnet die Einstellungen beim nächsten Anzeigen auf der Seite „Werkzeuge“.
+pub fn open_tools_page(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(page_id(), Page::Tools));
+}
+
 /// Zeile: Beschriftung (mit optionaler Erklärung) und Bedienelement.
 fn row(ui: &mut Ui, env: &Env, label: &str, hint: Option<&str>, controls: impl FnOnce(&mut Ui)) {
     let p = style::pal();

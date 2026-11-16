@@ -171,6 +171,18 @@ impl Board {
             it.touch();
             it
         };
+        // Fragezeichen/Ausrufezeichen: etwas kräftiger, damit sie neben Haken/Kreuz nicht verschwinden
+        let bold = |pts: &[(f32, f32)], sharp: bool| -> Item {
+            let mut it = Item::stroke(col, w * 1.3, false, false);
+            for &(px, py) in pts {
+                it.add_point(x + px * size, y + py * size, 0.5);
+            }
+            if let Kind::Stroke(s) = &mut it.kind {
+                s.sharp = sharp;
+            }
+            it.touch();
+            it
+        };
         let mut items: Vec<Item> = match kind {
             STAMP_CHECK => vec![line(&[(-0.4, 0.0), (-0.12, 0.32), (0.42, -0.36)], true)],
             STAMP_CROSS => vec![line(&[(-0.35, -0.35), (0.35, 0.35)], true), line(&[(0.35, -0.35), (-0.35, 0.35)], true)],
@@ -181,16 +193,17 @@ impl Board {
                 vec![it]
             }
             STAMP_QUESTION => {
+                // so hoch wie die anderen Stempel (vorher deutlich kleiner)
                 let mut pts: Vec<(f32, f32)> = (0..=12)
                     .map(|i| {
                         let a = std::f32::consts::PI * (1.1 - 1.45 * i as f32 / 12.0);
-                        (0.24 * a.cos(), -0.2 + 0.2 * -a.sin())
+                        (0.27 * a.cos(), -0.22 + 0.25 * -a.sin())
                     })
                     .collect();
-                pts.extend_from_slice(&[(0.0, 0.08), (0.0, 0.18)]);
-                vec![line(&pts, false), line(&[(0.0, 0.38)], true)]
+                pts.extend_from_slice(&[(0.0, 0.12), (0.0, 0.24)]);
+                vec![bold(&pts, false), bold(&[(0.0, 0.44)], true)]
             }
-            _ => vec![line(&[(0.0, -0.42), (0.0, 0.18)], true), line(&[(0.0, 0.38)], true)],
+            _ => vec![bold(&[(0.0, -0.48), (0.0, 0.22)], true), bold(&[(0.0, 0.44)], true)],
         };
         let lid = self.active_layer().id;
         let gid = if items.len() > 1 { item::new_uid() } else { 0 };

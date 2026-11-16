@@ -337,7 +337,7 @@ impl Ruler {
         if d.round() >= if self.kind == Kind::Ruler { 180.0 } else { 360.0 } {
             0.0
         } else {
-            d
+            d + 0.0 // -0.0 → 0.0 (sonst Anzeige „-0°“)
         }
     }
 
@@ -378,7 +378,8 @@ impl Ruler {
                 let l = if m % every == 0 { if m % 10 == 0 { 14.0 } else { 8.0 } } else if m % 5 == 0 { 9.0 } else { 5.0 };
                 let p = z + dir * s;
                 pt.line_segment([at(p), at(p + inn * l)], thin);
-                if labels && m % lab_every == 0 {
+                // Zahlen unter dem Drehgriff weglassen (sonst verdeckt)
+                if labels && m % lab_every == 0 && (p + inn * 24.0).distance(self.handle_pos()) > HANDLE_R + 12.0 {
                     pt.text(at(p + inn * 24.0), Align2::CENTER_CENTER, format!("{}", m / 10), font.clone(), ink);
                 }
             }

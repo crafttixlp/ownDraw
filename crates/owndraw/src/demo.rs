@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -232,6 +232,7 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         }
         ed.st.opts_open = has("options");
         ed.st.menu_open = has("menu");
+        ed.st.more_open = has("more");
         ed.st.layers_open = has("layers");
         if has("pagesclosed") {
             ed.st.pages_open = Some(false);

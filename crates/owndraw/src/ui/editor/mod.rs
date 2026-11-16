@@ -13,6 +13,7 @@ mod mathed;
 #[cfg(target_arch = "wasm32")]
 pub mod live;
 mod menu;
+mod more;
 mod options;
 pub mod pages;
 mod ruler;
@@ -113,6 +114,10 @@ pub fn visible_tools(s: &Settings) -> Vec<Tool> {
 pub struct UiState {
     pub opts_open: bool,
     pub menu_open: bool,
+    /// Popover „Weitere Werkzeuge“ offen.
+    pub more_open: bool,
+    /// Knopf „+“ (Weitere Werkzeuge) im letzten Frame.
+    pub more_btn: Option<Rect>,
     pub layers_open: bool,
     /// None = Vorgabe nach Formfaktor (Expanded: offen).
     pub pages_open: Option<bool>,
@@ -660,7 +665,9 @@ impl Editor {
         if self.st.edit_tools.is_none() {
             self.st.note_in_bar = tools.contains(&Tool::Note);
         }
-        let lay = self.layout(sh, ui.max_rect(), tools.len());
+        // Knopf „+“ (Weitere Werkzeuge), solange Werkzeuge ausgeschaltet sind
+        let more = usize::from(self.st.edit_tools.is_none() && !more::hidden(&sh.settings).is_empty());
+        let lay = self.layout(sh, ui.max_rect(), tools.len() + more);
         let rect = lay.canvas;
         self.canvas = rect;
         let layer = ui.layer_id();
@@ -679,7 +686,7 @@ impl Editor {
 
         let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some();
         // Klick auf die Zeichenfläche schließt offene Popups und zeichnet nicht.
-        let popup_open = self.st.opts_open || self.st.menu_open;
+        let popup_open = self.st.opts_open || self.st.menu_open || self.st.more_open;
         let mut swallow = false;
         if popup_open && !modal {
             let press = ctx.input(|i| i.pointer.any_pressed()).then(|| ctx.input(|i| i.pointer.interact_pos())).flatten();
@@ -689,6 +696,7 @@ impl Editor {
                 if on_canvas {
                     self.st.opts_open = false;
                     self.st.menu_open = false;
+                    self.st.more_open = false;
                     swallow = true;
                 }
             }
@@ -802,6 +810,7 @@ impl Editor {
         toolbar::show(self, &ctx, sh, &lay, &tools);
         options::show(self, &ctx, sh, &lay);
         menu::show(self, &ctx, sh, &lay);
+        more::show(self, &ctx, sh, &lay);
         self.x_frame(&ctx, sh, &lay, layer);
         self.text_editor(&ctx, &sh.settings);
         self.math_editor(&ctx, sh);
@@ -853,9 +862,10 @@ impl Editor {
     }
 
     fn close_popups_on_esc(&mut self, ctx: &egui::Context, s: &Settings) {
-        if (self.st.opts_open || self.st.menu_open) && self.text.is_none() && ctx.input_mut(|i| keys::consume(i, s, "cancel")) {
+        if (self.st.opts_open || self.st.menu_open || self.st.more_open) && self.text.is_none() && ctx.input_mut(|i| keys::consume(i, s, "cancel")) {
             self.st.opts_open = false;
             self.st.menu_open = false;
+            self.st.more_open = false;
         }
     }
 

@@ -94,6 +94,7 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                 if more.clicked() {
                     ed.st.menu_open = !ed.st.menu_open;
                     ed.st.opts_open = false;
+                    ed.st.more_open = false;
                 }
                 g
             })
@@ -395,11 +396,11 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
         Some(id) => sh.icons.paint(ui, rect, id, tint, false, isz),
         None => super::glyphs::paint_tool(ui.painter(), rect, ed, t, isz, c(tint)),
     }
-    // Farbpunkt als Hinweis auf die aktuelle Farbe
-    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin | Tool::Math) {
+    // Farbpunkt als Hinweis auf die aktuelle Farbe – nur am aktiven Werkzeug (sonst unruhig)
+    if active && matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin | Tool::Math) {
         let pos = rect.right_bottom() - Vec2::new(size * 0.22, size * 0.22);
         ui.painter().circle_filled(pos, 4.5, c(ed.board.color));
-        ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.0, c(p.line)));
+        ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.5, c(p.pill)));
     }
     ed.st.tool_rects.push((t, rect));
     let tip = ed.tool_tip(&sh.env, t, &sh.settings);
@@ -414,6 +415,38 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
             ed.select_tool(sh, t);
             ed.st.opts_open = false;
         }
+    }
+}
+
+/// Knopf „+“: Weitere (ausgeschaltete) Werkzeuge. Punkt = ungesehene neue Werkzeuge.
+fn more_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, size: f32, vert: bool) {
+    ed.st.more_btn = None;
+    if super::more::hidden(&sh.settings).is_empty() {
+        ed.st.more_open = false;
+        return;
+    }
+    let p = style::pal();
+    // dünne Trennlinie vor dem Knopf
+    let (sep, _) = ui.allocate_exact_size(if vert { Vec2::new(size, 7.0) } else { Vec2::new(7.0, size) }, Sense::hover());
+    let (a, b) = if vert {
+        (Pos2::new(sep.left() + size * 0.25, sep.center().y), Pos2::new(sep.right() - size * 0.25, sep.center().y))
+    } else {
+        (Pos2::new(sep.center().x, sep.top() + size * 0.25), Pos2::new(sep.center().x, sep.bottom() - size * 0.25))
+    };
+    ui.painter().line_segment([a, b], Stroke::new(1.0, c(p.line)));
+    let open = ed.st.more_open;
+    let r = icon_btn(ui, &mut sh.icons, ic::PLUS, if open { p.accent } else { p.dim }, open, false, size, "Weitere Werkzeuge hinzufügen");
+    if super::more::unseen(&sh.settings) {
+        let pos = r.rect.right_top() + Vec2::new(-size * 0.24, size * 0.24);
+        ui.painter().circle_filled(pos, 4.0, c(p.accent));
+        ui.painter().circle_stroke(pos, 4.0, Stroke::new(1.5, c(p.pill)));
+    }
+    ed.st.more_btn = Some(r.rect);
+    if r.clicked() {
+        ed.st.more_open = !open;
+        ed.st.opts_open = false;
+        ed.st.menu_open = false;
+        super::more::mark_seen(&mut sh.settings);
     }
 }
 
@@ -454,6 +487,7 @@ fn tool_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, to
                     for &t in tools {
                         tool_btn(ui, ed, sh, t, btn);
                     }
+                    more_btn(ui, ed, sh, btn, vert);
                     g
                 })
             })

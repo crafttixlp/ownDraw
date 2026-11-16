@@ -350,7 +350,15 @@ mod tests {
             f.insert(format!("action:{}", a.id));
         }
         // Menüeinträge des „⋯“-Menüs
-        for l in literals_after(include_str!("editor/menu.rs"), "menu_row(ui, ") {
+        // Zeilen haben die Form `menu_row_ic(ui, &mut sh.icons, ic::X, "Text", …)`: Icon-Argument überspringen
+        let mut rows = String::new();
+        for part in include_str!("editor/menu.rs").split("menu_row_ic(ui, &mut sh.icons, ").skip(1) {
+            if let Some(i) = part.find(", ") {
+                rows.push_str("menu_row(ui, ");
+                rows.push_str(&part[i + 2..]);
+            }
+        }
+        for l in literals_after(&rows, "menu_row(ui, ") {
             f.insert(format!("menu:{l}"));
         }
         // Editor-Einstellungen (Abschnitte „Werkzeugleisten“ und „Einrasten“)

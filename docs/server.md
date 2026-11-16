@@ -144,7 +144,7 @@ Im Panel:
   Live), Boards bleiben erhalten. Aktivieren schaltet eine deaktivierte Lizenz wieder ein; hat der Nutzer keine oder nur
   eine abgelaufene, wählst du einen freien Code oder lässt einen neuen erzeugen (Laufzeit, Speicherplatz).
 - **Lizenzen**: mehrere Codes `OWND-XXXX-XXXX-XXXX` erzeugen (Laufzeit in Tagen ab Einlösen oder unbegrenzt,
-  Speicherplatz pro Nutzer in MB, Notiz), kopieren, einem Nutzer zuweisen (sofort aktiv), deaktivieren/aktivieren, Ablauf ändern. Die Codes gibst du den Kundinnen und Kunden; sie lösen
+  Speicherplatz pro Nutzer in MB, Notiz), kopieren, einem Nutzer zuweisen (sofort aktiv), deaktivieren/aktivieren, Ablauf ändern, endgültig löschen (mit Bestätigung; eine zugewiesene Lizenz verliert der Nutzer sofort, seine Boards bleiben). Die Codes gibst du den Kundinnen und Kunden; sie lösen
   sie in der Web-App ein.
 - **Updates**: siehe Abschnitt 7.
 

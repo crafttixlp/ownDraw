@@ -358,3 +358,18 @@ pub async fn user_license(
         .await?;
     Ok(Json(v))
 }
+
+/// `DELETE /api/admin/licenses/{code}`: Lizenz endgültig löschen. Ist sie einem Nutzer zugewiesen, verliert er
+/// damit sofort die Lizenzrechte (wie beim Deaktivieren); seine Boards bleiben erhalten.
+pub async fn delete_license(State(s): State<AppState>, _a: AdminAuth, Path(code): Path<String>) -> ApiResult<Json<Value>> {
+    let code = code.trim().to_uppercase();
+    s.db.call(move |c| {
+        let tx = c.transaction()?;
+        db::license_by_code(&tx, &code)?.ok_or_else(|| ApiError::not_found("Lizenz nicht gefunden."))?;
+        tx.execute("DELETE FROM licenses WHERE code=?1", [&code])?;
+        tx.commit()?;
+        Ok(())
+    })
+    .await?;
+    Ok(Json(json!({})))
+}

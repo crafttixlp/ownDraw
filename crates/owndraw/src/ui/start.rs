@@ -20,6 +20,9 @@ pub struct StartState {
     query: String,
     /// Filter: 0 = alle, 1 = Seiten, 2 = Unendlich.
     filter: u8,
+    /// Demo `gast`: Gast-Hinweis wie im Browser auch am Desktop zeigen (nur Screenshots).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub demo_banner: bool,
 }
 
 impl StartState {
@@ -83,7 +86,10 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
             });
             // Browser: Konto bzw. Gastmodus-Hinweis (dezent)
             #[cfg(target_arch = "wasm32")]
-            super::account::header(ui, sh, &mut st.account);
+            {
+                ui.add_space(10.0);
+                super::account::header(ui, sh, &mut st.account);
+            }
             ui.add_space(14.0);
             // Aktionen
             let btn_w = if compact { (ui.available_width() - 8.0) / 2.0 } else { 140.0 };
@@ -245,47 +251,169 @@ pub fn fmt_rel(ms: i64) -> String {
     format!("{date}, {time}")
 }
 
-/// Startseite im modernen Design: Kopf mit Marke, Titel „Boards“ mit Suche und Aktionen, Filter, Kartenraster.
+/// Hinweis-Banner (Konto, Gastmodus): Symbol, Titel und Erklärung links, Knöpfe rechts und senkrecht mittig.
+/// Schmal (Handy) steht alles untereinander.
+pub fn banner(ui: &mut egui::Ui, compact: bool, title: &str, body: &str, buttons: impl FnOnce(&mut egui::Ui)) {
+    let p = style::pal();
+    egui::Frame::new()
+        .fill(c(p.card))
+        .stroke(Stroke::new(1.0, c(p.line)))
+        .corner_radius(CornerRadius::same(14))
+        .inner_margin(egui::Margin::symmetric(if compact { 14 } else { 18 }, 14))
+        .show(ui, |ui| {
+            let w = ui.available_width();
+            ui.set_width(w);
+            let icon = |ui: &mut egui::Ui| {
+                let (r, _) = ui.allocate_exact_size(Vec2::splat(34.0), Sense::hover());
+                ui.painter().circle_filled(r.center(), 17.0, c(p.accent_soft));
+                ui.painter().text(r.center(), Align2::CENTER_CENTER, "i", egui::FontId::proportional(17.0), c(p.accent));
+            };
+            let texts = |ui: &mut egui::Ui, tw: f32| {
+                ui.set_width(tw);
+                ui.spacing_mut().item_spacing.y = 4.0;
+                ui.label(egui::RichText::new(title).size(14.0).strong().color(c(p.text)));
+                ui.label(egui::RichText::new(body).size(12.5).color(c(p.dim)));
+            };
+            if compact {
+                ui.horizontal(|ui| {
+                    icon(ui);
+                    let tw = ui.available_width();
+                    ui.vertical(|ui| texts(ui, tw));
+                });
+                ui.add_space(10.0);
+                ui.horizontal_wrapped(|ui| buttons(ui));
+                return;
+            }
+            // Breite der Knöpfe aus dem letzten Frame (beim ersten Mal geschätzt)
+            let id = ui.scope_id().with("banner-buttons");
+            let bw: f32 = ui.data(|d| d.get_temp(id)).unwrap_or(240.0);
+            let gap = 16.0;
+            let tw = (w - 34.0 - 14.0 - gap - bw).max(180.0);
+            let th = ui.painter().layout(title.to_string(), egui::FontId::proportional(14.0), c(p.text), tw).size().y
+                + 4.0
+                + ui.painter().layout(body.to_string(), egui::FontId::proportional(12.5), c(p.dim), tw).size().y;
+            let row_h = th.max(36.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 14.0;
+                ui.allocate_ui_with_layout(Vec2::new(34.0, row_h), egui::Layout::top_down(egui::Align::Center).with_main_align(egui::Align::Center), icon);
+                ui.allocate_ui_with_layout(Vec2::new(tw, row_h), egui::Layout::top_down(egui::Align::Min), |ui| texts(ui, tw));
+                let rest = ui.available_width();
+                let used = ui
+                    .allocate_ui_with_layout(Vec2::new(rest, row_h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        let x0 = ui.cursor().max.x;
+                        buttons(ui);
+                        x0 - ui.cursor().max.x
+                    })
+                    .inner;
+                if (used - bw).abs() > 0.5 {
+                    ui.data_mut(|d| d.insert_temp(id, used));
+                    ui.ctx().request_repaint();
+                }
+            });
+        });
+}
+
+/// Marke (Logo-Kachel mit Strich) in der Größe `s`.
+fn brand_mark(ui: &mut egui::Ui, s: f32) {
+    let p = style::pal();
+    let (r, _) = ui.allocate_exact_size(Vec2::splat(s), Sense::hover());
+    let pt = ui.painter();
+    pt.rect_filled(r, CornerRadius::same((s * 0.28) as u8), c(p.accent));
+    let a = r.shrink(s * 0.28);
+    let pts: Vec<Pos2> = (0..=12)
+        .map(|i| {
+            let t = i as f32 / 12.0;
+            Pos2::new(a.left() + a.width() * t, a.bottom() - a.height() * (t * t * (3.0 - 2.0 * t)))
+        })
+        .collect();
+    pt.add(egui::Shape::line(pts, Stroke::new(s * 0.08, c(p.on_accent))));
+}
+
+/// Leerzustand ohne Boards: großes Symbol, kurzer Text, beide Aktionen.
+fn empty_state(ui: &mut egui::Ui, sh: &mut Shared, h: f32) {
+    let p = style::pal();
+    egui::Frame::new()
+        .fill(c(p.card))
+        .stroke(Stroke::new(1.0, c(p.line)))
+        .corner_radius(CornerRadius::same(16))
+        .inner_margin(egui::Margin::symmetric(24, 40))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.vertical_centered(|ui| {
+                let (r, _) = ui.allocate_exact_size(Vec2::splat(72.0), Sense::hover());
+                ui.painter().circle_filled(r.center(), 36.0, c(p.accent_soft));
+                sh.icons.paint(ui, r, owndraw_core::icons::PEN, p.accent, false, 34.0);
+                ui.add_space(14.0);
+                ui.label(egui::RichText::new("Noch keine Boards").size(20.0).strong());
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Lege ein neues Board an oder öffne eine .owndraw- oder Xournal++-Datei.").color(c(p.dim)));
+                ui.add_space(18.0);
+                // Knöpfe mittig: Breite schätzen und links auffüllen
+                let bw = 132.0 + 8.0 + 110.0;
+                ui.horizontal(|ui| {
+                    ui.add_space(((ui.available_width() - bw) / 2.0).max(0.0));
+                    if ui.add_sized([132.0, h], egui::Button::new(egui::RichText::new("Neues Board").color(c(p.on_accent)).strong()).fill(c(p.accent)).corner_radius(CornerRadius::same(8))).clicked() {
+                        sh.reqs.push(Req::NewDialog);
+                    }
+                    if ui.add_sized([110.0, h], egui::Button::new("Öffnen …").fill(c(p.card)).stroke(Stroke::new(1.0, c(p.line))).corner_radius(CornerRadius::same(8))).clicked() {
+                        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
+                    }
+                });
+            });
+        });
+}
+
+/// Startseite im modernen Design: Kopf mit Marke, Hinweis, Titel „Boards“ mit Suche und Aktionen, Filter, Kartenraster.
+/// Der Inhalt ist auf `MAX_W` begrenzt und mittig gesetzt.
 fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Recent) {
+    const MAX_W: f32 = 1120.0;
     let ctx = ui.ctx().clone();
     let p = style::pal();
     let env = sh.env;
     let compact = env.ff == FormFactor::Compact;
-    let side: i8 = if compact { 16 } else if env.ff == FormFactor::Medium { 28 } else { 40 };
+    let side = if compact { 16.0 } else if env.ff == FormFactor::Medium { 28.0 } else { 40.0 };
     let h = if compact { env.btn } else { 36.0 };
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        // Inhalt auf max. 1180 pt begrenzen und mittig setzen
-        let full = ui.available_width();
-        let w = (full - 2.0 * side as f32).clamp(100.0, 1180.0);
-        let pad = ((full - w) / 2.0).max(side as f32);
-        egui::Frame::new().inner_margin(egui::Margin { left: pad as i8, right: pad as i8, top: 16, bottom: 32 }).show(ui, |ui| {
-            ui.set_width(w.min(ui.available_width()));
+        // Spalte mittig setzen (egui-Ränder sind i8 und reichen dafür nicht)
+        let full = ui.available_rect_before_wrap();
+        let w = (full.width() - 2.0 * side).clamp(100.0, MAX_W);
+        let col = Rect::from_min_size(Pos2::new(full.center().x - w / 2.0, full.top() + if compact { 12.0 } else { 20.0 }), Vec2::new(w, f32::INFINITY));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(col).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
+            ui.set_width(w);
             // Kopf: Marke links, Einstellungen rechts
             ui.horizontal(|ui| {
-                let (r, _) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
-                let pt = ui.painter();
-                pt.rect_filled(r, CornerRadius::same(8), c(p.text));
-                let a = r.shrink(8.0);
-                let pts: Vec<Pos2> = (0..=12)
-                    .map(|i| {
-                        let t = i as f32 / 12.0;
-                        Pos2::new(a.left() + a.width() * t, a.bottom() - a.height() * (t * t * (3.0 - 2.0 * t)))
-                    })
-                    .collect();
-                pt.add(egui::Shape::line(pts, Stroke::new(2.2, c(p.bg))));
-                ui.label(egui::RichText::new("OwnDraw").size(17.0).strong());
+                brand_mark(ui, 30.0);
+                ui.add_space(2.0);
+                ui.label(egui::RichText::new("OwnDraw").size(18.0).strong().color(c(p.text)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if style::plain_btn(ui, "Einstellungen", h).clicked() {
+                    if style::outline_btn(ui, "Einstellungen", h).clicked() {
                         sh.reqs.push(Req::OpenSettings);
                     }
                 });
             });
-            ui.add_space(12.0);
+            ui.add_space(if compact { 14.0 } else { 22.0 });
             #[cfg(target_arch = "wasm32")]
-            super::account::header(ui, sh, &mut st.account);
+            {
+                super::account::header(ui, sh, &mut st.account);
+                ui.add_space(if compact { 18.0 } else { 28.0 });
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            if st.demo_banner {
+                banner(
+                    ui,
+                    compact,
+                    "Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.",
+                    "Mit einem Konto wirst du zu Boards eingeladen und arbeitest live mit. Mit einer Lizenz speicherst und teilst du Boards auf dem Server.",
+                    |ui| {
+                        let _ = style::primary_btn(ui, "Anmelden", h);
+                        let _ = style::outline_btn(ui, "Konto erstellen", h);
+                    },
+                );
+                ui.add_space(if compact { 18.0 } else { 28.0 });
+            }
 
             // Titel mit Aktionen
-            ui.add_space(20.0);
             let n = recent.list().len();
             let sub = match n {
                 0 => "Noch keine Boards".to_string(),
@@ -301,20 +429,24 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
                 }
                 if n > 0 {
-                    let te = egui::TextEdit::singleline(&mut st.query).hint_text("Boards durchsuchen").desired_width(if compact { ui.available_width() } else { 220.0 }).margin(egui::Margin::symmetric(10, 8));
+                    let te = egui::TextEdit::singleline(&mut st.query)
+                        .hint_text("Boards durchsuchen …")
+                        .desired_width(if compact { ui.available_width() } else { 240.0 })
+                        .margin(egui::Margin::symmetric(12, 9));
                     ui.add(te);
                 }
             };
             if compact {
-                ui.label(egui::RichText::new("Boards").size(24.0).strong());
+                ui.label(egui::RichText::new("Boards").size(26.0).strong());
                 ui.label(egui::RichText::new(&sub).color(c(p.dim)));
-                ui.add_space(8.0);
+                ui.add_space(10.0);
                 ui.horizontal_wrapped(|ui| actions(ui, sh, st));
             } else {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Boards").size(26.0).strong());
-                        ui.label(egui::RichText::new(&sub).color(c(p.dim)));
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        ui.label(egui::RichText::new("Boards").size(30.0).strong());
+                        ui.label(egui::RichText::new(&sub).size(13.5).color(c(p.dim)));
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| actions(ui, sh, st));
                 });
@@ -325,27 +457,33 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
             }
 
-            // Filter
-            if n > 0 {
-                ui.add_space(14.0);
-                ui.horizontal_wrapped(|ui| {
-                    for (i, l) in [(0u8, "Alle"), (1, "Seiten"), (2, "Unendlich")] {
-                        if style::chip(ui, l, st.filter == i, 30.0).clicked() {
-                            st.filter = i;
-                        }
-                    }
-                });
+            if n == 0 {
+                ui.add_space(18.0);
+                empty_state(ui, sh, h);
+                return;
             }
-            ui.add_space(12.0);
+
+            // Filter
+            ui.add_space(16.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                for (i, l) in [(0u8, "Alle"), (1, "Seiten"), (2, "Unendlich")] {
+                    if style::chip(ui, l, st.filter == i, 30.0).clicked() {
+                        st.filter = i;
+                    }
+                }
+            });
+            ui.add_space(16.0);
 
             // Kartenraster
-            let gap = if compact { 12.0 } else { 16.0 };
+            let gap = if compact { 12.0 } else { 20.0 };
             let avail = ui.available_width();
-            let min_w = if compact { 150.0 } else { 220.0 };
+            let min_w = if compact { 150.0 } else { 240.0 };
             let cols = (((avail + gap) / (min_w + gap)).floor() as usize).max(2);
             let tw = ((avail - gap * (cols as f32 - 1.0)) / cols as f32).floor();
-            let ph = (tw * 3.0 / 4.0).round();
-            let th = ph + 58.0;
+            let ph = (tw * 0.7).round();
+            let foot = if compact { 56.0 } else { 62.0 };
+            let th = ph + foot;
             let q = st.query.trim().to_lowercase();
             let list: Vec<_> = recent
                 .list()
@@ -360,6 +498,7 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 .collect();
             ui.spacing_mut().item_spacing = Vec2::splat(gap);
             let mut loaded = 0;
+            let rad = CornerRadius::same(14);
             ui.horizontal_wrapped(|ui| {
                 for e in &list {
                     if loaded < 2 && !st.thumbs.contains_key(&e.file.to_key()) {
@@ -369,42 +508,55 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     let tex = st.thumbs.get(&e.file.to_key()).cloned().flatten();
                     let missing = recent.is_missing(&e.file);
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw, th), Sense::click());
+                    let hov = resp.hovered() && !missing;
                     let pt = ui.painter();
-                    let rad = CornerRadius::same(12);
+                    // weicher Schatten, beim Überfahren etwas stärker
+                    let sh_a = if p.dark { if hov { 110 } else { 70 } } else if hov { 28 } else { 14 };
+                    pt.add(egui::Shadow { offset: [0, if hov { 6 } else { 3 }], blur: if hov { 18 } else { 10 }, spread: 0, color: egui::Color32::from_black_alpha(sh_a) }.as_shape(r, rad));
                     pt.rect_filled(r, rad, c(p.card));
                     let img_r = Rect::from_min_size(r.min, Vec2::new(tw, ph));
-                    let top = CornerRadius { nw: 12, ne: 12, sw: 0, se: 0 };
+                    let top = CornerRadius { nw: 14, ne: 14, sw: 0, se: 0 };
                     pt.rect_filled(img_r, top, c(p.sunken));
                     // Blatt mit Rand in der Vorschaufläche
-                    let paper = img_r.shrink2(Vec2::new(tw * 0.08, ph * 0.08));
+                    let inset = (tw * 0.07).clamp(10.0, 18.0);
+                    let paper = img_r.shrink(inset);
+                    pt.add(egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: egui::Color32::from_black_alpha(if p.dark { 120 } else { 30 }) }.as_shape(paper, CornerRadius::same(6)));
                     match tex {
                         Some(t) => {
                             let ts = t.size_vec2();
                             let k = (paper.width() / ts.x).max(paper.height() / ts.y);
                             let (uw, vh) = (paper.width() / (ts.x * k), paper.height() / (ts.y * k));
                             let uv = Rect::from_min_max(Pos2::new((1.0 - uw) / 2.0, (1.0 - vh) / 2.0), Pos2::new((1.0 + uw) / 2.0, (1.0 + vh) / 2.0));
-                            pt.rect_filled(paper.translate(Vec2::new(0.0, 1.5)), CornerRadius::same(4), egui::Color32::from_black_alpha(if p.dark { 90 } else { 22 }));
-                            egui::Image::new(&t).uv(uv).corner_radius(CornerRadius::same(4)).paint_at(ui, paper);
+                            egui::Image::new(&t).uv(uv).corner_radius(CornerRadius::same(6)).paint_at(ui, paper);
                         }
                         None => {
                             let pt = ui.painter();
-                            pt.rect_filled(paper, CornerRadius::same(4), c(0xFFFBFBF8));
-                            let g = if e.pages { "▤" } else { "∞" };
-                            pt.text(paper.center(), Align2::CENTER_CENTER, g, egui::FontId::proportional(30.0), c(0xFFB8B9C0));
+                            pt.rect_filled(paper, CornerRadius::same(6), c(0xFFFBFBF8));
+                            if e.pages {
+                                // liniertes Blatt andeuten
+                                let mut y = paper.top() + 18.0;
+                                while y < paper.bottom() - 8.0 {
+                                    pt.line_segment([Pos2::new(paper.left() + 10.0, y), Pos2::new(paper.right() - 10.0, y)], Stroke::new(1.0, c(0xFFE3E4EA)));
+                                    y += 12.0;
+                                }
+                            } else {
+                                pt.text(paper.center(), Align2::CENTER_CENTER, "∞", egui::FontId::proportional(30.0), c(0xFFB8B9C0));
+                            }
                         }
                     }
                     let pt = ui.painter();
                     pt.line_segment([img_r.left_bottom(), img_r.right_bottom()], Stroke::new(1.0, c(p.line)));
-                    let name = elide(&e.name, 14.5, tw - 54.0, ui);
+                    let name = elide(&e.name, 15.0, tw - 58.0, ui);
                     let pt = ui.painter();
-                    pt.text(Pos2::new(r.left() + 14.0, r.top() + ph + 20.0), Align2::LEFT_CENTER, name, egui::FontId::proportional(14.5), c(p.text));
+                    let fy = r.top() + ph + foot / 2.0;
+                    pt.text(Pos2::new(r.left() + 16.0, fy - 10.0), Align2::LEFT_CENTER, name, egui::FontId::proportional(15.0), c(p.text));
                     let kind = if e.pages { "Seiten" } else { "Unendlich" };
                     let sub = if missing { "Datei nicht gefunden".to_string() } else { format!("{kind} · {}", fmt_rel(e.modified_ms)) };
-                    pt.text(Pos2::new(r.left() + 14.0, r.top() + ph + 40.0), Align2::LEFT_CENTER, sub, egui::FontId::proportional(12.0), c(if missing { p.danger } else { p.dim }));
+                    pt.text(Pos2::new(r.left() + 16.0, fy + 11.0), Align2::LEFT_CENTER, sub, egui::FontId::proportional(12.5), c(if missing { p.danger } else { p.dim }));
                     if missing {
                         pt.rect_filled(r, rad, p_overlay(ui));
                     }
-                    let stroke = if resp.hovered() { Stroke::new(1.0, c(p.dim)) } else { Stroke::new(1.0, c(p.line)) };
+                    let stroke = if hov { Stroke::new(1.5, c(p.accent)) } else { Stroke::new(1.0, c(p.line)) };
                     pt.rect_stroke(r, rad, stroke, egui::StrokeKind::Inside);
                     if resp.clicked() {
                         sh.reqs.push(Req::OpenFile(e.file.clone()));
@@ -420,7 +572,7 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                         }
                     };
                     resp.context_menu(|ui| menu(ui, sh));
-                    let mr = Rect::from_center_size(Pos2::new(r.right() - 24.0, r.top() + ph + 29.0), Vec2::splat(32.0));
+                    let mr = Rect::from_center_size(Pos2::new(r.right() - 26.0, fy), Vec2::splat(34.0));
                     let mresp = ui.interact(mr, resp.id.with("more"), Sense::click()).on_hover_text("Weitere Aktionen");
                     if mresp.hovered() {
                         ui.painter().rect_filled(mr, CornerRadius::same(8), c(p.hover));
@@ -432,22 +584,25 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 if st.query.trim().is_empty() {
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw, th), Sense::click());
                     let pt = ui.painter();
-                    if resp.hovered() {
-                        pt.rect_filled(r, CornerRadius::same(12), c(p.hover));
-                    }
-                    dashed_round_rect(pt, r.shrink(0.5), 12.0, Stroke::new(1.2, c(if resp.hovered() { p.accent } else { p.line })));
-                    pt.circle_filled(r.center() - Vec2::new(0.0, 14.0), 20.0, c(p.accent_soft));
-                    sh.icons.paint(ui, Rect::from_center_size(r.center() - Vec2::new(0.0, 14.0), Vec2::splat(40.0)), owndraw_core::icons::PLUS, p.accent, false, 20.0);
-                    ui.painter().text(r.center() + Vec2::new(0.0, 22.0), Align2::CENTER_CENTER, "Neues Board", egui::FontId::proportional(14.0), c(if resp.hovered() { p.text } else { p.dim }));
+                    let hov = resp.hovered();
+                    pt.rect_filled(r, rad, c(if hov { p.accent_soft } else { p.card }));
+                    dashed_round_rect(pt, r.shrink(0.75), 14.0, Stroke::new(1.5, c(if hov { p.accent } else { p.line })));
+                    let ic = r.center() - Vec2::new(0.0, 16.0);
+                    pt.circle_filled(ic, 24.0, c(if hov { p.accent } else { p.accent_soft }));
+                    sh.icons.paint(ui, Rect::from_center_size(ic, Vec2::splat(48.0)), owndraw_core::icons::PLUS, if hov { p.on_accent } else { p.accent }, false, 22.0);
+                    let pt = ui.painter();
+                    pt.text(r.center() + Vec2::new(0.0, 26.0), Align2::CENTER_CENTER, "Neues Board", egui::FontId::proportional(15.0), c(p.text));
+                    pt.text(r.center() + Vec2::new(0.0, 46.0), Align2::CENTER_CENTER, "Unendlich oder Seiten", egui::FontId::proportional(12.0), c(p.dim));
                     if resp.clicked() {
                         sh.reqs.push(Req::NewDialog);
                     }
                 }
             });
-            if n > 0 && list.is_empty() {
+            if list.is_empty() {
                 ui.add_space(8.0);
                 ui.label(egui::RichText::new("Keine Boards gefunden.").color(c(p.dim)));
             }
+            ui.add_space(32.0);
             if loaded > 0 {
                 ctx.request_repaint();
             }

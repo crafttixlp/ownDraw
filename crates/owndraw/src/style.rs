@@ -243,17 +243,6 @@ pub fn card() -> Frame {
         .shadow(Shadow { offset: [0, 4], blur: 20, spread: 0, color: Color32::from_black_alpha(if p.dark { 120 } else { 60 }) })
 }
 
-/// Dezenter Hinweis-Kasten (z. B. Gastmodus auf der Startseite).
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub fn notice() -> Frame {
-    let p = pal();
-    if modern() {
-        Frame::new().fill(c(p.card)).stroke(Stroke::new(1.0, c(p.line))).corner_radius(CornerRadius::same(10)).inner_margin(Margin::symmetric(14, 10))
-    } else {
-        Frame::new().fill(c(p.accent_soft)).corner_radius(CornerRadius::same(10)).inner_margin(Margin::symmetric(12, 8))
-    }
-}
-
 /// Fläche für Bottom-Sheets (oben abgerundet) und angedockte Panels.
 pub fn sheet(top_radius: u8) -> Frame {
     let p = pal();

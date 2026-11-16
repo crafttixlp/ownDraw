@@ -10,7 +10,7 @@ pub mod error;
 pub mod state;
 pub mod update;
 
-use axum::extract::Request;
+use axum::extract::{Request, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE};
 use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
@@ -56,8 +56,18 @@ pub async fn ensure_admin_from_env(state: &AppState) -> Result<(), String> {
     Ok(())
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(json!({"ok": true, "version": update::CURRENT}))
+async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Version der ausgelieferten Web-App (von build-web.sh in version.txt geschrieben; fehlt bei alten Builds).
+    let web = std::fs::read_to_string(state.cfg.web.join("version.txt")).map(|v| v.trim().to_string()).unwrap_or_else(|_| "unbekannt".into());
+    Json(json!({"ok": true, "version": update::CURRENT, "web": web}))
+}
+
+/// Web-App-Dateien (index.html, .js, .wasm) haben feste Namen: der Browser muss sie bei jedem Laden
+/// neu prüfen (ETag/Last-Modified -> 304), sonst bleibt nach einem Update die alte Version im Cache.
+async fn static_no_cache(req: Request, next: Next) -> Response {
+    let mut r = next.run(req).await;
+    r.headers_mut().entry(CACHE_CONTROL).or_insert(HeaderValue::from_static("no-cache"));
+    r
 }
 
 async fn api_not_found() -> ApiError {
@@ -123,7 +133,11 @@ pub fn build_app(state: AppState) -> Router {
         .nest("/api", api)
         .route("/admin", get(admin_page))
         .route("/admin/", get(admin_page))
-        .fallback_service(ServeDir::new(&state.cfg.web).append_index_html_on_directories(true))
+        .fallback_service(
+            Router::new()
+                .fallback_service(ServeDir::new(&state.cfg.web).append_index_html_on_directories(true))
+                .layer(middleware::from_fn(static_no_cache)),
+        )
         .layer(RequestBodyLimitLayer::new(body_limit))
         .layer(middleware::map_response(json_413))
         .layer(CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotForContentType::new("application/octet-stream"))))

@@ -196,21 +196,32 @@ SRV="$DIR/packaging/server"
 
 # ---------------------------------------------------------------- Web-App
 schritt "Web-App (dist/web/)"
+# Version des Repo-Stands; die Web-App muss dazu passen (sonst liefert der Server eine alte Web-App aus).
+REPO_VER=$(awk -F'"' '/^\[workspace.package\]/{w=1} w && /^version *=/{print $2; exit}' "$DIR/Cargo.toml")
+WEB_VER=$(cat "$DIR/dist/web/version.txt" 2>/dev/null || true)
 if [ -z "$WEB_ZIP" ]; then
-  WEB_ZIP=$(ls -t "$SCRIPT_DIR"/OwnDraw-Web-*.zip "$PWD"/OwnDraw-Web-*.zip 2>/dev/null | head -n1 || true)
+  # Nur ein Zip derselben Version automatisch nehmen (ältere Zips im Ordner werden ignoriert)
+  WEB_ZIP=$(ls -t "$SCRIPT_DIR"/OwnDraw-Web-"$REPO_VER"-*.zip "$PWD"/OwnDraw-Web-"$REPO_VER"-*.zip 2>/dev/null | head -n1 || true)
+  if [ -z "$WEB_ZIP" ] && ls "$SCRIPT_DIR"/OwnDraw-Web-*.zip "$PWD"/OwnDraw-Web-*.zip >/dev/null 2>&1; then
+    warn "Gefundene OwnDraw-Web-*.zip passen nicht zu Version $REPO_VER und werden ignoriert."
+  fi
 fi
-if [ -f "$DIR/dist/web/owndraw_web_bg.wasm" ] && [ "$REBUILD_WEB" = 0 ] && [ -z "$WEB_ZIP" ]; then
-  ok "vorhanden (neu erzeugen mit --rebuild-web)"
+if [ -f "$DIR/dist/web/owndraw_web_bg.wasm" ] && [ "$REBUILD_WEB" = 0 ] && [ -z "$WEB_ZIP" ] && [ "$WEB_VER" = "$REPO_VER" ]; then
+  ok "Version $WEB_VER vorhanden (neu erzeugen mit --rebuild-web)"
 elif [ -n "$WEB_ZIP" ]; then
   [ -f "$WEB_ZIP" ] || fehler "Zip nicht gefunden: $WEB_ZIP"
   tmp=$(mktemp -d)
   unzip -q "$WEB_ZIP" -d "$tmp"
   src=$(dirname "$(find "$tmp" -name owndraw_web_bg.wasm | head -n1)")
   [ -f "$src/index.html" ] || fehler "Zip enthält keine Web-App (index.html + owndraw_web_bg.wasm)."
+  zip_ver=$(cat "$src/version.txt" 2>/dev/null || true)
+  [ "$zip_ver" = "$REPO_VER" ] || warn "Web-App im Zip hat Version ${zip_ver:-unbekannt}, der Server ist $REPO_VER."
   rm -rf "$DIR/dist/web" && mkdir -p "$DIR/dist" && cp -r "$src" "$DIR/dist/web"
   rm -rf "$tmp"
-  ok "aus $(basename "$WEB_ZIP")"
+  ok "aus $(basename "$WEB_ZIP") (Version ${zip_ver:-unbekannt})"
 else
+  [ -f "$DIR/dist/web/owndraw_web_bg.wasm" ] && [ "$WEB_VER" != "$REPO_VER" ] \
+    && echo "Vorhandene Web-App (Version ${WEB_VER:-unbekannt}) ist veraltet, Server-Stand ist $REPO_VER."
   echo "Keine fertige Web-App gefunden – baue sie in einem Docker-Container (dauert einige Minuten) …"
   WB_VER=$(awk '/^name = "wasm-bindgen"$/{getline; gsub(/version = |"/,""); print; exit}' "$DIR/Cargo.lock")
   docker volume create owndraw-web-build >/dev/null
@@ -294,6 +305,7 @@ fi
 schritt "Fertig"
 echo "  App:          https://$DOMAIN"
 echo "  Admin-Panel:  https://$DOMAIN/admin"
+echo "  Hinweis:      Seite im Browser einmal mit Strg+Umschalt+R neu laden (alte Version im Cache)."
 if [ "$neu_env" = 1 ]; then
   echo "  Admin-Login:  $EMAIL"
   [ "${gen_pw:-0}" = 1 ] && echo "  Passwort:     $PASSWORD   (bitte notieren und nach dem ersten Login ändern)"

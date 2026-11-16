@@ -28,6 +28,10 @@ if command -v wasm-opt >/dev/null; then
 else
   echo "Hinweis: wasm-opt nicht gefunden, .wasm bleibt unoptimiert." >&2
 fi
-cp crates/owndraw-web/index.html "$OUT/"
+# Version (aus Cargo.toml) in index.html eintragen und als version.txt ablegen (Server: /api/health, Installer)
+VERSION=$(awk -F'"' '/^\[workspace.package\]/{w=1} w && /^version *=/{print $2; exit}' Cargo.toml)
+[ -n "$VERSION" ] || { echo "Version in Cargo.toml nicht gefunden" >&2; exit 1; }
+sed "s/__OWNDRAW_VERSION__/$VERSION/g" crates/owndraw-web/index.html > "$OUT/index.html"
+echo "$VERSION" > "$OUT/version.txt"
 cp assets/owndraw.png "$OUT/"
 ls -la "$OUT"

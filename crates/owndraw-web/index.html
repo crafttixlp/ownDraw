@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f4f4f6">
+<meta name="owndraw-version" content="__OWNDRAW_VERSION__">
 <title>OwnDraw</title>
 <link rel="icon" type="image/png" href="owndraw.png">
 <style>
@@ -34,7 +35,7 @@
   <img src="owndraw.png" alt="">
   <div class="ring"></div>
   <div id="text">OwnDraw wird geladen …</div>
-  <small>Zeichnen in Ebenen und auf Seiten</small>
+  <small>Zeichnen in Ebenen und auf Seiten · Version __OWNDRAW_VERSION__</small>
   <div id="hilfe">
     <div id="hilfe-grafik">
       <p>Dein Browser stellt gerade keine Grafik für Webseiten bereit (WebGL und Canvas). Meist ist die
@@ -68,7 +69,7 @@
     text.textContent = grafik ? "OwnDraw kann hier keine Grafik anzeigen." : "OwnDraw konnte nicht starten.";
     document.getElementById("hilfe-grafik").style.display = grafik ? "block" : "none";
     document.getElementById("hilfe-allg").style.display = grafik ? "none" : "block";
-    document.getElementById("detail").textContent = msg;
+    document.getElementById("detail").textContent = "OwnDraw __OWNDRAW_VERSION__: " + msg;
   }
   window.owndrawFehler = (msg) => {
     if (!document.body.contains(lade)) document.body.appendChild(lade);

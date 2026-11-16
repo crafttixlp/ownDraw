@@ -35,6 +35,10 @@ pub struct NewDlg {
     /// Einstellung „immer fragen“: Auswahl Standard/selbst anzeigen; sonst nur den Standard-Ort nennen.
     pub ask: bool,
     pub focus: bool,
+    /// Browser mit Lizenz: Auswahl Server/Browser anzeigen.
+    pub server_choice: bool,
+    /// Auf dem Server anlegen (nur mit `server_choice`).
+    pub server: bool,
 }
 
 pub enum Dialog {
@@ -49,15 +53,16 @@ pub enum Outcome {
     Rename(RenameWhat, String),
     Confirm(ConfirmAction),
     Anim(AnimDlg),
-    /// Neues Dokument anlegen (Parameter, Speicherort selbst wählen?).
-    Create(NewParams, bool),
+    /// Neues Dokument anlegen (Parameter, Speicherort selbst wählen?, auf dem Server?).
+    Create(NewParams, bool, bool),
 }
 
 impl Dialog {
     /// Neu-Dialog mit den Vorgaben (A4 hoch liniert, Standard-Ort); `ask` = Einstellung „immer fragen“.
-    pub fn new_doc(ask: bool) -> Dialog {
+    /// `server`: Some(Vorgabe) = Browser mit Lizenz, Speicherort Server/Browser wählbar.
+    pub fn new_doc(ask: bool, server: Option<bool>) -> Dialog {
         let params = NewParams { name: "Unbenannt".into(), ..NewParams::default() };
-        Dialog::New(NewDlg { params, custom: false, ask, focus: true })
+        Dialog::New(NewDlg { params, custom: false, ask, focus: true, server_choice: server.is_some(), server: server.unwrap_or(false) })
     }
 }
 
@@ -204,7 +209,23 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                 }
                 ui.add_space(4.0);
                 style::caption(ui, "Speicherort");
-                if n.ask {
+                if n.server_choice {
+                    ui.horizontal_wrapped(|ui| {
+                        if style::chip(ui, "Auf dem Server", n.server, h).clicked() {
+                            n.server = true;
+                        }
+                        if style::chip(ui, "In diesem Browser", !n.server, h).clicked() {
+                            n.server = false;
+                        }
+                    });
+                    let hint = if n.server {
+                        let free = crate::ui::server_free_text().map(|f| format!(" Frei: {f}.")).unwrap_or_default();
+                        format!("Auf allen Geräten verfügbar, teilbar und live gemeinsam bearbeitbar.{free}")
+                    } else {
+                        "Nur in diesem Browser. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server. Du kannst das Board später verschieben.".to_string()
+                    };
+                    ui.add(egui::Label::new(egui::RichText::new(hint).size(11.5).color(c(p.dim))).wrap());
+                } else if n.ask {
                     ui.horizontal_wrapped(|ui| {
                         if style::chip(ui, "Standard-Ort", !n.custom, h).clicked() {
                             n.custom = false;
@@ -214,8 +235,10 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                         }
                     });
                 }
-                let hint = if n.custom { "Beim Erstellen öffnet sich der Speicherdialog des Systems.".to_string() } else { default_name.clone() };
-                ui.label(egui::RichText::new(hint).size(11.5).color(c(p.dim)));
+                if !n.server_choice {
+                    let hint = if n.custom { "Beim Erstellen öffnet sich der Speicherdialog des Systems.".to_string() } else { default_name.clone() };
+                    ui.label(egui::RichText::new(hint).size(11.5).color(c(p.dim)));
+                }
                 ui.add_space(10.0);
                 let valid = !n.params.name.trim().is_empty();
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -244,7 +267,7 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
             Dialog::Anim(a) => Some(Outcome::Anim(a)),
             Dialog::New(mut n) => {
                 n.params.name = n.params.name.trim().to_string();
-                Some(Outcome::Create(n.params, n.custom))
+                Some(Outcome::Create(n.params, n.custom, n.server_choice && n.server))
             }
         }
     } else if close {

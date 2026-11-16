@@ -197,7 +197,21 @@ pub struct Net {
     pub invites: Option<(String, Vec<Invite>)>,
     /// Frisch erstellter Link (Board-ID, vollständige URL).
     pub new_link: Option<(String, String)>,
+    /// Ein Board wird gerade zwischen Browser und Server verschoben.
+    pub moving: bool,
+    /// Erfolgreich auf den Server verschobene Browser-Boards (die App entfernt sie aus „Zuletzt“).
+    pub moved: Vec<FileRef>,
+    /// Vom Server geladene Boards, die die App im Browser speichern soll.
+    pub to_local: Vec<ToLocal>,
     puts: HashMap<String, Put>,
+}
+
+/// Vom Server geladenes Board für den Browser-Speicher („In diesem Browser speichern“).
+pub struct ToLocal {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    /// Board-ID am Server, die nach dem Speichern im Browser gelöscht wird (Verschieben); None = nur Kopie.
+    pub delete_id: Option<String>,
 }
 
 thread_local! {
@@ -222,6 +236,9 @@ thread_local! {
         invite: None,
         invites: None,
         new_link: None,
+        moving: false,
+        moved: Vec::new(),
+        to_local: Vec::new(),
         puts: HashMap::new(),
     });
 }
@@ -496,25 +513,83 @@ pub fn open_board(id: &str) {
 /// Legt ein Board am Server an (rohe `.owndraw`-Bytes) und öffnet es.
 pub fn create_board(name: &str, bytes: Vec<u8>) {
     with(|n| n.opening = true);
+    upload(name, bytes, None);
+}
+
+/// Freier Speicherplatz der Lizenz in Bytes (None ohne gültige Lizenz).
+pub fn free_bytes() -> Option<i64> {
+    with(|n| n.me.as_ref().filter(|m| m.licensed()).and_then(|m| m.license.as_ref()).map(|l| ((l.quota_mb - l.used_mb) * 1_048_576.0).max(0.0) as i64))
+}
+
+/// Verschiebt ein Browser-Board auf den Server: hochladen; erst wenn der Server es angenommen hat, kommt
+/// `local` in [`Net::moved`] (die App nimmt es dann aus „Zuletzt“). Bei Fehlern bleibt das Board im Browser.
+pub fn move_to_server(name: &str, bytes: Vec<u8>, local: FileRef) {
+    with(|n| n.moving = true);
+    upload(name, bytes, Some(local));
+}
+
+/// `POST /api/boards`; `local` = None → danach öffnen, sonst Verschieben aus dem Browser.
+fn upload(name: &str, bytes: Vec<u8>, local: Option<FileRef>) {
     let enc = String::from(js_sys::encode_uri_component(name));
     let copy = bytes.clone();
+    let moving = local.is_some();
     request("POST", "/api/boards".into(), Some(Body::Bytes(bytes)), vec![("X-Board-Name", enc)], move |r| match r {
         Ok(r) if r.ok() => {
-            let Some(b) = BoardInfo::parse(&r.json()) else { return };
+            let Some(b) = BoardInfo::parse(&r.json()) else {
+                with(|n| {
+                    n.opening = false;
+                    n.moving = false;
+                });
+                return;
+            };
             with(|n| {
-                n.opening = false;
-                let key = format!("{SRV}{}", b.id);
                 n.versions.insert(b.id.clone(), b.version);
-                n.files.insert(key.clone(), copy);
-                n.open.push(FileRef::Uri(key));
+                match local {
+                    Some(f) => {
+                        n.moving = false;
+                        n.moved.push(f);
+                        n.notices.push(format!("„{}“ liegt jetzt auf dem Server.", b.name));
+                    }
+                    None => {
+                        n.opening = false;
+                        let key = format!("{SRV}{}", b.id);
+                        n.files.insert(key.clone(), copy);
+                        n.open.push(FileRef::Uri(key));
+                    }
+                }
                 n.boards.insert(0, b);
             });
             refresh_me();
         }
         other => {
-            with(|n| n.opening = false);
+            with(|n| {
+                n.opening = false;
+                n.moving = false;
+            });
+            let what = if moving { "Board konnte nicht auf den Server verschoben werden. Es bleibt in diesem Browser" } else { "Board konnte nicht auf dem Server erstellt werden" };
             notice(match other {
-                Ok(r) => format!("Board konnte nicht auf dem Server erstellt werden: {}", r.message()),
+                Ok(r) if r.status == 507 => format!("{what}: {} Lösche Boards auf dem Server oder speichere dieses Board im Browser.", r.message()),
+                Ok(r) => format!("{what}: {}", r.message()),
+                Err(e) => format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}"),
+            });
+        }
+    });
+}
+
+/// Lädt ein Server-Board und übergibt es der App zum Speichern im Browser ([`Net::to_local`]).
+/// `delete` = danach am Server löschen (nur Besitzer; die App löscht erst, wenn das Speichern geklappt hat).
+pub fn fetch_to_local(id: &str, name: &str, delete: bool) {
+    with(|n| n.moving = true);
+    let (id, name) = (id.to_string(), name.to_string());
+    request("GET", format!("/api/boards/{id}"), None, vec![], move |r| match r {
+        Ok(r) if r.ok() => with(|n| {
+            n.moving = false;
+            n.to_local.push(ToLocal { name, bytes: r.body, delete_id: delete.then_some(id) });
+        }),
+        other => {
+            with(|n| n.moving = false);
+            notice(match other {
+                Ok(r) => format!("Board konnte nicht geladen werden: {}", r.message()),
                 Err(e) => format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}"),
             });
         }
@@ -609,18 +684,36 @@ pub fn rename_board(id: &str, name: &str) {
 }
 
 pub fn delete_board(id: &str) {
+    delete_with(id, None);
+}
+
+/// Löscht ein Board, das gerade in den Browser verschoben wurde (`name` für die Meldungen).
+pub fn delete_moved(id: &str, name: &str) {
+    delete_with(id, Some(name.to_string()));
+}
+
+fn delete_with(id: &str, moved: Option<String>) {
     let id2 = id.to_string();
-    request("DELETE", format!("/api/boards/{id}"), None, vec![], move |r| match r {
-        Ok(r) if r.ok() => {
-            with(|n| {
-                n.boards.retain(|b| b.id != id2);
-                n.files.remove(&format!("{SRV}{id2}"));
-            });
-            notice("Board gelöscht");
-            refresh_me();
+    request("DELETE", format!("/api/boards/{id}"), None, vec![], move |r| {
+        let fail = |m: String| match &moved {
+            Some(name) => notice(format!("„{name}“ ist jetzt in diesem Browser gespeichert, konnte am Server aber nicht gelöscht werden: {m}")),
+            None => notice(m),
+        };
+        match r {
+            Ok(r) if r.ok() => {
+                with(|n| {
+                    n.boards.retain(|b| b.id != id2);
+                    n.files.remove(&format!("{SRV}{id2}"));
+                });
+                notice(match &moved {
+                    Some(name) => format!("„{name}“ liegt jetzt in diesem Browser."),
+                    None => "Board gelöscht".into(),
+                });
+                refresh_me();
+            }
+            Ok(r) => fail(r.message()),
+            Err(e) => fail(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
         }
-        Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 

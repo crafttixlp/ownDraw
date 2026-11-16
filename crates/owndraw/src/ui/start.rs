@@ -463,8 +463,14 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
             }
             #[cfg(target_arch = "wasm32")]
             {
-                super::account::boards(ui, sh, &mut st.account);
+                let server_section = super::account::boards(ui, sh, &mut st.account);
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
+                // Neben „Auf dem Server“ die Browser-Boards klar benennen
+                if server_section && n > 0 {
+                    ui.add_space(22.0);
+                    ui.label(egui::RichText::new("In diesem Browser").size(18.0).strong());
+                    ui.label(egui::RichText::new("Nur auf diesem Gerät gespeichert. Teilen geht erst nach „Auf Server verschieben“ im Kartenmenü.").size(12.5).color(c(p.dim)));
+                }
             }
 
             if n == 0 {
@@ -571,18 +577,25 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     if resp.clicked() {
                         sh.reqs.push(Req::OpenFile(e.file.clone()));
                     }
+                    // Browser mit Lizenz: Browser-Board auf den Server verschieben
+                    let to_server = !missing && crate::ui::server_store_available() && matches!(&e.file, crate::platform::FileRef::Uri(u) if u.starts_with("mem:"));
+                    let act = std::cell::Cell::new(None::<u8>);
                     let menu = |ui: &mut egui::Ui, sh: &mut Shared| {
                         use owndraw_core::icons;
                         let mut items = Vec::new();
+                        let mut ids = Vec::new();
                         if !missing {
                             items.push(style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false });
+                            ids.push(0u8);
+                        }
+                        if to_server {
+                            items.push(style::MenuItem { icon: icons::COPY, label: "Auf Server verschieben", danger: false });
+                            ids.push(2);
                         }
                         items.push(style::MenuItem { icon: icons::TRASH, label: "Aus der Liste entfernen", danger: true });
-                        let off = usize::from(missing);
-                        match style::card_menu(ui, &mut sh.icons, &items).map(|i| i + off) {
-                            Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
-                            Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
-                            _ => {}
+                        ids.push(1);
+                        if let Some(i) = style::card_menu(ui, &mut sh.icons, &items) {
+                            act.set(Some(ids[i]));
                         }
                     };
                     resp.context_menu(|ui| menu(ui, sh));
@@ -593,6 +606,13 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     }
                     sh.icons.paint(ui, mr, owndraw_core::icons::MORE, p.dim, false, 18.0);
                     egui::Popup::menu(&mresp).align(egui::RectAlign::BOTTOM_END).show(|ui| menu(ui, sh));
+                    match act.get() {
+                        Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
+                        Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
+                        #[cfg(target_arch = "wasm32")]
+                        Some(2) => super::account::ask_to_server(sh, &mut st.account, &e.file, &e.name),
+                        _ => {}
+                    }
                 }
                 // „Neues Board“-Karte am Ende
                 if st.query.trim().is_empty() {

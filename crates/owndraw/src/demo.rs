@@ -243,7 +243,7 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         }
     }
     if has("new") {
-        app.sh.dialog = Some(Dialog::new_doc(true));
+        app.sh.dialog = Some(Dialog::new_doc(true, None));
     }
     if has("settings") {
         app.set_screen(Screen::Settings);

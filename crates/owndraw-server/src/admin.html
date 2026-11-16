@@ -146,7 +146,7 @@ dialog .row { justify-content: flex-end; }
     <section id="panel-notices" role="tabpanel" hidden>
       <div class="card">
         <h2 id="nFormTitle">Neue Mitteilung</h2>
-        <p class="hint" style="margin-top:0">Aktive Mitteilungen erscheinen beim Start der Web-App, auch für Gäste. Jede Mitteilung wird pro Browser einmal angezeigt. Nach einer Änderung erscheint sie erneut.</p>
+        <p class="hint" style="margin-top:0">Aktive Mitteilungen erscheinen beim Start der Web-App, auch für Gäste. Sie erscheinen bei jedem Laden der Seite erneut, solange sie aktiv sind; Wegklicken gilt nur bis zum nächsten Neuladen.</p>
         <form id="nForm">
           <label for="nTitle">Titel</label>
           <input id="nTitle" type="text" maxlength="120" placeholder="Zum Beispiel: Neue Version 4.9">
@@ -321,7 +321,7 @@ for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", (
 // ---------- Nutzer ----------
 function licenseChip(l) {
   if (!l) return h("span", { class: "chip" }, "keine Lizenz");
-  if (l.revoked) return h("span", { class: "chip bad" }, "Lizenz widerrufen");
+  if (l.revoked) return h("span", { class: "chip bad" }, "Lizenz deaktiviert");
   if (!l.active) return h("span", { class: "chip warn" }, "Lizenz abgelaufen");
   return h("span", { class: "chip ok" }, "Lizenz aktiv");
 }
@@ -339,13 +339,52 @@ async function loadUsers() {
         h("div", { class: "meta" }, u.guest ? "Gast ohne Konto, über Einladungslink beigetreten" : u.email),
         h("div", { class: "meta" }, licenseChip(l), " ", l ? (l.code + " · bis " + fmtDay(l.expires_at)) : "", " · Speicherplatz ", u.used_mb + " MB" + quota + " belegt", " · ", u.boards + " Boards", " · seit ", fmtDay(u.created))),
       h("div", { class: "actions" },
-        h("button", { class: "small", disabled: self, onclick: () => patchUser(u, { disabled: !u.disabled }) }, u.disabled ? "Entsperren" : "Sperren"),
+        !u.guest && (l && l.active
+          ? h("button", { class: "small", onclick: () => userLicense(u, { active: false }) }, "Lizenz deaktivieren")
+          : h("button", { class: "small", onclick: () => activateLicense(u) }, "Lizenz aktivieren")),
+        h("button", { class: "small " + (u.disabled ? "" : "danger"), disabled: self, onclick: () => u.disabled ? patchUser(u, { disabled: false }) : blockUser(u) }, u.disabled ? "Entsperren" : "Sperren"),
         h("button", { class: "small", disabled: self || u.guest, onclick: () => patchUser(u, { admin: !u.admin }) }, u.admin ? "Adminrechte entziehen" : "Zum Administrator machen"),
         h("button", { class: "small danger", disabled: self, onclick: () => deleteUser(u) }, "Löschen")));
   }));
 }
 async function patchUser(u, body) {
   try { await api("PATCH", "/api/admin/users/" + encodeURIComponent(u.id), body); flash("Gespeichert."); loadUsers(); } catch (e) { fail(e); }
+}
+async function blockUser(u) {
+  const boards = u.boards === 1 ? "Das Board" : "Alle " + u.boards + " Boards";
+  const ok = await confirmDialog("Nutzer sperren?", (u.email || u.name) + " wird abgemeldet und kann sich nicht mehr anmelden. " + (u.boards ? boards + " am Server werden sofort und unwiderruflich gelöscht, auch für alle, mit denen sie geteilt sind." : "Boards werden beim Sperren unwiderruflich gelöscht (derzeit keine vorhanden)."), "Sperren und Boards löschen");
+  if (!ok) return;
+  patchUser(u, { disabled: true });
+}
+async function userLicense(u, body) {
+  try { await api("POST", "/api/admin/users/" + encodeURIComponent(u.id) + "/license", body); flash(body.active ? "Lizenz aktiviert." : "Lizenz deaktiviert."); loadUsers(); if (state.licenses.length) loadLicenses(); } catch (e) { fail(e); }
+}
+async function activateLicense(u) {
+  const l = u.license;
+  // deaktivierte, noch nicht abgelaufene Lizenz: einfach wieder einschalten
+  if (l && l.revoked && (l.expires_at == null || l.expires_at * 1000 > Date.now())) return userLicense(u, { active: true });
+  try { state.licenses = await api("GET", "/api/admin/licenses"); } catch (e) { return fail(e); }
+  const free = state.licenses.filter((x) => !x.redeemed_by && !x.revoked && (x.expires_at == null || x.expires_at * 1000 > Date.now()));
+  const pick = h("select", {}, h("option", { value: "" }, "Neuen Code erzeugen"), ...free.map((x) => h("option", { value: x.code }, x.code + " · " + (x.days ? x.days + " Tage" : "unbegrenzt") + " · " + x.quota_mb + " MB" + (x.note ? " · " + x.note : ""))));
+  const days = h("input", { type: "number", min: "1", max: "36500", value: "365" });
+  const unlimited = h("input", { type: "checkbox" });
+  const quota = h("input", { type: "number", min: "1", value: "500" });
+  const fresh = h("div", {}, h("label", {}, "Laufzeit (Tage)"), days, h("div", { class: "row" }, h("label", {}, unlimited, " Unbegrenzt (ohne Ablauf)")), h("label", {}, "Speicherplatz (MB)"), quota);
+  unlimited.addEventListener("change", () => { days.disabled = unlimited.checked; });
+  pick.addEventListener("change", () => { fresh.hidden = !!pick.value; });
+  const ok = await dialog("Lizenz aktivieren", [h("p", {}, "Für " + (u.email || u.name)), h("label", {}, "Lizenzcode"), pick, fresh], "Aktivieren");
+  if (!ok) return;
+  const body = pick.value ? { active: true, code: pick.value } : { active: true, days: unlimited.checked ? null : +days.value, quota_mb: +quota.value };
+  userLicense(u, body);
+}
+async function assignLicense(l) {
+  try { state.users = await api("GET", "/api/admin/users"); } catch (e) { return fail(e); }
+  const cand = state.users.filter((u) => !u.guest && !u.disabled);
+  if (!cand.length) return flash("Es gibt keine Nutzer, denen der Code zugewiesen werden kann.", "err");
+  const pick = h("select", {}, ...cand.map((u) => h("option", { value: u.id }, (u.name ? u.name + " · " : "") + u.email + (u.license && u.license.active ? " (hat schon eine Lizenz)" : ""))));
+  const ok = await dialog("Code einem Nutzer zuweisen", [h("p", { class: "mono" }, l.code), h("label", {}, "Nutzer"), pick, h("p", { class: "hint" }, "Die Lizenz ist sofort aktiv. Eine vorhandene Lizenz des Nutzers wird dabei deaktiviert.")], "Zuweisen");
+  if (!ok) return;
+  try { await api("POST", "/api/admin/users/" + encodeURIComponent(pick.value) + "/license", { active: true, code: l.code }); flash("Lizenz zugewiesen."); loadLicenses(); loadUsers(); } catch (e) { fail(e); }
 }
 async function deleteUser(u) {
   const ok = await confirmDialog("Nutzer löschen?", (u.email || u.name) + " wird mit allen " + u.boards + " Boards dauerhaft gelöscht. Das lässt sich nicht rückgängig machen.", "Endgültig löschen");
@@ -355,7 +394,7 @@ async function deleteUser(u) {
 
 // ---------- Lizenzen ----------
 function licStatus(l) {
-  if (l.revoked) return ["widerrufen", "bad"];
+  if (l.revoked) return ["deaktiviert", "bad"];
   if (!l.redeemed_by) return ["frei", "acc"];
   if (!l.active) return ["abgelaufen", "warn"];
   return ["eingelöst", "ok"];
@@ -376,7 +415,8 @@ async function loadLicenses() {
       h("div", { class: "actions" },
         h("button", { class: "small", onclick: (ev) => copy(l.code, ev.currentTarget) }, "Kopieren"),
         h("button", { class: "small", onclick: () => editExpiry(l) }, "Ablauf ändern"),
-        h("button", { class: "small " + (l.revoked ? "" : "danger"), onclick: () => revoke(l) }, l.revoked ? "Reaktivieren" : "Widerrufen")));
+        !l.redeemed_by && !l.revoked && h("button", { class: "small", onclick: () => assignLicense(l) }, "Nutzer zuweisen"),
+        h("button", { class: "small " + (l.revoked ? "" : "danger"), onclick: () => revoke(l) }, l.revoked ? "Aktivieren" : "Deaktivieren")));
   }));
 }
 $("lunlimited").addEventListener("change", () => { $("ldays").disabled = $("lunlimited").checked; });

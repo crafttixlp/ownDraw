@@ -188,6 +188,14 @@ impl Hub {
         }
     }
 
+    /// Alle Live-Verbindungen eines Nutzers in allen Räumen beenden (gesperrt oder gelöscht).
+    pub fn kick_user(&self, user_id: &str, code: &str, msg: &str) {
+        let ids: Vec<String> = lock(&self.rooms).keys().cloned().collect();
+        for id in ids {
+            self.kick(&id, Some(user_id), code, msg);
+        }
+    }
+
     /// Raum holen oder das Board laden und einen neuen Raum anlegen.
     async fn open(&self, s: &AppState, board_id: &str) -> ApiResult<Arc<Room>> {
         if let Some(r) = self.get(board_id) {

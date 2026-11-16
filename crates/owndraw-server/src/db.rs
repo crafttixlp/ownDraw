@@ -261,9 +261,9 @@ pub fn all_licenses(conn: &Connection) -> rusqlite::Result<Vec<LicenseRow>> {
     Ok(rows)
 }
 
-/// Die Lizenz eines Nutzers (die zuletzt eingelöste).
+/// Die Lizenz eines Nutzers: die zuletzt eingelöste, nicht deaktivierte vor deaktivierten.
 pub fn license_of(conn: &Connection, user_id: &str) -> rusqlite::Result<Option<LicenseRow>> {
-    conn.query_row(&format!("{LICENSE_SELECT} WHERE l.redeemed_by=?1 ORDER BY l.redeemed_at DESC LIMIT 1"), [user_id], license_from_row)
+    conn.query_row(&format!("{LICENSE_SELECT} WHERE l.redeemed_by=?1 ORDER BY l.revoked, l.redeemed_at DESC, l.rowid DESC LIMIT 1"), [user_id], license_from_row)
         .optional()
 }
 

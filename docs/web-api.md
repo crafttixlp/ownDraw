@@ -148,7 +148,8 @@ speichert geänderte Räume höchstens alle 5 s, wenn der letzte Teilnehmer geht
 | Methode | Pfad | |
 |---|---|---|
 | GET | `/api/admin/users` | → `[{id,email,name,admin,disabled,created,license,used_mb,boards}]` |
-| PATCH | `/api/admin/users/{id}` | `{disabled?, admin?}` |
+| PATCH | `/api/admin/users/{id}` | `{disabled?, admin?}`; `disabled:true` meldet ab und löscht sofort alle eigenen Boards (Dateien, Mitglieder, Einladungen, Live-Räume) |
+| POST | `/api/admin/users/{id}/license` | `{active:false}` deaktiviert die Lizenz (`revoked`); `{active:true, code?}` weist einen freien Code zu, sonst wird die deaktivierte Lizenz wieder aktiv bzw. (keine/abgelaufen) ein neuer Code mit `{days:null\|n, quota_mb}` erzeugt → Nutzer-Objekt |
 | DELETE | `/api/admin/users/{id}` | löscht Nutzer + eigene Boards |
 | GET | `/api/admin/licenses` | → `[License]` |
 | POST | `/api/admin/licenses` | `{count, days:null\|n, quota_mb, note}` → `[License]` (neu erzeugte Codes) |
@@ -181,9 +182,8 @@ Laufzeit `days` beginnt beim Einlösen. Erster Admin: Umgebungsvariablen `OWNDRA
 
 `GET /api/notices` (ohne Anmeldung, auch im Wartungsmodus) → `[{id,title,body,kind,updated}]`: alle aktiven
 Mitteilungen im Zeitraum `starts_at ≤ jetzt < ends_at`, neueste zuerst. Die Web-App (`index.html`) zeigt sie beim Start
-nacheinander als Dialog, noch bevor der Editor bereit ist. Bestätigte Mitteilungen merkt sich der Browser
-(`localStorage` `owndraw-mitteilungen-gesehen`, Schlüssel `id:updated`): jede erscheint pro Browser einmal, nach einer
-Änderung erneut. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
+nacheinander als Dialog, noch bevor der Editor bereit ist. Es wird nichts gemerkt: bei jedem Laden
+der Seite erscheinen alle aktiven Mitteilungen erneut, Wegklicken gilt nur bis zum nächsten Neuladen. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
 (Zeilenumbrüche bleiben), kein HTML.
 
 ## Wartungsmodus (ab 4.8.0)

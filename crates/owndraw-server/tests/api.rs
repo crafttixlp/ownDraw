@@ -911,3 +911,77 @@ async fn wartungsmodus_endet_automatisch() {
     assert_eq!(app.get("/api/boards", Some(&user)).await.status, StatusCode::OK);
     assert_eq!(app.get("/api/maintenance", None).await.json()["active"], false);
 }
+
+#[tokio::test]
+async fn admin_schaltet_lizenz_fuer_nutzer() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    let uid = app.get("/api/me", Some(&user)).await.json()["id"].as_str().unwrap().to_string();
+    let path = format!("/api/admin/users/{uid}/license");
+
+    // nur für Admins; Deaktivieren ohne Lizenz geht nicht
+    assert_eq!(app.post(&path, Some(&user), json!({"active": true})).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.post(&path, Some(&admin), json!({"active": false})).await.status, StatusCode::BAD_REQUEST);
+
+    // Aktivieren ohne Code erzeugt eine neue Lizenz und weist sie zu
+    let r = app.post(&path, Some(&admin), json!({"active": true, "days": 30, "quota_mb": 5})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let u = r.json();
+    assert_eq!((u["license"]["active"].clone(), u["license"]["quota_mb"].clone()), (json!(true), json!(5)));
+    let code = u["license"]["code"].as_str().unwrap().to_string();
+    let bid = app.upload(&user, "b", zip_bytes(1)).await.json()["id"].as_str().unwrap().to_string();
+
+    // Deaktivieren: Rechte weg, Board bleibt
+    let u = app.post(&path, Some(&admin), json!({"active": false})).await.json();
+    assert_eq!((u["license"]["active"].clone(), u["license"]["revoked"].clone()), (json!(false), json!(true)));
+    let r = app.upload(&user, "c", zip_bytes(1)).await;
+    assert_eq!(r.code(), "license_required");
+    assert_eq!(app.get(&format!("/api/boards/{bid}"), Some(&user)).await.status, StatusCode::OK);
+
+    // Aktivieren stellt dieselbe Lizenz wieder her
+    let u = app.post(&path, Some(&admin), json!({"active": true})).await.json();
+    assert_eq!((u["license"]["active"].clone(), u["license"]["code"].clone()), (json!(true), json!(code)));
+    assert_eq!(app.upload(&user, "c", zip_bytes(1)).await.status, StatusCode::OK);
+
+    // Freien Code zuweisen ersetzt die alte Lizenz; fremde Codes und Gäste gehen nicht
+    let free = app.post("/api/admin/licenses", Some(&admin), json!({"count": 1, "days": null, "quota_mb": 9})).await.json()[0]["code"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let u = app.post(&path, Some(&admin), json!({"active": true, "code": free.to_lowercase()})).await.json();
+    assert_eq!((u["license"]["code"].clone(), u["license"]["quota_mb"].clone()), (json!(free), json!(9)));
+    let other = app.register("o@example.org").await;
+    let oid = app.get("/api/me", Some(&other)).await.json()["id"].as_str().unwrap().to_string();
+    let r = app.post(&format!("/api/admin/users/{oid}/license"), Some(&admin), json!({"active": true, "code": free})).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    let lic = app.get("/api/admin/licenses", Some(&admin)).await.json();
+    let old = lic.as_array().unwrap().iter().find(|l| l["code"] == code.as_str()).unwrap();
+    assert_eq!(old["revoked"], true);
+}
+
+#[tokio::test]
+async fn sperren_loescht_boards_sofort() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    let other = app.register("o@example.org").await;
+    app.give_license(&admin, &user, json!(null), 10).await;
+    let uid = app.get("/api/me", Some(&user)).await.json()["id"].as_str().unwrap().to_string();
+    let bid = app.upload(&user, "b", zip_bytes(3)).await.json()["id"].as_str().unwrap().to_string();
+    let r = app.post(&format!("/api/boards/{bid}/members"), Some(&user), json!({"email": "o@example.org", "role": "edit"})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let file = app.state.cfg.boards_dir().join(format!("{bid}.owndraw"));
+    assert!(file.is_file());
+
+    let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": true})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!((r.json()["disabled"].clone(), r.json()["boards"].clone()), (json!(true), json!(0)));
+    assert!(!file.exists());
+    assert_eq!(app.get(&format!("/api/boards/{bid}"), Some(&other)).await.status, StatusCode::NOT_FOUND);
+    assert!(app.get("/api/boards", Some(&other)).await.json().as_array().unwrap().is_empty());
+
+    // Entsperren bringt keine Boards zurück, die Lizenz bleibt
+    let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": false})).await;
+    assert_eq!((r.json()["boards"].clone(), r.json()["license"]["active"].clone()), (json!(0), json!(true)));
+}

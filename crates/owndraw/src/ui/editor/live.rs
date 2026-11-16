@@ -49,13 +49,37 @@ pub struct Peer {
     seen: f64,
 }
 
-#[derive(Default)]
 struct ShareDlg {
     email: String,
     edit: bool,
-    /// Einladungslink: Rolle und Laufzeit.
+    /// Einladungslink: Rolle und Laufzeit (Zahl + Einheit oder unbefristet).
     link_edit: bool,
     link_forever: bool,
+    link_amount: String,
+    link_hours: bool,
+}
+
+impl Default for ShareDlg {
+    fn default() -> Self {
+        ShareDlg { email: String::new(), edit: true, link_edit: true, link_forever: false, link_amount: "7".into(), link_hours: false }
+    }
+}
+
+/// Höchste Laufzeit eines Links (wie am Server): 365 Tage.
+const LINK_MAX_DAYS: u32 = 365;
+
+/// Restlaufzeit eines Links, z. B. „noch 5 Std.“ oder „noch 3 Tage (bis 20.11.2026)“.
+fn remaining(expires: i64) -> String {
+    let left = expires - owndraw_core::store::now_ms() / 1000;
+    if left <= 0 {
+        "abgelaufen".into()
+    } else if left < 3600 {
+        format!("noch {} Min.", (left + 59) / 60)
+    } else if left < 48 * 3600 {
+        format!("noch {} Std.", (left + 1799) / 3600)
+    } else {
+        format!("noch {} Tage (bis {})", left / 86400, date(expires))
+    }
 }
 
 pub struct Live {
@@ -533,7 +557,7 @@ impl Live {
         if share {
             api::load_members(&self.board_id);
             api::load_invites(&self.board_id);
-            self.share = Some(ShareDlg { edit: true, link_edit: true, ..ShareDlg::default() });
+            self.share = Some(ShareDlg::default());
         }
         ed.st.popup_rects.push(r);
         self.share_dialog(ctx, sh);
@@ -544,7 +568,7 @@ impl Live {
     pub fn open_share(&mut self) {
         api::load_members(&self.board_id);
         api::load_invites(&self.board_id);
-        self.share = Some(ShareDlg { edit: true, link_edit: true, ..ShareDlg::default() });
+        self.share = Some(ShareDlg::default());
     }
 
     fn share_dialog(&mut self, ctx: &egui::Context, sh: &mut Shared) {
@@ -628,17 +652,46 @@ impl Live {
                 if style::chip(ui, "Nur ansehen", !d.link_edit, h).clicked() {
                     d.link_edit = false;
                 }
-                if style::chip(ui, "7 Tage", !d.link_forever, h).clicked() {
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new("Gültig").size(12.5).color(c(pal.dim)));
+                ui.add_enabled_ui(!d.link_forever, |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut d.link_amount).desired_width(48.0).font(egui::FontId::proportional(14.0)).margin(Vec2::new(8.0, 6.0)));
+                });
+                d.link_amount.retain(|ch| ch.is_ascii_digit());
+                d.link_amount.truncate(4);
+                if style::chip(ui, "Stunden", !d.link_forever && d.link_hours, h).clicked() {
+                    d.link_hours = true;
+                    d.link_forever = false;
+                }
+                if style::chip(ui, "Tage", !d.link_forever && !d.link_hours, h).clicked() {
+                    d.link_hours = false;
                     d.link_forever = false;
                 }
                 if style::chip(ui, "Unbefristet", d.link_forever, h).clicked() {
                     d.link_forever = true;
                 }
             });
-            ui.add_space(4.0);
-            if style::accent_btn(ui, "Link erstellen", h).clicked() {
-                api::create_invite(&id, if d.link_edit { "edit" } else { "view" }, if d.link_forever { None } else { Some(7) });
+            let n: u32 = d.link_amount.parse().unwrap_or(0);
+            let max = if d.link_hours { LINK_MAX_DAYS * 24 } else { LINK_MAX_DAYS };
+            let time_ok = d.link_forever || (1..=max).contains(&n);
+            if !time_ok {
+                let unit = if d.link_hours { "Stunden" } else { "Tage" };
+                ui.label(egui::RichText::new(format!("Bitte 1 bis {max} {unit} angeben (höchstens 365 Tage).")).size(12.0).color(c(pal.danger_text)));
             }
+            ui.add_space(4.0);
+            ui.add_enabled_ui(time_ok, |ui| {
+                if style::accent_btn(ui, "Link erstellen", h).clicked() {
+                    let time = if d.link_forever {
+                        api::LinkTime::Forever
+                    } else if d.link_hours {
+                        api::LinkTime::Hours(n)
+                    } else {
+                        api::LinkTime::Days(n)
+                    };
+                    api::create_invite(&id, if d.link_edit { "edit" } else { "view" }, time);
+                }
+            });
             if let Some(url) = &new_link {
                 ui.add_space(4.0);
                 let mut shown = url.clone();
@@ -659,7 +712,7 @@ impl Live {
                     for i in list {
                         ui.horizontal(|ui| {
                             let role = if i.role == "edit" { "bearbeiten" } else { "ansehen" };
-                            let until = i.expires_at.map(|e| format!("bis {}", date(e))).unwrap_or_else(|| "unbefristet".into());
+                            let until = i.expires_at.map(remaining).unwrap_or_else(|| "unbefristet".into());
                             ui.label(egui::RichText::new(format!("{role} · {until} · {}× benutzt", i.uses)).size(12.5));
                             ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 30.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if style::plain_btn(ui, "Löschen", 30.0).clicked() {

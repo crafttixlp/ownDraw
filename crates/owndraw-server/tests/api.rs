@@ -657,6 +657,18 @@ async fn einladungslink_gast_mit_eigener_id() {
     let token = edit["token"].as_str().unwrap().to_string();
     assert_eq!(token.len(), 48);
     assert!(edit["expires_at"].as_i64().unwrap() > now() + 6 * 86400);
+    // Laufzeit frei: Stunden oder Tage, Maximum 365 Tage
+    assert_eq!(app.post(&invites, Some(&owner), json!({"role": "view", "hours": 0})).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(app.post(&invites, Some(&owner), json!({"role": "view", "hours": 365 * 24 + 1})).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(app.post(&invites, Some(&owner), json!({"role": "view", "days": 366})).await.status, StatusCode::BAD_REQUEST);
+    let h3 = app.post(&invites, Some(&owner), json!({"role": "view", "hours": 3})).await.json();
+    let left = h3["expires_at"].as_i64().unwrap() - h3["created"].as_i64().unwrap();
+    assert_eq!(left, 3 * 3600);
+    let d30 = app.post(&invites, Some(&owner), json!({"role": "view", "days": 30})).await.json();
+    assert_eq!(d30["expires_at"].as_i64().unwrap() - d30["created"].as_i64().unwrap(), 30 * 86400);
+    for x in [&h3, &d30] {
+        app.api(Method::DELETE, &format!("{invites}/{}", x["id"].as_str().unwrap()), Some(&owner), None).await;
+    }
     let view = app.post(&invites, Some(&owner), json!({"role": "view", "days": null})).await.json();
     assert!(view["expires_at"].is_null());
     let list = app.get(&invites, Some(&owner)).await.json();

@@ -87,6 +87,9 @@ pub struct CreateBody {
     /// Laufzeit in Tagen; fehlt → 7, `null` → unbefristet.
     #[serde(default = "seven")]
     days: Option<i64>,
+    /// Alternativ Laufzeit in Stunden (hat Vorrang vor `days`), 1 bis 365 × 24.
+    #[serde(default)]
+    hours: Option<i64>,
 }
 
 pub async fn create(State(s): State<AppState>, a: Auth, Path(id): Path<String>, J(b): J<CreateBody>) -> ApiResult<Json<Value>> {
@@ -96,6 +99,13 @@ pub async fn create(State(s): State<AppState>, a: Auth, Path(id): Path<String>, 
     if b.days.is_some_and(|d| !(1..=MAX_DAYS).contains(&d)) {
         return Err(ApiError::invalid(format!("Die Laufzeit muss zwischen 1 und {MAX_DAYS} Tagen liegen (oder leer für unbefristet).")));
     }
+    if b.hours.is_some_and(|h| !(1..=MAX_DAYS * 24).contains(&h)) {
+        return Err(ApiError::invalid(format!("Die Laufzeit muss zwischen 1 und {} Stunden liegen.", MAX_DAYS * 24)));
+    }
+    let secs = match b.hours {
+        Some(h) => Some(h * 3600),
+        None => b.days.map(|d| d * 86400),
+    };
     let uid = a.user.id;
     let v =
         s.db.call(move |c| {
@@ -108,7 +118,7 @@ pub async fn create(State(s): State<AppState>, a: Auth, Path(id): Path<String>, 
             let token = db::random_hex(24);
             let iid = db::random_hex(8);
             let t = now();
-            let expires = b.days.map(|d| t + d * 86400);
+            let expires = secs.map(|s| t + s);
             c.execute(
                 "INSERT INTO invites(id,token_hash,board_id,role,created,expires_at,uses) VALUES(?1,?2,?3,?4,?5,?6,0)",
                 params![iid, hash_token(&token), board.id, b.role, t, expires],

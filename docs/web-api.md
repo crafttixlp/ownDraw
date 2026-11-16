@@ -39,7 +39,10 @@ erhalten, sind aber nur noch lesbar/herunterladbar (kein Speichern, kein Teilen)
 | POST | `/api/auth/register` | `{email, password, name}` → `Me` (setzt Cookie). Passwort ≥ 8 Zeichen. |
 | POST | `/api/auth/login` | `{email, password}` → `Me` (setzt Cookie) |
 | POST | `/api/auth/logout` | – → `{}` |
-| GET | `/api/me` | → `Me` oder 401 |
+| GET | `/api/me` | → `Me` oder 401. Bei Admins zusätzlich `mfa: {enabled, verified, recovery_left}` |
+| POST | `/api/auth/2fa/setup` | Admin (Passwort genügt), 2FA noch nicht aktiv → `{secret, uri, qr_svg}` (neues TOTP-Geheimnis, noch inaktiv) |
+| POST | `/api/auth/2fa/enable` | `{code}` → `{recovery_codes:[10]}`; aktiviert 2FA und bestätigt die Sitzung |
+| POST | `/api/auth/2fa/verify` | `{code}` (6 Ziffern oder Wiederherstellungscode) → `Me`; bestätigt die Sitzung |
 | POST | `/api/me/password` | `{old, new}` → `{}` |
 | POST | `/api/license/redeem` | `{code}` → `Me` |
 
@@ -145,12 +148,17 @@ speichert geänderte Räume höchstens alle 5 s, wenn der letzte Teilnehmer geht
 
 ## Admin (`admin:true`)
 
+Alle `/api/admin/*`-Routen brauchen eine mit Passwort **und** 2FA-Code bestätigte Sitzung, sonst 403
+`mfa_required` (ab 4.16.0). Falsche Codes: 401; nach 5 Fehlversuchen je Konto 15 min 429 `rate_limited`.
+Ein TOTP-Code gilt nur einmal (Fenster ±1 Schritt à 30 s). Notfall-Reset: `owndraw-server admin reset-2fa <email>`.
+
 | Methode | Pfad | |
 |---|---|---|
 | GET | `/api/admin/users` | → `[{id,email,name,admin,disabled,created,license,used_mb,boards}]` |
 | PATCH | `/api/admin/users/{id}` | `{disabled?, admin?}`; `disabled:true` meldet ab und löscht sofort alle eigenen Boards (Dateien, Mitglieder, Einladungen, Live-Räume) |
 | POST | `/api/admin/users/{id}/license` | `{active:false}` deaktiviert die Lizenz (`revoked`); `{active:true, code?}` weist einen freien Code zu, sonst wird die deaktivierte Lizenz wieder aktiv bzw. (keine/abgelaufen) ein neuer Code mit `{days:null\|n, quota_mb}` erzeugt → Nutzer-Objekt |
 | DELETE | `/api/admin/users/{id}` | löscht Nutzer + eigene Boards |
+| POST | `/api/admin/2fa/recovery-codes` | `{code}` (aktueller App-Code) → `{recovery_codes:[10]}`; alte werden ungültig |
 | GET | `/api/admin/licenses` | → `[License]` |
 | POST | `/api/admin/licenses` | `{count, days:null\|n, quota_mb, note}` → `[License]` (neu erzeugte Codes) |
 | PATCH | `/api/admin/licenses/{code}` | `{revoked?, expires_at?, quota_mb?, note?}` |

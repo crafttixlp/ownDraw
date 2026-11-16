@@ -11,6 +11,7 @@ pub mod error;
 pub mod invites;
 pub mod notices;
 pub mod state;
+pub mod totp;
 pub mod stats;
 pub mod update;
 
@@ -113,6 +114,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
         .route("/auth/logout", post(auth::logout))
+        .route("/auth/2fa/setup", post(totp::setup))
+        .route("/auth/2fa/enable", post(totp::enable))
+        .route("/auth/2fa/verify", post(totp::verify))
+        .route("/admin/2fa/recovery-codes", post(totp::regenerate))
         .route("/me", get(auth::me))
         .route("/me/password", post(auth::change_password))
         .route("/license/redeem", post(auth::redeem))

@@ -48,6 +48,13 @@ impl ApiError {
     pub fn rate_limited() -> Self {
         Self::new(StatusCode::TOO_MANY_REQUESTS, "rate_limited", "Zu viele Versuche. Bitte später erneut versuchen.")
     }
+    pub fn rate_limited_with(m: impl Into<String>) -> Self {
+        Self::new(StatusCode::TOO_MANY_REQUESTS, "rate_limited", m)
+    }
+    /// Admin-Route ohne bestätigten zweiten Faktor (403).
+    pub fn mfa_required() -> Self {
+        Self::new(StatusCode::FORBIDDEN, "mfa_required", "Bitte bestätige die Anmeldung mit dem Code aus deiner Authenticator-App.")
+    }
     pub fn not_implemented(m: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_IMPLEMENTED, "not_implemented", m)
     }

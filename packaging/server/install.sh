@@ -310,6 +310,8 @@ if [ "$neu_env" = 1 ]; then
   echo "  Admin-Login:  $EMAIL"
   [ "${gen_pw:-0}" = 1 ] && echo "  Passwort:     $PASSWORD   (bitte notieren und nach dem ersten Login ändern)"
 fi
+echo "  2FA:          Admin-Panel verlangt Zwei-Faktor-Anmeldung; beim ersten Login einrichten (Authenticator-App)."
+echo "  Ausgesperrt:  2FA zurücksetzen, siehe docs/server.md (Abschnitt Zwei-Faktor-Anmeldung, admin reset-2fa)"
 echo "  Daten/Backup: $SRV/data/"
 echo "  Logs:         cd $SRV && docker compose logs -f"
 echo "  Neu ausführen aktualisiert das Repo und startet neu; Daten bleiben erhalten."

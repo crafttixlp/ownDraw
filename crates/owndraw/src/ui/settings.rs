@@ -211,7 +211,7 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             settings.tile_dock.retain(|k, _| !k.starts_with("bar-tools@"));
         }
         row(ui, env, "Optionsleiste", None, |ui| bar_chips(ui, env, &mut settings.options_pos));
-        row(ui, env, "Leisten-Positionen", Some("Leisten mit dem Griff ⠿ verschieben; am Rand loslassen dockt an (seitlich senkrecht). Hier alles zurück an den Standardplatz."), |ui| {
+        row(ui, env, "Leisten-Positionen", Some("Leisten (auch Seiten- und Live-Leiste) mit dem Griff ⠿ verschieben; am Rand loslassen dockt an (seitlich senkrecht). Hier alles zurück an den Standardplatz."), |ui| {
             if ui.add_enabled(!settings.tile_pos.is_empty() || !settings.tile_dock.is_empty(), egui::Button::new("Leisten-Positionen zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
                 settings.tile_pos.clear();
                 settings.tile_dock.clear();

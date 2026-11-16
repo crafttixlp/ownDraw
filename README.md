@@ -102,7 +102,7 @@ Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL. Eine Datei als Argumen
 
 ## Stand
 
-Version 4.6.3. Desktop und Web sind automatisiert getestet (Linux, Chromium; Web auch ohne WebGL). Android, Firefox/Safari und echte
+Version 4.6.4. Desktop und Web sind automatisiert getestet (Linux, Chromium; Web auch ohne WebGL). Android, Firefox/Safari und echte
 Touch-Geräte sind noch nicht auf Geräten geprüft.
 
 Lizenz: [MIT](LICENSE)

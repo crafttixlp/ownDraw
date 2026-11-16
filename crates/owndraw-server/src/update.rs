@@ -145,6 +145,7 @@ fn state_json(conn: &Connection) -> ApiResult<Value> {
         "current": CURRENT,
         "latest": get("update.latest").filter(|s| !s.is_empty()),
         "available": is_available(conn),
+        "no_release": get("update.no_release").as_deref() == Some("1"),
         "auto": get("update.auto").as_deref() == Some("1"),
         "auto_hour": hour,
         "last_check": get("update.last_check").and_then(|s| s.parse::<i64>().ok()),
@@ -158,24 +159,62 @@ fn client(timeout: Duration) -> ApiResult<reqwest::Client> {
     reqwest::Client::builder().user_agent(format!("owndraw-server/{CURRENT}")).timeout(timeout).build().map_err(ApiError::internal)
 }
 
-pub async fn check(state: &AppState) -> ApiResult<()> {
-    let res = async {
-        let resp = client(Duration::from_secs(30))
-            .map_err(|e| e.message)?
-            .get(&state.cfg.release_url)
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await
-            .map_err(|e| format!("GitHub nicht erreichbar: {e}"))?;
-        if !resp.status().is_success() {
-            return Err(format!("GitHub antwortet mit Status {}", resp.status()));
-        }
-        let v: Value = resp.json().await.map_err(|e| format!("Antwort von GitHub unlesbar: {e}"))?;
-        parse_release(&v).ok_or_else(|| "Kein passendes Release gefunden".to_string())
+/// Ergebnis einer Abfrage bei GitHub.
+enum Checked {
+    Release(ReleaseInfo),
+    /// Repository erreichbar, aber (noch) kein veröffentlichtes Release.
+    NoRelease,
+}
+
+/// Repository-URL zur Releases-URL (`…/repos/o/r/releases/latest` → `…/repos/o/r`).
+pub fn repo_url(release_url: &str) -> Option<&str> {
+    release_url.strip_suffix("/releases/latest")
+}
+
+/// Verständliche Meldung für einen Fehlerstatus der GitHub-API.
+pub fn status_message(status: reqwest::StatusCode, rate_limited: bool) -> String {
+    match status.as_u16() {
+        403 | 429 if rate_limited => "GitHub-Abfragegrenze erreicht, bitte in einer Stunde erneut prüfen".into(),
+        404 => "Das Repository wurde auf GitHub nicht gefunden (oder ist nicht öffentlich)".into(),
+        _ => format!("GitHub antwortet mit Status {status}"),
     }
-    .await;
-    match res {
-        Ok(info) => {
+}
+
+async fn fetch_latest(url: &str) -> Result<Checked, String> {
+    let http = client(Duration::from_secs(30)).map_err(|e| e.message)?;
+    let get = |u: &str| http.get(u).header("Accept", "application/vnd.github+json").send();
+    let resp = get(url).await.map_err(|e| format!("GitHub nicht erreichbar: {e}"))?;
+    let limited = |r: &reqwest::Response| r.headers().get("x-ratelimit-remaining").is_some_and(|v| v == "0");
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        // 404 heißt bei `/releases/latest` meist nur: noch kein Release. Repository selbst prüfen.
+        let Some(repo) = repo_url(url) else { return Err(status_message(resp.status(), false)) };
+        let r = get(repo).await.map_err(|e| format!("GitHub nicht erreichbar: {e}"))?;
+        return if r.status().is_success() { Ok(Checked::NoRelease) } else { Err(status_message(r.status(), limited(&r))) };
+    }
+    if !resp.status().is_success() {
+        return Err(status_message(resp.status(), limited(&resp)));
+    }
+    let v: Value = resp.json().await.map_err(|e| format!("Antwort von GitHub unlesbar: {e}"))?;
+    parse_release(&v).map(Checked::Release).ok_or_else(|| "Das neueste Release hat keine gültige Versionsnummer".to_string())
+}
+
+pub async fn check(state: &AppState) -> ApiResult<()> {
+    match fetch_latest(&state.cfg.release_url).await {
+        Ok(Checked::NoRelease) => {
+            state
+                .db
+                .call(|c| {
+                    for k in ["update.latest", "update.tar_url", "update.sig_url"] {
+                        set_setting(c, k, "")?;
+                    }
+                    set_setting(c, "update.no_release", "1")?;
+                    set_setting(c, "update.last_check", &now().to_string())?;
+                    log_push(c, "Prüfung: Auf GitHub ist noch kein Release veröffentlicht, nichts zu installieren");
+                    Ok(())
+                })
+                .await
+        }
+        Ok(Checked::Release(info)) => {
             let msg = match (&info.tar_url, &info.sig_url) {
                 (Some(_), Some(_)) => format!("Prüfung: neueste Version {} (installiert: {CURRENT})", info.version),
                 _ => format!("Prüfung: Version {} hat kein Server-Paket mit Signatur", info.version),
@@ -187,6 +226,7 @@ pub async fn check(state: &AppState) -> ApiResult<()> {
                     set_setting(c, "update.latest", &info.version.to_string())?;
                     set_setting(c, "update.tar_url", if ok { info.tar_url.as_deref().unwrap_or("") } else { "" })?;
                     set_setting(c, "update.sig_url", if ok { info.sig_url.as_deref().unwrap_or("") } else { "" })?;
+                    set_setting(c, "update.no_release", "")?;
                     set_setting(c, "update.last_check", &now().to_string())?;
                     log_push(c, &msg);
                     Ok(())
@@ -423,6 +463,15 @@ mod tests {
         assert!(r.tar_url.is_none() && r.sig_url.is_none());
         assert!(parse_release(&json!({"tag_name": "nightly", "assets": []})).is_none());
         assert!(parse_release(&json!({"tag_name": "v5.0.0", "draft": true})).is_none());
+    }
+
+    #[test]
+    fn repo_url_und_meldungen() {
+        assert_eq!(repo_url(crate::config::GITHUB_LATEST), Some("https://api.github.com/repos/crafttixlp/ownDraw"));
+        assert_eq!(repo_url("http://x/none"), None);
+        assert!(status_message(reqwest::StatusCode::FORBIDDEN, true).contains("Abfragegrenze"));
+        assert!(status_message(reqwest::StatusCode::NOT_FOUND, false).contains("nicht gefunden"));
+        assert!(status_message(reqwest::StatusCode::BAD_GATEWAY, false).contains("502"));
     }
 
     #[test]

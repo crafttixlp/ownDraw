@@ -177,7 +177,9 @@ Wird das Image neu gebaut (`docker compose up -d --build`) und ist das mitgelief
 installiert eine neue Version selbst. Die **Uhrzeit gilt in UTC** (Wiener Zeit: Winter UTC+1, Sommer UTC+2; 03:00 UTC
 entspricht 04:00/05:00 Uhr in Wien). Das Protokoll im Panel zeigt jede Prüfung und Installation.
 
-**Release erstellen** (Entwicklungsrechner, im Repo): `./build-web.sh`, dann
+**Release erstellen**: normalerweise automatisch per Tag `v<version>` (GitHub Actions, siehe `docs/release.md`; braucht die Secrets `MINISIGN_KEY` und `MINISIGN_PASSWORD`). Solange kein Release existiert, zeigt das Panel „kein Release auf GitHub“.
+
+Von Hand (Entwicklungsrechner, im Repo): `./build-web.sh`, dann
 
 ```bash
 packaging/server/release-server.sh --docker -k ~/.minisign/owndraw.key

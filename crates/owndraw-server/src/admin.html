@@ -358,13 +358,14 @@ for (let i = 0; i < 24; i++) $("uHour").append(h("option", { value: i }, String(
 function renderUpdate(u) {
   state.update = u;
   $("uCurrent").textContent = u.current;
-  $("uLatest").textContent = u.latest || "unbekannt (noch nicht geprüft)";
+  $("uLatest").textContent = u.latest || (u.no_release ? "kein Release auf GitHub" : "unbekannt (noch nicht geprüft)");
   $("uChecked").textContent = u.last_check ? fmtDate(u.last_check) : "noch nie";
   const st = $("uStatus");
   st.hidden = false; st.className = "msg";
   if (u.installing) st.textContent = "Ein Update wird gerade installiert …";
   else if (u.available) { st.textContent = "Version " + u.latest + " ist verfügbar."; st.className = "msg ok"; }
   else if (u.latest) st.textContent = "Der Server ist auf dem neuesten Stand.";
+  else if (u.no_release) st.textContent = "Auf GitHub ist noch kein Release veröffentlicht. Es gibt nichts zu installieren.";
   else st.hidden = true;
   $("uInstall").disabled = !u.available || u.installing;
   $("uAuto").checked = !!u.auto;

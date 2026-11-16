@@ -580,3 +580,59 @@ async fn statisches_admin_und_platzhalter() {
     let r = app.send(Method::POST, "/api/auth/login", None, &[], Body::from("{kaputt"), true).await;
     assert_eq!((r.status, r.code().as_str()), (StatusCode::BAD_REQUEST, "invalid"));
 }
+
+/// Kleiner GitHub-Ersatz: `/repos/o/r` gibt es, `/repos/o/r/releases/latest` je nach `release`.
+async fn fake_github(release: Option<Value>) -> String {
+    use axum::routing::get;
+    let rel = release.clone();
+    let r = Router::new().route("/repos/o/r", get(|| async { axum::Json(json!({"full_name": "o/r"})) })).route(
+        "/repos/o/r/releases/latest",
+        get(move || {
+            let rel = rel.clone();
+            async move {
+                match rel {
+                    Some(v) => (StatusCode::OK, axum::Json(v)),
+                    None => (StatusCode::NOT_FOUND, axum::Json(json!({"message": "Not Found"}))),
+                }
+            }
+        }),
+    );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, r).await.unwrap() });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn update_pruefung_ohne_release_und_ohne_repo() {
+    // Repository vorhanden, aber noch kein Release: kein Fehler, verständlicher Zustand
+    let base = fake_github(None).await;
+    let url = format!("{base}/repos/o/r/releases/latest");
+    let app = App::with(|c| c.release_url = url);
+    let admin = app.admin().await;
+    let r = app.post("/api/admin/update/check", Some(&admin), json!({})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let st = r.json();
+    assert_eq!((st["no_release"].clone(), st["available"].clone(), st["latest"].clone()), (json!(true), json!(false), Value::Null));
+    assert!(st["log"].to_string().contains("noch kein Release"));
+    assert_eq!(app.post("/api/admin/update/install", Some(&admin), json!({})).await.status, StatusCode::CONFLICT);
+
+    // Repository falsch: klare Fehlermeldung
+    let url = format!("{base}/repos/o/falsch/releases/latest");
+    let app = App::with(|c| c.release_url = url);
+    let admin = app.admin().await;
+    let r = app.post("/api/admin/update/check", Some(&admin), json!({})).await;
+    assert_eq!(r.status, StatusCode::BAD_GATEWAY);
+    assert!(r.json()["message"].to_string().contains("nicht gefunden"), "{}", r.json());
+
+    // Release mit Server-Paket: verfügbar, Hinweis verschwindet
+    let rel = json!({"tag_name": "v99.0.0", "draft": false, "prerelease": false, "assets": [
+        {"name": "owndraw-server-99.0.0-x86_64-linux.tar.gz", "browser_download_url": "http://x/t"},
+        {"name": "owndraw-server-99.0.0-x86_64-linux.tar.gz.minisig", "browser_download_url": "http://x/s"}]});
+    let base = fake_github(Some(rel)).await;
+    let url = format!("{base}/repos/o/r/releases/latest");
+    let app = App::with(|c| c.release_url = url);
+    let admin = app.admin().await;
+    let st = app.post("/api/admin/update/check", Some(&admin), json!({})).await.json();
+    assert_eq!((st["no_release"].clone(), st["available"].clone(), st["latest"].clone()), (json!(false), json!(true), json!("99.0.0")));
+}

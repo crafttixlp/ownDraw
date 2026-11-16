@@ -254,6 +254,11 @@ pub fn licensed() -> bool {
     with(|n| n.me.as_ref().is_some_and(Session::licensed))
 }
 
+/// Angemeldetes Konto ist Admin (`admin` aus `GET /api/me`, kommt vom Server; Gäste nie).
+pub fn is_admin() -> bool {
+    with(|n| n.me.as_ref().is_some_and(|m| m.admin && !m.guest))
+}
+
 pub fn logged_in() -> bool {
     with(|n| n.me.is_some())
 }

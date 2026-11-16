@@ -33,6 +33,24 @@ pub fn open_bug_report(_sh: &mut crate::app::Shared) {
     }
 }
 
+/// Knopf „Admin-Panel“ nur für angemeldete Admin-Konten in der Web-App mit Server.
+/// `/admin` selbst bleibt serverseitig geschützt (Login + 2FA).
+pub fn admin_available() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::platform::web::api::online() && crate::platform::web::api::is_admin()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+/// Öffnet das Admin-Panel (`/admin` am Server) in einem neuen Tab.
+pub fn open_admin(sh: &mut crate::app::Shared) {
+    sh.platform.open_url("/admin");
+}
+
 /// Öffnet die Download-Seite der Apps (`/download` am Server; nur sinnvoll, wenn [`bug_report_available`]).
 pub fn open_downloads(sh: &mut crate::app::Shared) {
     sh.platform.open_url("/download");

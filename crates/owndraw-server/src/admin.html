@@ -64,6 +64,9 @@ header button.small { border-color: transparent; color: var(--muted); }
 .grip { flex: 0 0 auto; width: 32px; height: 40px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); cursor: grab; touch-action: none; user-select: none; font-size: 1.2rem; }
 .grip:hover { background: var(--line); color: var(--text); }
 .item.dragging { opacity: .6; background: var(--panel); }
+.boardprev { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken); display: grid; place-items: center; min-height: 80px; max-height: 260px; overflow: hidden; }
+.boardprev img { display: block; max-width: 100%; max-height: 258px; object-fit: contain; }
+.boardprev span { color: var(--muted); font-size: .86rem; padding: 12px; text-align: center; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: .75rem; font-weight: 500; background: var(--chip); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
 .chip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
@@ -224,6 +227,10 @@ dialog .row { justify-content: flex-end; }
             <div><label for="nStart">Sichtbar ab (optional)</label><input id="nStart" type="datetime-local"></div>
             <div><label for="nEnd">Sichtbar bis (optional)</label><input id="nEnd" type="datetime-local"></div>
           </div>
+          <label for="nBoard">Board anhängen (optional)</label>
+          <select id="nBoard"><option value="">Kein Board</option></select>
+          <p class="hint">Das Board erscheint schreibgeschützt in der Mitte der Mitteilung, gut für Bilder, Updates und News. Besucher sehen es auch ohne Zugriff auf das Board; Änderungen am Board sind sofort sichtbar.</p>
+          <div class="boardprev" id="nBoardPrev" hidden></div>
           <div class="row"><label><input id="nActive" type="checkbox" checked> Aktiv</label></div>
           <div class="row"><button class="primary" type="submit" id="nSubmit">Mitteilung anlegen</button><button type="button" id="nCancel" hidden>Abbrechen</button></div>
         </form>
@@ -668,7 +675,26 @@ function noticeStatus(n) {
   if (n.ends_at != null && t >= n.ends_at) return ["abgelaufen", "warn"];
   return ["sichtbar", "ok"];
 }
+// Board-Auswahl: alle Boards des Servers, mit Vorschau des gewählten Boards.
+async function loadNoticeBoards() {
+  let boards = [];
+  try { boards = await api("GET", "/api/admin/boards"); } catch (e) { return fail(e); }
+  const sel = $("nBoard"), keep = sel.value;
+  sel.replaceChildren(h("option", { value: "" }, "Kein Board"), ...boards.map((b) => h("option", { value: b.id }, b.name + " · " + b.owner)));
+  if (keep && boards.some((b) => b.id === keep)) sel.value = keep;
+  showBoardPreview();
+}
+function showBoardPreview() {
+  const id = $("nBoard").value, box = $("nBoardPrev");
+  box.hidden = !id;
+  if (!id) return box.replaceChildren();
+  const img = h("img", { alt: "Vorschau des Boards", src: "/api/admin/boards/" + encodeURIComponent(id) + "/preview.png?t=" + Date.now() });
+  img.addEventListener("error", () => box.replaceChildren(h("span", {}, "Keine Vorschau: Das Board ist leer oder konnte nicht gelesen werden.")));
+  box.replaceChildren(img);
+}
+$("nBoard").addEventListener("change", showBoardPreview);
 async function loadNotices() {
+  loadNoticeBoards();
   try { state.notices = await api("GET", "/api/admin/notices"); } catch (e) { return fail(e); }
   const list = $("nList");
   if (!state.notices.length) return list.replaceChildren(h("div", { class: "empty" }, "Noch keine Mitteilungen."));
@@ -679,7 +705,9 @@ async function loadNotices() {
     return h("div", { class: "item", "data-id": n.id },
       h("div", { class: "grip", title: "Ziehen zum Verschieben", "aria-hidden": "true", onpointerdown: (ev) => dragNotice(ev) }, "⠿"),
       h("div", { class: "main" },
-        h("div", {}, h("b", {}, n.title || "Ohne Titel"), h("span", { class: "chip " + kind }, label), n.kind === "warning" && h("span", { class: "chip warn" }, "Warnung")),
+        h("div", {}, h("b", {}, n.title || "Ohne Titel"), h("span", { class: "chip " + kind }, label), n.kind === "warning" && h("span", { class: "chip warn" }, "Warnung"),
+          n.board_name && h("span", { class: "chip acc", title: "Angehängtes Board" }, "Board: " + n.board_name),
+          n.board_missing && h("span", { class: "chip warn" }, "Board gelöscht")),
         n.body && h("div", { class: "meta", style: "white-space:pre-wrap" }, n.body.length > 240 ? n.body.slice(0, 240) + " …" : n.body),
         h("div", { class: "meta" }, "geändert " + fmtDate(n.updated), range ? " · " + range : "")),
       h("div", { class: "actions" },
@@ -728,20 +756,21 @@ function dragNotice(ev) {
 }
 function resetNoticeForm() {
   state.editNotice = null;
-  $("nForm").reset(); $("nActive").checked = true;
+  $("nForm").reset(); $("nActive").checked = true; showBoardPreview();
   $("nFormTitle").textContent = "Neue Mitteilung"; $("nSubmit").textContent = "Mitteilung anlegen"; $("nCancel").hidden = true;
 }
 function editNotice(n) {
   state.editNotice = n.id;
   $("nTitle").value = n.title; $("nBody").value = n.body; $("nKind").value = n.kind; $("nActive").checked = n.active;
   $("nStart").value = toLocalInput(n.starts_at); $("nEnd").value = toLocalInput(n.ends_at);
+  $("nBoard").value = n.board_name ? n.board_id : ""; showBoardPreview();
   $("nFormTitle").textContent = "Mitteilung bearbeiten"; $("nSubmit").textContent = "Speichern"; $("nCancel").hidden = false;
   $("nTitle").focus();
 }
 $("nCancel").addEventListener("click", resetNoticeForm);
 $("nForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const body = { title: $("nTitle").value, body: $("nBody").value, kind: $("nKind").value, active: $("nActive").checked, starts_at: fromLocalInput($("nStart").value), ends_at: fromLocalInput($("nEnd").value) };
+  const body = { title: $("nTitle").value, body: $("nBody").value, kind: $("nKind").value, active: $("nActive").checked, starts_at: fromLocalInput($("nStart").value), ends_at: fromLocalInput($("nEnd").value), board_id: $("nBoard").value || null };
   try {
     if (state.editNotice) await api("PATCH", "/api/admin/notices/" + encodeURIComponent(state.editNotice), body);
     else await api("POST", "/api/admin/notices", body);

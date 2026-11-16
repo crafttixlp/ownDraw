@@ -1376,3 +1376,61 @@ async fn mitteilungen_reihenfolge() {
     assert_eq!(r.status, StatusCode::CONFLICT);
     assert_eq!(titles(app.get("/api/notices", None).await.json()), ["C", "A", "B", "D"]);
 }
+
+/// Echtes `.owndraw` mit einem Strich (für das gerenderte Board-Bild).
+fn real_board() -> Vec<u8> {
+    use owndraw_core::doc::{write_owndraw, Document};
+    let mut d = Document::new("News", Default::default());
+    d.board["items"] = json!([{"t": "s", "c": -16777216, "w": 4, "p": [0, 0, 1, 200, 100, 1, 400, 0, 1], "ly": 1}]);
+    write_owndraw(&d).unwrap()
+}
+
+#[tokio::test]
+async fn mitteilung_mit_board_fuer_gaeste_sichtbar() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let owner = app.register("o@example.org").await;
+    app.give_license(&admin, &owner, json!(null), 10).await;
+    let bid = app.upload(&owner, "News", real_board()).await.json()["id"].as_str().unwrap().to_string();
+
+    // Admin sieht alle Boards zur Auswahl und eine Vorschau; Nutzer nicht
+    let list = app.get("/api/admin/boards", Some(&admin)).await.json();
+    assert_eq!(list[0]["id"], bid.as_str());
+    assert_eq!(app.get("/api/admin/boards", Some(&owner)).await.status, StatusCode::FORBIDDEN);
+    let r = app.get(&format!("/api/admin/boards/{bid}/preview.png"), Some(&admin)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.bytes.starts_with(b"\x89PNG"));
+
+    // Unbekanntes Board wird abgelehnt
+    let r = app.post("/api/admin/notices", Some(&admin), json!({"title": "x", "board_id": "gibtsnicht"})).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let r = app.post("/api/admin/notices", Some(&admin), json!({"title": "Update", "board_id": bid})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    assert_eq!(r.json()["board_name"], "News");
+    let nid = r.json()["id"].as_str().unwrap().to_string();
+
+    // Gast (ohne Anmeldung, ohne Zugriff aufs Board) bekommt das Bild über die Mitteilung, nicht das Board selbst
+    let pub_list = app.get("/api/notices", None).await.json();
+    let url = pub_list[0]["board"]["url"].as_str().unwrap().to_string();
+    assert!(url.starts_with(&format!("api/notices/{nid}/board.png")));
+    let r = app.get(&format!("/{url}"), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.headers[header::CONTENT_TYPE], "image/png");
+    assert_eq!(app.get(&format!("/api/boards/{bid}"), None).await.status, StatusCode::UNAUTHORIZED);
+
+    // Inaktiv: kein Bild mehr
+    app.patch(&format!("/api/admin/notices/{nid}"), Some(&admin), json!({"active": false})).await;
+    assert_eq!(app.get(&format!("/api/notices/{nid}/board.png"), None).await.status, StatusCode::NOT_FOUND);
+
+    // Board entfernen: Mitteilung ohne Board
+    let r = app.patch(&format!("/api/admin/notices/{nid}"), Some(&admin), json!({"active": true, "board_id": null})).await;
+    assert_eq!(r.json()["board_id"], Value::Null);
+    assert_eq!(app.get("/api/notices", None).await.json()[0]["board"], Value::Null);
+
+    // Board gelöscht: Mitteilung bleibt, ohne Board
+    app.patch(&format!("/api/admin/notices/{nid}"), Some(&admin), json!({"board_id": bid})).await;
+    app.api(Method::DELETE, &format!("/api/boards/{bid}"), Some(&owner), None).await;
+    assert_eq!(app.get("/api/notices", None).await.json()[0]["board"], Value::Null);
+    assert_eq!(app.get("/api/admin/notices", Some(&admin)).await.json()[0]["board_missing"], true);
+}

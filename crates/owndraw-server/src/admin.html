@@ -29,6 +29,7 @@ main { max-width: 1000px; margin: 0 auto; padding: 16px; }
 .card h2 { margin: 0 0 12px; font-size: 1.05rem; }
 .login { max-width: 380px; margin: 10vh auto 0; }
 label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+.hint { font-size: .8rem; color: var(--muted); margin: 4px 0 0; }
 input, select, textarea { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
 input:focus-visible, select:focus-visible, button:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type=checkbox] { width: auto; }
@@ -107,7 +108,7 @@ dialog .row { justify-content: flex-end; }
           <div class="grid">
             <div><label for="lcount">Anzahl</label><input id="lcount" type="number" min="1" max="100" value="1" required></div>
             <div><label for="ldays">Laufzeit (Tage)</label><input id="ldays" type="number" min="1" max="36500" value="365"></div>
-            <div><label for="lquota">Quote (MB)</label><input id="lquota" type="number" min="1" value="500" required></div>
+            <div><label for="lquota">Speicherplatz (MB)</label><input id="lquota" type="number" min="1" value="500" required aria-describedby="lquotaHint"><p id="lquotaHint" class="hint">Maximaler Platz am Server für die gespeicherten Boards pro Nutzer</p></div>
           </div>
           <div class="row"><label><input id="lunlimited" type="checkbox"> Unbegrenzt (ohne Ablauf)</label></div>
           <label for="lnote">Notiz</label>
@@ -272,12 +273,12 @@ async function loadUsers() {
   list.replaceChildren(...state.users.map((u) => {
     const self = state.me && u.id === state.me.id;
     const l = u.license;
-    const quota = l ? " / " + l.quota_mb + " MB" : "";
+    const quota = l ? " von " + l.quota_mb + " MB" : "";
     return h("div", { class: "item" },
       h("div", { class: "main" },
         h("div", {}, h("b", {}, u.name || u.email), u.admin && h("span", { class: "chip acc" }, "Admin"), u.disabled && h("span", { class: "chip bad" }, "gesperrt"), self && h("span", { class: "chip" }, "du")),
         h("div", { class: "meta" }, u.email),
-        h("div", { class: "meta" }, licenseChip(l), " ", l ? (l.code + " · bis " + fmtDay(l.expires_at)) : "", " · Verbrauch ", u.used_mb + " MB" + quota, " · ", u.boards + " Boards", " · seit ", fmtDay(u.created))),
+        h("div", { class: "meta" }, licenseChip(l), " ", l ? (l.code + " · bis " + fmtDay(l.expires_at)) : "", " · Speicherplatz ", u.used_mb + " MB" + quota + " belegt", " · ", u.boards + " Boards", " · seit ", fmtDay(u.created))),
       h("div", { class: "actions" },
         h("button", { class: "small", disabled: self, onclick: () => patchUser(u, { disabled: !u.disabled }) }, u.disabled ? "Entsperren" : "Sperren"),
         h("button", { class: "small", disabled: self, onclick: () => patchUser(u, { admin: !u.admin }) }, u.admin ? "Admin-Recht entziehen" : "Zum Admin machen"),
@@ -312,7 +313,7 @@ async function loadLicenses() {
     return h("div", { class: "item" },
       h("div", { class: "main" },
         h("div", {}, h("span", { class: "code mono" }, l.code), h("span", { class: "chip " + kind }, label)),
-        h("div", { class: "meta" }, when, " · ", l.quota_mb + " MB", l.note ? " · " + l.note : "")),
+        h("div", { class: "meta" }, when, " · Speicherplatz ", l.quota_mb + " MB", l.note ? " · " + l.note : "")),
       h("div", { class: "actions" },
         h("button", { class: "small", onclick: (ev) => copy(l.code, ev.currentTarget) }, "Kopieren"),
         h("button", { class: "small", onclick: () => editExpiry(l) }, "Ablauf ändern"),

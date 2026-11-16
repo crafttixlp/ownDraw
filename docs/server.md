@@ -107,7 +107,7 @@ Dann `https://owndraw.thepepelex.at/admin` öffnen und anmelden. Im Panel:
 - **Nutzer**: sperren/entsperren, Admin-Recht geben/entziehen, löschen (mit Bestätigung; löscht auch die Boards),
   Lizenz und Speicherverbrauch ansehen.
 - **Lizenzen**: mehrere Codes `OWND-XXXX-XXXX-XXXX` erzeugen (Laufzeit in Tagen ab Einlösen oder unbegrenzt,
-  Quote in MB, Notiz), kopieren, widerrufen, Ablauf ändern. Die Codes gibst du den Kundinnen und Kunden; sie lösen
+  Speicherplatz pro Nutzer in MB, Notiz), kopieren, widerrufen, Ablauf ändern. Die Codes gibst du den Kundinnen und Kunden; sie lösen
   sie in der Web-App ein.
 - **Updates**: siehe Abschnitt 7.
 
@@ -208,7 +208,7 @@ Self-Update beendet sich der Prozess nur; einen Neustart muss dann ein Superviso
   Pro offenem Board hält der Server einen **Raum** im Speicher (`src/collab.rs`): Dokument, laufende `seq`,
   Teilnehmer. Operationen werden in Ankunftsreihenfolge angewendet und an alle verteilt. Gespeichert wird ein
   geänderter Raum höchstens alle 5 s, wenn der letzte Teilnehmer geht und beim Beenden bzw. vor einem Update
-  (`flush_all`); jede Speicherung erhöht `version` und erneuert das Vorschaubild. Schlägt Speichern fehl (Quote,
+  (`flush_all`); jede Speicherung erhöht `version` und erneuert das Vorschaubild. Schlägt Speichern fehl (Speicherplatz voll,
   Lizenz), bleibt der Raum im Speicher und versucht es erneut; die Teilnehmer bekommen `error`.
 - Board löschen, Rolle ändern oder Einladung entfernen trennt betroffene Teilnehmer sofort (Close-Code 4000).
   Die Lizenz der Besitzerin/des Besitzers wird alle 30 s neu geprüft (`access`).

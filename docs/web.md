@@ -84,7 +84,7 @@ Beim Start fragt die App `GET /api/me` (gleiche Origin, `credentials: include`, 
 `X-OwnDraw: 1`). Antwortet dort kein OwnDraw-Server, bleibt es beim Gastmodus.
 
 - **Startseite**: Konto-Karte oben – Anmelden/Registrieren, angemeldet Name, E-Mail, Lizenzstatus
-  (Ablauf, Speicher belegt/Quote), „Lizenz einlösen“, „Abmelden“. Darunter „Am Server“: eigene und geteilte
+  (Ablauf, Speicherplatz belegt/maximal), „Lizenz einlösen“, „Abmelden“. Darunter „Am Server“: eigene und geteilte
   Boards (mit Besitzer und Rolle), Menü Öffnen/Umbenennen/Teilen/Löschen. Die bisherige Liste heißt im Browser
   „Zuletzt geöffnet (in diesem Browser)“.
 - **Ohne Lizenz** verhält sich ein Konto wie ein Gast (neue Boards im Browser, Speichern als Download, Hinweis auf

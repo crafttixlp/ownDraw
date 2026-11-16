@@ -70,7 +70,7 @@ BoardInfo = {"id":"…","name":"…","owner":{"id":"…","name":"…"},"role":"o
              "version":7,"size":12345,"modified":1790000000}
 ```
 
-Max. Größe pro Board 50 MB (einstellbar). Speicherquote der Lizenz zählt nur eigene Boards.
+Max. Größe pro Board 50 MB (einstellbar). Der Speicherplatz der Lizenz (`quota_mb`) zählt nur eigene Boards.
 
 ## Kollaboration (WebSocket `GET /api/collab/{board_id}`)
 

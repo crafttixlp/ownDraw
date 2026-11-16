@@ -328,9 +328,22 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     // ---- Speichern
     if crate::platform::WEB {
         section(ui, "Speichern", |ui| {
-            row(ui, env, "Gastmodus", None, |ui| {
-                ui.add(egui::Label::new(egui::RichText::new("Boards werden nur in diesem Browser gespeichert. Lade wichtige Boards mit Strg+S herunter.").color(c(p.dim))).wrap());
-            });
+            if crate::ui::server_store_available() {
+                row(ui, env, "Neue Boards", Some("Vorgabe im Dialog „Neu“. Den Speicherort wählst du dort für jedes Board, später auch im Kartenmenü."), |ui| {
+                    for (v, l) in [(true, "Auf dem Server"), (false, "In diesem Browser")] {
+                        if style::chip(ui, l, settings.new_on_server == v, btn).clicked() {
+                            settings.new_on_server = v;
+                        }
+                    }
+                });
+                row(ui, env, "", None, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new("Boards im Browser liegen nur auf diesem Gerät. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server.").color(c(p.dim))).wrap());
+                });
+            } else {
+                row(ui, env, "Gastmodus", None, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new("Boards werden nur in diesem Browser gespeichert. Lade wichtige Boards mit Strg+S herunter.").color(c(p.dim))).wrap());
+                });
+            }
         });
     } else {
     section(ui, "Speichern", |ui| {

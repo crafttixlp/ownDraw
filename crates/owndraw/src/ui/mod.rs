@@ -26,6 +26,39 @@ pub fn bug_report_available() -> bool {
     }
 }
 
+/// Web-App mit gültiger Lizenz: Boards können am Server oder im Browser liegen.
+pub fn server_store_available() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::platform::web::api::licensed()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+/// Freier Speicherplatz am Server als Text („12,5 MB“), nur mit Lizenz.
+pub fn server_free_text() -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::platform::web::api::free_bytes().map(mb_text)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+/// Bytes als „1,2 MB“.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn mb_text(bytes: i64) -> String {
+    if bytes < 100 * 1024 {
+        return format!("{} KB", (bytes + 1023) / 1024);
+    }
+    format!("{:.1} MB", bytes as f64 / 1_048_576.0).replace('.', ",")
+}
+
 /// Öffnet den Dialog „Fehler melden“ (HTML über der App, siehe `crates/owndraw-web/index.html`).
 pub fn open_bug_report(_sh: &mut crate::app::Shared) {
     #[cfg(target_arch = "wasm32")]

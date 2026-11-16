@@ -399,9 +399,17 @@
         {
           "id": "live-server",
           "title": "Auf dem Server speichern",
-          "text": "Mit Lizenz landen neue Boards direkt auf dem Server. Ein Board aus dem Browser lädst du über „⋯“ → „Auf dem Server speichern“ hoch.",
+          "text": "Ein Board aus dem Browser lädst du im Editor über „⋯“ → „Auf dem Server speichern“ als Kopie hoch.",
           "only": "Web-App mit Lizenz",
           "covers": ["menu:Auf dem Server speichern"]
+        },
+        {
+          "id": "live-speicherort",
+          "title": "Speicherort wählen: Server oder Browser",
+          "text": "Mit Lizenz wählst du für jedes Board, wo es liegt. Auf dem Server ist es auf allen Geräten verfügbar und lässt sich teilen und live gemeinsam bearbeiten. Im Browser liegt es nur auf diesem Gerät und braucht keinen Speicherplatz der Lizenz.",
+          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“: Das Original am Server bleibt unverändert."],
+          "only": "Web-App mit Lizenz",
+          "covers": ["extra:speicherort"]
         },
         {
           "id": "live-teilen",

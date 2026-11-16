@@ -959,6 +959,7 @@ impl Editor {
                             self.st.menu_open = true;
                             self.st.opts_open = false;
                         }
+                        Key::F1 if !repeat => sh.reqs.push(crate::app::Req::OpenTutorial),
                         Key::Delete | Key::Backspace if !repeat => {
                             if sel {
                                 self.board.delete_sel();

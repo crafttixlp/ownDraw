@@ -164,6 +164,9 @@ pub fn build_app(state: AppState) -> Router {
         .nest("/api", api)
         .route("/admin", get(admin_page))
         .route("/admin/", get(admin_page))
+        // Anleitung der Web-App (öffnet die App direkt auf der Seite „Anleitung & Tipps“)
+        .route("/tutorial", get(|| async { axum::response::Redirect::to("/#tutorial") }))
+        .route("/anleitung", get(|| async { axum::response::Redirect::to("/#tutorial") }))
         .merge(
             Router::new()
                 .route("/download", get(downloads::page))

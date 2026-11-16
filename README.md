@@ -1,70 +1,108 @@
 # OwnDraw
 
-Zeichen- und Whiteboard-App mit Stift für Handy, Tablet und PC: unendliche Fläche **oder Seiten** (A4/A5/Letter),
-Ebenen, Formerkennung, Lasso-Auswahl, Teil-Radierer, Export als PNG, PDF, Website und **Xournal++ (`.xopp`)**.
-Komplett in Rust (egui/eframe), eine Oberfläche für Linux/Windows/macOS und Android.
+<img src="assets/owndraw.png" alt="OwnDraw-Logo" width="96" align="right">
 
-## Neu in 4.0
+Zeichen- und Whiteboard-App mit Stift für **PC, Handy, Tablet und Browser**. Sie bietet eine unendliche Fläche oder Seiten,
+Ebenen, Formerkennung, Lasso-Auswahl, Export als PNG, PDF, Website und Xournal++. In der Web-Version gibt es
+zusätzlich Konten, Lizenzen und **Live-Zusammenarbeit**. OwnDraw ist komplett in Rust geschrieben (egui/eframe), mit einer Oberfläche für alle Plattformen.
 
-- **Ein Board = eine Datei** (`.owndraw` v2, ZIP mit Bildern und Vorschau), Speicherort frei wählbar,
-  **Autosave immer an** (2 s nach der letzten Änderung, beim Schließen und beim Wechsel in den Hintergrund, atomar).
-- **Zuletzt geöffnet** auf dem Startbildschirm; alte Boards (Java 2.x / Rust 3.0) werden beim ersten Start übernommen.
-- **Seitenmodus**: Seiten untereinander, Hintergrund blanko/liniert/kariert/punktiert, Seitenleiste, PDF mit einer Seite je Board-Seite.
-- **Xournal++** öffnen, bearbeiten, als `.xopp` exportieren (Stifte mit Druck, Marker, Text, Bilder, Ebenen, PDF-Hintergründe bleiben erhalten).
-- **Maschinenbau-Pfeil**: gefüllte Spitze, 15° Öffnungswinkel (DIN ISO 128).
-- **Anpassende Oberfläche**: Handy (Leiste unten, Bottom-Sheets), Tablet (schwebende Leiste, Popover), PC (Leisten oben, Panels angedockt).
-  7 Hauptwerkzeuge, alles Weitere im Kontext-Popover oder im „⋯“-Menü.
-- **Einstellungen**: Hell/Dunkel/System, Akzentfarbe, UI-Größe 75–200 %, Leistenposition, Werkzeuge umordnen/ausblenden, Speicherort, Einrasten (Winkelraster und Fangbereich für Formerkennung und Griffe, einzeln abschaltbar).
-- **System-Dateidialoge** (xdg-desktop-portal unter Linux, Storage Access Framework unter Android).
-- **Strg+C / Strg+V** für Objekte und Bilder (auch in/aus anderen Programmen), **Drag & Drop** von Bildern, `.owndraw` und `.xopp`.
-- **Updates von GitHub** nur auf Klick: fertiges Paket oder aus dem Quellcode bauen, Signaturprüfung (minisign),
-  Zurückspringen auf ältere Versionen (auch offline aus den letzten 3 Versionen).
+| Variante | Plattform | Bezug |
+| --- | --- | --- |
+| Desktop | Linux (AppImage); Windows/macOS aus dem Quellcode | `./build-appimage.sh` bzw. [Releases](https://github.com/crafttixlp/ownDraw/releases) (sobald veröffentlicht) |
+| Android | ab Android 8 | APK aus der CI bzw. `crates/owndraw-android/build-apk.sh` |
+| Web | jeder aktuelle Browser, eigener Server | [Server installieren](#web-version-auf-dem-eigenen-server) |
 
-## Aufbau
+## Funktionen
 
-| Ordner | Inhalt |
+- **Zeichnen:** Stift mit Druck, Marker, Teil-Radierer, Formen und Formerkennung (Linie, Pfeil mit 15° nach DIN ISO 128,
+  Ellipse, Polygon, Stern, Herz …), Text am Ort, Notizen, Bilder. Einrasten von Winkeln und Griffen ist einstellbar und
+  lässt sich per Taste kurz aussetzen.
+- **Fläche:** unendliches Whiteboard oder Seiten (A4/A5/Letter; blanko, liniert, kariert, punktiert) mit Seitenleiste.
+- **Ordnen:** Ebenen, Lasso-Auswahl, Kopieren und Einfügen auch mit anderen Programmen, Drag & Drop, Rückgängig.
+- **Dateien:** Ein Board ist eine Datei (`.owndraw`, ZIP mit Bildern und Vorschau), Autosave immer an. Xournal++ (`.xopp`) kann
+  geöffnet und exportiert werden, dazu Export als PNG, PDF (eine Seite je Board-Seite) und Website-ZIP.
+- **Oberfläche:** passt sich an Handy, Tablet und PC an. Leisten lassen sich verschieben und am Rand andocken, mit Hell/Dunkel,
+  Akzentfarbe, UI-Größe 75–200 % und Werkzeuge zum Umordnen und Ausblenden.
+- **Updates** (Desktop) nur auf Klick, signiert mit minisign. Zurückspringen auf ältere Versionen ist möglich.
+
+## Web-Version
+
+OwnDraw läuft als WebAssembly im Browser. Was man darf, hängt vom Konto ab:
+
+| Rolle | Darf |
 | --- | --- |
-| `crates/owndraw-core/` | Kern ohne Oberfläche: Board, Seiten, Formerkennung, Rendering (tiny-skia), `.owndraw` v2 (`doc.rs`), Migration, Xournal++ (`xopp.rs`), Export. |
-| `crates/owndraw/` | App (egui/eframe) als Bibliothek + Desktop-Binary: `ui/` (Start, Editor, Einstellungen), `platform/` (Desktop, Android), Autosave, Zuletzt-Liste, Update-Dienst. |
-| `crates/owndraw-android/` | Android-Einstieg (cdylib), Java-Hilfsklassen, Manifest, `build-apk.sh`. |
-| `crates/owndraw-web/` | Browser-Einstieg (WebAssembly; Gastmodus, mit Server: Konto, Boards am Server, Teilen, Live-Zusammenarbeit) mit `index.html`; bauen mit `build-web.sh` (siehe `docs/web.md`). |
-| `crates/owndraw-server/` | Server für die Web-Version (axum + SQLite): Konten, Lizenzen, Boards, Teilen, Live-Räume per WebSocket, Admin-Panel (siehe `docs/server.md`, `docs/web-api.md`). |
-| `packaging/appimage/` | AppImage-Runtime und AppDir-Vorlage. |
-| `.github/workflows/` | CI (Tests, AppImage, APK als Artefakte) und Release (signierte Assets). |
-| `docs/` | `architektur.md`, `konzept-features.md`, `ui-checkliste.md`, `android.md`, `web.md`, `web-api.md`, `server.md`, `release.md`. |
+| Gast (ohne Konto) | voller Editor, Speichern nur als Download (`.owndraw`, PNG, PDF …) |
+| Konto ohne Lizenz | wie Gast, dazu Mitarbeit an Boards, zu denen man eingeladen ist |
+| Konto mit Lizenz | Boards am Server speichern (auf allen Geräten), teilen, Live-Zusammenarbeit starten |
+| Admin | Admin-Panel `/admin`: Nutzer, Lizenzcodes (Laufzeit und Speicher einstellbar), Server-Updates |
+
+Bei der Live-Zusammenarbeit sehen alle Änderungen sofort, dazu die Zeiger der anderen mit Namen. Nur der Besitzer des Boards braucht
+eine Lizenz. Server-Updates kommen aus den GitHub-Releases, mit Signaturprüfung und Backup. Auf Knopfdruck oder automatisch
+(standardmäßig aus).
+
+### Web-Version auf dem eigenen Server
+
+Voraussetzungen: Debian 12 oder Ubuntu 24.04, mind. 1 vCPU / 1 GB RAM (empfohlen 2 vCPU / 2–4 GB), Ports 80 und 443
+offen, DNS-Eintrag (`A`, ggf. `AAAA`) der Domain auf den Server.
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/crafttixlp/ownDraw/main/packaging/server/install.sh
+sudo bash install.sh
+```
+
+Der Installer fragt Domain, Admin-E-Mail und Passwort ab. Er installiert Docker, holt das Repo nach `/opt/owndraw` und startet
+den Server mit Caddy (automatisches HTTPS). Liegt eine fertige `OwnDraw-Web-<version>-statisch.zip` im selben Ordner, wird
+sie verwendet. Sonst baut er die Web-App selbst. Erneut ausführen aktualisiert, Daten bleiben erhalten.
+Danach: `https://<domain>/admin` öffnen, anmelden, Lizenzcodes erzeugen.
+
+Alle Details (manuelle Installation, Backup, Updates, Konfiguration) stehen in [`docs/server.md`](docs/server.md).
+Nur die Web-App ohne Server (reiner Gastmodus) läuft auf jedem statischen Webspace, siehe [`docs/web.md`](docs/web.md).
+
+## Bedienung am PC
+
+- Linke Maustaste zeichnet. Rechte oder mittlere Taste oder Leertaste + Ziehen verschiebt, das Mausrad zoomt.
+- Tasten: P Stift, M Marker, E Radierer, S Auswahl, R Form, T Text, 0 alles zeigen, +/− Zoom,
+  Strg+Z/Y/C/X/V/D, Entf löscht die Auswahl. Tooltips zeigen die Kürzel.
+- Mittlere Maustaste kurz auf ein Objekt: Objekt auswählen, die Auswahlleiste erscheint.
+- Text: aufs Blatt tippen und direkt schreiben (Enter = neue Zeile). Esc, Strg+Enter oder Tippen daneben übernimmt.
 
 ## Bauen
 
 Voraussetzung: Rust ≥ 1.85.
 
 ```sh
-cargo run --release      # Desktop starten
-cargo test               # Tests
-./build-appimage.sh      # Linux-AppImage (braucht gcc, zlib1g-dev, squashfs-tools) → OwnDraw-4.5.0-x86_64.AppImage
-crates/owndraw-android/build-apk.sh   # APK (braucht Android SDK + NDK, siehe docs/android.md)
+cargo run --release                   # Desktop starten
+cargo test                            # Tests (Kern, App, Server)
+./build-appimage.sh                   # Linux-AppImage (gcc, zlib1g-dev, squashfs-tools)
+crates/owndraw-android/build-apk.sh   # APK (Android SDK + NDK, siehe docs/android.md)
+./build-web.sh                        # Web-App nach dist/web/ (wasm32 + wasm-bindgen-cli, siehe docs/web.md)
+cargo run -p owndraw-server           # Server lokal (OWNDRAW_WEB=dist/web, siehe docs/server.md)
 ```
 
-Die APK baut auch die GitHub-Actions-CI bei jedem Push auf `main` (Artefakt „apk“).
+Die GitHub-Actions-CI baut bei jedem Push Tests, AppImage und APK (Artefakte).
+Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL. Eine Datei als Argument wird geöffnet.
 
-Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL, `libxkbcommon-x11` (X11). Eine Datei als Argument wird geöffnet.
+## Aufbau
 
-## Daten
+| Ordner | Inhalt |
+| --- | --- |
+| `crates/owndraw-core/` | Kern ohne Oberfläche: Board, Seiten, Formerkennung, Rendering (tiny-skia), `.owndraw`, Xournal++, Export, Abgleich für die Zusammenarbeit |
+| `crates/owndraw/` | App (egui/eframe): Oberfläche, Plattformen (Desktop, Android, Web), Autosave, Update-Dienst |
+| `crates/owndraw-android/` | Android-Einstieg, Java-Hilfsklassen, Manifest |
+| `crates/owndraw-web/` | Browser-Einstieg (WebAssembly) mit `index.html` |
+| `crates/owndraw-server/` | Server für die Web-Version (axum + SQLite, WebSocket, Admin-Panel) |
+| `packaging/` | AppImage-Vorlage, Server-Deployment (Docker, Caddy, Installer) |
+| `docs/` | [Architektur](docs/architektur.md), [Web](docs/web.md), [Server](docs/server.md), [Web-API](docs/web-api.md), [Android](docs/android.md), [Release](docs/release.md) |
 
-- Boards: wo du sie speicherst; Standard `~/Dokumente/OwnDraw/` (Android: gewählter Ordner oder App-Speicher).
-- Einstellungen und Zuletzt-Liste: `~/.config/OwnDraw/` (`settings.json`, `recent.json`), Cache `~/.cache/OwnDraw/`.
+## Daten (Desktop)
+
+- Boards liegen dort, wo du sie speicherst, standardmäßig in `~/Dokumente/OwnDraw/` (Android: gewählter Ordner oder App-Speicher).
+- Einstellungen und Zuletzt-Liste: `~/.config/OwnDraw/`, Cache `~/.cache/OwnDraw/`.
 - `OWNDRAW_DATA=<ordner>` legt alles darunter ab (Tests).
-
-## Bedienung am PC
-
-- Linke Maustaste zeichnet, rechte/mittlere Taste oder Leertaste + Ziehen verschiebt, Mausrad zoomt.
-- Tasten: P Stift, M Marker, E Radierer, S Auswahl, R Form, T Text, 0 alles zeigen, +/− Zoom;
-  Strg+Z/Y/C/X/V/D, Entf löscht die Auswahl. Tooltips zeigen die Kürzel.
-- Mittlere Maustaste kurz auf ein Objekt klicken: Objekt auswählen, Auswahlleiste (erweitertes Menü) erscheint.
-- Text: aufs Blatt tippen und direkt schreiben (Enter = neue Zeile); Esc, Strg+Enter oder Tippen daneben übernimmt.
-  Tippen auf einen fertigen Text zeigt das erweiterte Menü (Größe, Farbe, Bearbeiten …), erneutes Tippen bearbeitet ihn.
 
 ## Stand
 
-Version 4.5.0. Unter Linux (X11/Xvfb) automatisiert getestet. Android-Code ist geprüft (`cargo check`), die APK
-entsteht in CI; auf echten Geräten noch ungetestet. Für Updates muss vor dem ersten Release der echte
-minisign-Schlüssel eingetragen werden (`docs/release.md`).
+Version 4.6.0. Desktop und Web sind automatisiert getestet (Linux, Chromium). Android, Firefox/Safari und echte
+Touch-Geräte sind noch nicht auf Geräten geprüft.
+
+Lizenz: [MIT](LICENSE)

@@ -16,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 argon2 = "0.6.0"
 owndraw-core = { path = "../owndraw-core" }
-axum = { version = "0.8.9", features = ["ws"] }
+axum = { version = "0.8.9", features = ["ws", "multipart"] }
 flate2 = "1.1.11"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 getrandom = "0.4.3"

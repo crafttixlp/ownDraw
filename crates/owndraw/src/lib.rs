@@ -7,6 +7,9 @@ mod demo;
 mod kv;
 #[allow(dead_code)]
 mod layout;
+/// Server-Anbindung (Konto, Server-Boards, Live-Zusammenarbeit): Web-App und Desktop, nicht Android.
+#[cfg(not(target_os = "android"))]
+mod net;
 #[allow(dead_code)]
 mod platform;
 mod recent;

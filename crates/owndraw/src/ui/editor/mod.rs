@@ -1241,7 +1241,7 @@ impl Editor {
 impl Editor {
     /// Live-Sitzung für Server-Boards: Verbindung, Abgleich, fremde Zeiger, Leiste mit Teilnehmern.
     fn live_frame(&mut self, ui: &Ui, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
-        let Some(id) = self.file().and_then(crate::platform::web::api::srv_id).map(String::from) else { return };
+        let Some(id) = self.file().and_then(crate::net::srv_id).map(String::from) else { return };
         let mut lv = self.live.take().unwrap_or_else(|| live::Live::new(&id, self));
         lv.frame(self, ctx, sh);
         lv.paint_cursors(ui, self, sh.now);
@@ -1250,7 +1250,7 @@ impl Editor {
         }
         self.live = Some(lv);
         // Speicherfehler des Autosave per PUT (kommen asynchron) einmal anzeigen
-        let err = crate::platform::web::api::with(|n| n.save_errors.get(&id).cloned());
+        let err = crate::net::with(|n| n.save_errors.get(&id).cloned());
         match err {
             Some(e) if !self.st.error_toast_shown => {
                 self.st.error_toast_shown = true;
@@ -1263,7 +1263,7 @@ impl Editor {
 
     /// Speicheranzeige für Server-Boards.
     fn srv_save_state(&self) -> Option<(&'static str, bool)> {
-        use crate::platform::web::api;
+        use crate::net;
         let id = self.file().and_then(api::srv_id)?;
         if let Some(l) = self.live.as_ref().filter(|l| l.is_live()) {
             return Some(l.status());

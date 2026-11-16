@@ -18,7 +18,7 @@ use std::path::Path;
 pub fn bug_report_available() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        crate::platform::web::api::online()
+        crate::net::online()
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -30,7 +30,7 @@ pub fn bug_report_available() -> bool {
 pub fn server_store_available() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        crate::platform::web::api::licensed()
+        crate::net::licensed()
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -42,7 +42,7 @@ pub fn server_store_available() -> bool {
 pub fn server_free_text() -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
-        crate::platform::web::api::free_bytes().map(mb_text)
+        crate::net::free_bytes().map(mb_text)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -72,7 +72,7 @@ pub fn open_bug_report(_sh: &mut crate::app::Shared) {
 pub fn admin_available() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        crate::platform::web::api::online() && crate::platform::web::api::is_admin()
+        crate::net::online() && crate::net::is_admin()
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

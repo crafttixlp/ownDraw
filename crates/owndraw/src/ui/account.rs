@@ -4,7 +4,7 @@
 
 use crate::app::Shared;
 use crate::layout::FormFactor;
-use crate::platform::web::api::{self, BoardInfo, Server};
+use crate::net::{self, BoardInfo, Server};
 use crate::style::{self, c};
 use egui::{Align2, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 

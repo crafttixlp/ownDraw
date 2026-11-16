@@ -12,7 +12,7 @@
 
 use super::{toolbar, Editor, Lay, M};
 use crate::app::Shared;
-use crate::platform::web::api::{self, SockEv, Socket};
+use crate::net::{self, SockEv, Socket};
 use crate::session;
 use crate::style::{self, c};
 use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};

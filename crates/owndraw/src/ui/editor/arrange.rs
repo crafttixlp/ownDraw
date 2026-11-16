@@ -102,8 +102,8 @@ impl Editor {
             if let Some(l) = self.live.as_ref().filter(|l| l.is_live()) {
                 return l.can_write();
             }
-            if let Some(id) = self.file().and_then(crate::platform::web::api::srv_id) {
-                if crate::platform::web::api::board(id).is_some_and(|b| b.role == "view") {
+            if let Some(id) = self.file().and_then(crate::net::srv_id) {
+                if crate::net::board(id).is_some_and(|b| b.role == "view") {
                     return false;
                 }
             }
@@ -114,7 +114,7 @@ impl Editor {
     /// Name für Kommentare: angemeldetes Konto, sonst „Ich“.
     pub(super) fn x_author(&self) -> String {
         #[cfg(target_arch = "wasm32")]
-        if let Some(me) = crate::platform::web::api::with(|n| n.me.clone()) {
+        if let Some(me) = crate::net::with(|n| n.me.clone()) {
             let n = if me.name.trim().is_empty() { me.email } else { me.name };
             if !n.trim().is_empty() {
                 return n;

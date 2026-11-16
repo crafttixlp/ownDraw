@@ -210,8 +210,8 @@ impl App {
             e.flush(&mut self.sh);
             // Browser: zwischengespeicherte Bytes eines Server-Boards freigeben (beim Öffnen neu geladen)
             #[cfg(target_arch = "wasm32")]
-            if let Some(FileRef::Uri(u)) = e.file().filter(|f| crate::platform::web::api::srv_id(f).is_some()) {
-                crate::platform::web::api::with(|n| n.files.remove(u));
+            if let Some(FileRef::Uri(u)) = e.file().filter(|f| crate::net::srv_id(f).is_some()) {
+                crate::net::with(|n| n.files.remove(u));
             }
             if let Some(f) = e.file().cloned().filter(Self::in_recent) {
                 self.recent.add(Self::recent_entry(f.clone(), &e));
@@ -221,8 +221,8 @@ impl App {
         // Browser: Liste der Server-Boards und Speicherplatz auffrischen
         #[cfg(target_arch = "wasm32")]
         {
-            crate::platform::web::api::refresh_boards();
-            crate::platform::web::api::refresh_me();
+            crate::net::refresh_boards();
+            crate::net::refresh_me();
         }
         self.screen = Screen::Start;
         self.title(ctx);
@@ -319,10 +319,10 @@ impl App {
         let _ = server; // nur im Browser genutzt
         // Browser mit gültiger Lizenz und Speicherort Server: am Server anlegen (öffnet sich, sobald der Server antwortet)
         #[cfg(target_arch = "wasm32")]
-        if server && crate::platform::web::api::licensed() {
+        if server && crate::net::licensed() {
             let doc = session::new_document(&params);
             match session::serialize(&doc) {
-                Ok(b) => crate::platform::web::api::create_board(&params.name, b),
+                Ok(b) => crate::net::create_board(&params.name, b),
                 Err(e) => self.sh.toast_for(&e, 4.0),
             }
             let _ = (ctx, custom);
@@ -345,7 +345,7 @@ impl App {
     /// Ein Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher liegt.
     #[cfg(target_arch = "wasm32")]
     fn web_moves(&mut self) {
-        use crate::platform::web::api;
+        use crate::net;
         let (moved, to_local) = api::with(|n| (std::mem::take(&mut n.moved), std::mem::take(&mut n.to_local)));
         for f in moved {
             self.recent.remove(&f);
@@ -483,9 +483,9 @@ impl App {
                 if let Some(e) = self.editor.as_mut() {
                     // Browser: Server-Board auch in der Liste umbenennen (nur Besitzer)
                     #[cfg(target_arch = "wasm32")]
-                    if let (crate::ui::dialogs::RenameWhat::Doc, Some(id)) = (&what, e.file().and_then(crate::platform::web::api::srv_id)) {
-                        if crate::platform::web::api::board(id).is_some_and(|b| b.role == "owner") {
-                            crate::platform::web::api::rename_board(id, &text);
+                    if let (crate::ui::dialogs::RenameWhat::Doc, Some(id)) = (&what, e.file().and_then(crate::net::srv_id)) {
+                        if crate::net::board(id).is_some_and(|b| b.role == "owner") {
+                            crate::net::rename_board(id, &text);
                         }
                     }
                     e.apply_rename(what, text, now);
@@ -568,7 +568,7 @@ impl App {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let (open, notes) = crate::platform::web::api::with(|n| (std::mem::take(&mut n.open), std::mem::take(&mut n.notices)));
+            let (open, notes) = crate::net::with(|n| (std::mem::take(&mut n.open), std::mem::take(&mut n.notices)));
             for m in notes {
                 self.sh.toast_for(&m, 4.0);
             }

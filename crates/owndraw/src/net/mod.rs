@@ -1,5 +1,7 @@
-//! Server-Anbindung der Web-App (Vertrag: `docs/web-api.md`). Alles läuft unter derselben Origin: Cookie
-//! `owndraw_session` (vom Browser verwaltet, `credentials: same-origin`), schreibende Anfragen mit `X-OwnDraw: 1`.
+//! Server-Anbindung (Vertrag: `docs/web-api.md`) für Web-App und Desktop. Transport je Plattform: `web.rs`
+//! (fetch/WebSocket des Browsers, gleiche Origin, Cookie vom Browser) bzw. `native.rs` (Desktop: ureq/tungstenite
+//! in Hintergrund-Threads, Server-Adresse einstellbar, Sitzungs-Cookie in einer Datei mit Rechten 0600).
+//! Schreibende Anfragen mit `X-OwnDraw: 1`.
 //!
 //! - Beim Start `GET /api/me`: 200 → angemeldet, 401 → Server da, aber Gast; alles andere (statisches Hosting
 //!   ohne `/api`, Netzfehler) → [`Server::Offline`], die App bleibt im Gastmodus.
@@ -13,10 +15,15 @@ use crate::platform::FileRef;
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::{spawn_local, JsFuture};
+
+#[cfg(target_arch = "wasm32")]
+#[path = "web.rs"]
+mod tr;
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "native.rs"]
+mod tr;
+#[cfg(not(target_arch = "wasm32"))]
+pub use tr::{base_url, pump, set_base_url};
 
 /// Präfix der Verweise auf Server-Boards.
 pub const SRV: &str = "srv:";
@@ -259,7 +266,9 @@ fn repaint() {
 /// Beim Start: Kontext merken, Anmeldung prüfen.
 pub fn init(ctx: &egui::Context) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
-    take_invite_from_url();
+    if let Some(token) = tr::init(ctx) {
+        invite_info(&token);
+    }
     refresh_me();
 }
 
@@ -309,48 +318,9 @@ impl Resp {
     }
 }
 
-fn js_text(e: JsValue) -> String {
-    e.as_string().or_else(|| js_sys::Reflect::get(&e, &"message".into()).ok().and_then(|m| m.as_string())).unwrap_or_else(|| "Netzwerkfehler".into())
-}
-
-async fn fetch(method: &str, path: &str, body: Option<Body>, headers: &[(&str, String)]) -> Result<Resp, String> {
-    let w = web_sys::window().ok_or("kein window")?;
-    let init = web_sys::RequestInit::new();
-    init.set_method(method);
-    init.set_credentials(web_sys::RequestCredentials::SameOrigin);
-    let h = web_sys::Headers::new().map_err(js_text)?;
-    if method != "GET" {
-        h.set("X-OwnDraw", "1").map_err(js_text)?;
-    }
-    match body {
-        Some(Body::Json(v)) => {
-            h.set("Content-Type", "application/json").map_err(js_text)?;
-            init.set_body(&JsValue::from_str(&v.to_string()));
-        }
-        Some(Body::Bytes(b)) => {
-            h.set("Content-Type", "application/octet-stream").map_err(js_text)?;
-            init.set_body(&js_sys::Uint8Array::from(b.as_slice()));
-        }
-        None => {}
-    }
-    for (k, v) in headers {
-        h.set(k, v).map_err(js_text)?;
-    }
-    init.set_headers(&h);
-    let req = web_sys::Request::new_with_str_and_init(path, &init).map_err(js_text)?;
-    let resp: web_sys::Response = JsFuture::from(w.fetch_with_request(&req)).await.map_err(js_text)?.dyn_into().map_err(js_text)?;
-    let version = resp.headers().get("x-board-version").ok().flatten().and_then(|v| v.parse().ok());
-    let buf = JsFuture::from(resp.array_buffer().map_err(js_text)?).await.map_err(js_text)?;
-    Ok(Resp { status: resp.status(), version, body: js_sys::Uint8Array::new(&buf).to_vec() })
-}
-
 /// Anfrage im Hintergrund; `done` läuft im UI-Thread, danach wird neu gezeichnet.
 pub fn request(method: &'static str, path: String, body: Option<Body>, headers: Vec<(&'static str, String)>, done: impl FnOnce(Result<Resp, String>) + 'static) {
-    spawn_local(async move {
-        let r = fetch(method, &path, body, &headers).await;
-        done(r);
-        repaint();
-    });
+    tr::request(method, path, body, headers, Box::new(done));
 }
 
 fn notice(s: impl Into<String>) {
@@ -530,7 +500,7 @@ pub fn move_to_server(name: &str, bytes: Vec<u8>, local: FileRef) {
 
 /// `POST /api/boards`; `local` = None → danach öffnen, sonst Verschieben aus dem Browser.
 fn upload(name: &str, bytes: Vec<u8>, local: Option<FileRef>) {
-    let enc = String::from(js_sys::encode_uri_component(name));
+    let enc = tr::encode(name);
     let copy = bytes.clone();
     let moving = local.is_some();
     request("POST", "/api/boards".into(), Some(Body::Bytes(bytes)), vec![("X-Board-Name", enc)], move |r| match r {
@@ -767,27 +737,11 @@ pub fn remove_member(id: &str, user_id: &str) {
 
 // ---------------------------------------------------------------- Einladungslinks
 
-/// Liest `#invite=<token>` aus der Adresse, merkt die Einladung vor und entfernt das Fragment aus der Adresszeile.
-fn take_invite_from_url() {
-    let Some(w) = web_sys::window() else { return };
-    let loc = w.location();
-    let Ok(hash) = loc.hash() else { return };
-    let Some(token) = hash.strip_prefix("#invite=") else { return };
-    let token = token.trim().to_string();
-    if token.is_empty() {
-        return;
-    }
-    if let (Ok(path), Ok(search), Ok(h)) = (loc.pathname(), loc.search(), w.history()) {
-        let _ = h.replace_state_with_url(&JsValue::NULL, "", Some(&format!("{path}{search}")));
-    }
-    invite_info(&token);
-}
-
 /// Lädt die Vorschau einer Einladung (ohne Anmeldung) und merkt sie vor.
 pub fn invite_info(token: &str) {
     with(|n| n.invite = Some(PendingInvite { token: token.to_string(), info: None, error: None }));
     let tok = token.to_string();
-    let enc = String::from(js_sys::encode_uri_component(token));
+    let enc = tr::encode(token);
     request("GET", format!("/api/invites/{enc}"), None, vec![], move |r| {
         with(|n| {
             let Some(p) = n.invite.as_mut().filter(|p| p.token == tok) else { return };
@@ -808,7 +762,7 @@ pub fn invite_info(token: &str) {
 /// Tritt der Einladung bei. Ohne Anmeldung legt der Server einen Gast mit `name` an.
 pub fn join_invite(token: &str, name: &str) {
     start_form();
-    let enc = String::from(js_sys::encode_uri_component(token));
+    let enc = tr::encode(token);
     let body = if logged_in() { json!({}) } else { json!({"name": name.trim()}) };
     request("POST", format!("/api/invites/{enc}/join"), Some(Body::Json(body)), vec![], |r| {
         if form_result(&r) {
@@ -873,7 +827,7 @@ pub fn create_invite(board: &str, role: &str, time: LinkTime) {
         Ok(r) if r.ok() => {
             let v = r.json();
             let Some(token) = v.get("token").and_then(Value::as_str) else { return };
-            let origin = web_sys::window().and_then(|w| w.location().origin().ok()).unwrap_or_default();
+            let origin = tr::origin();
             let url = format!("{origin}/#invite={token}");
             let inv = Invite::parse(&v);
             with(|n| {
@@ -925,62 +879,4 @@ pub enum SockEv {
     Closed { code: u16, reason: String },
 }
 
-/// WebSocket zu `/api/collab/{id}` (Cookie geht automatisch mit).
-pub struct Socket {
-    ws: web_sys::WebSocket,
-    inbox: Rc<RefCell<Vec<SockEv>>>,
-    _cbs: Vec<Closure<dyn FnMut(JsValue)>>,
-}
-
-impl Socket {
-    pub fn connect(board: &str) -> Result<Socket, String> {
-        let loc = web_sys::window().ok_or("kein window")?.location();
-        let proto = if loc.protocol().map_err(js_text)? == "https:" { "wss" } else { "ws" };
-        let url = format!("{proto}://{}/api/collab/{board}", loc.host().map_err(js_text)?);
-        let ws = web_sys::WebSocket::new(&url).map_err(js_text)?;
-        let inbox: Rc<RefCell<Vec<SockEv>>> = Rc::default();
-        let mut cbs: Vec<Closure<dyn FnMut(JsValue)>> = Vec::new();
-        let i = inbox.clone();
-        cbs.push(Closure::new(move |_e: JsValue| {
-            i.borrow_mut().push(SockEv::Open);
-            repaint();
-        }));
-        ws.set_onopen(Some(cbs[0].as_ref().unchecked_ref()));
-        let i = inbox.clone();
-        cbs.push(Closure::new(move |e: JsValue| {
-            let Ok(e) = e.dyn_into::<web_sys::MessageEvent>() else { return };
-            if let Some(t) = e.data().as_string() {
-                if let Ok(v) = serde_json::from_str(&t) {
-                    i.borrow_mut().push(SockEv::Msg(v));
-                    repaint();
-                }
-            }
-        }));
-        ws.set_onmessage(Some(cbs[1].as_ref().unchecked_ref()));
-        let i = inbox.clone();
-        cbs.push(Closure::new(move |e: JsValue| {
-            let (code, reason) = e.dyn_into::<web_sys::CloseEvent>().map(|c| (c.code(), c.reason())).unwrap_or((1006, String::new()));
-            i.borrow_mut().push(SockEv::Closed { code, reason });
-            repaint();
-        }));
-        ws.set_onclose(Some(cbs[2].as_ref().unchecked_ref()));
-        Ok(Socket { ws, inbox, _cbs: cbs })
-    }
-
-    pub fn send(&self, v: &Value) -> bool {
-        self.ws.ready_state() == web_sys::WebSocket::OPEN && self.ws.send_with_str(&v.to_string()).is_ok()
-    }
-
-    pub fn take(&self) -> Vec<SockEv> {
-        std::mem::take(&mut self.inbox.borrow_mut())
-    }
-}
-
-impl Drop for Socket {
-    fn drop(&mut self) {
-        self.ws.set_onopen(None);
-        self.ws.set_onmessage(None);
-        self.ws.set_onclose(None);
-        let _ = self.ws.close();
-    }
-}
+pub use tr::Socket;

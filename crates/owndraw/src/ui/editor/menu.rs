@@ -160,7 +160,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
 /// Browser: „Teilen …“ (Server-Board, Besitzer mit Lizenz) bzw. „Am Server speichern“ (lokales Board, Lizenz).
 #[cfg(target_arch = "wasm32")]
 fn server_rows(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, h: f32, close: &mut bool) {
-    use crate::platform::web::api;
+    use crate::net;
     if !api::licensed() {
         return;
     }

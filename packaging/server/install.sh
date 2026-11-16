@@ -216,6 +216,7 @@ else
   docker volume create owndraw-web-build >/dev/null
   docker run --rm -v "$DIR":/src -v owndraw-web-build:/cache -w /src \
     -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/cache/target rust:1-bookworm bash -ec "
+      export PATH=/cache/cargo/bin:\$PATH   # cargo install landet in CARGO_HOME/bin
       rustup target add wasm32-unknown-unknown >/dev/null
       command -v wasm-bindgen >/dev/null && [ \"\$(wasm-bindgen --version | awk '{print \$2}')\" = '$WB_VER' ] \
         || cargo install -q wasm-bindgen-cli --version '$WB_VER' --locked

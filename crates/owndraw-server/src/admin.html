@@ -50,6 +50,9 @@ button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--dan
 button.danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
 button.small { padding: 4px 10px; min-height: 32px; font-size: .86rem; }
 header button.small { border-color: transparent; color: var(--muted); }
+header a.webapp { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; min-height: 32px; font-size: .86rem; font-weight: 500; border-radius: 8px; border: 1px solid var(--line); color: var(--text); text-decoration: none; white-space: nowrap; flex: none; }
+header a.webapp:hover { background: var(--hover); }
+header a.webapp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tabs { display: inline-flex; gap: 2px; margin-bottom: 20px; padding: 3px; background: var(--chip); border-radius: 10px; overflow-x: auto; max-width: 100%; }
 .tab { padding: 7px 14px; border-radius: 8px; background: transparent; border: 0; min-height: 34px; cursor: pointer; white-space: nowrap; color: var(--muted); font-weight: 500; }
 .tab:hover { color: var(--text); background: transparent; }
@@ -113,7 +116,8 @@ dialog .row { justify-content: flex-end; }
 .report-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 4px; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--chip); border-radius: 10px; margin-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-@media (max-width: 520px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile .big { font-size: 1.6rem; } main { padding: 16px 12px 32px; } header .bar { padding: 10px 12px; } .card { padding: 14px; } header .who { display: none; } .tabs { display: flex; } }
+@media (max-width: 520px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile .big { font-size: 1.6rem; } main { padding: 16px 12px 32px; } header .bar { padding: 10px 12px; } .card { padding: 14px; } header .who { display: none; } .tabs { display: flex; } header .bar { gap: 4px; } header .bar .small, header a.webapp { padding: 4px 8px; } header a.webapp .long { display: none; } header h1 span { display: block; font-size: .8rem; } header h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } header .bar > button, header a.webapp { flex: none; } }
+@media (max-width: 440px) { body.inapp header h1 { display: none; } }
 </style>
 </head>
 <body>
@@ -123,6 +127,7 @@ dialog .row { justify-content: flex-end; }
     <span class="who" id="who"></span>
     <button id="security" class="small" hidden>Sicherheit</button>
     <button id="logout" class="small" hidden>Abmelden</button>
+    <a class="webapp" href="/" title="Zurück zur Web-App">← <span><span class="long">Zur </span>Web-App</span></a>
   </div>
 </header>
 <main>
@@ -375,6 +380,7 @@ function showView(id) {
   const inApp = id === "appView";
   $("security").hidden = !inApp;
   $("logout").hidden = id === "loginView";
+  document.body.classList.toggle("inapp", inApp);
 }
 const msgBox = (id, msg) => $(id).replaceChildren(msg ? h("div", { class: "msg err" }, msg) : "");
 function showLogin(msg) {

@@ -57,6 +57,8 @@ pub const ALIGN: i32 = 66;
 pub const DISTRIBUTE: i32 = 67;
 /// Icons ab 60 (für Tests).
 pub const BLOCK60: [i32; 8] = [CONNECTOR, TABLE, PIN, CROP, GROUP, UNGROUP, ALIGN, DISTRIBUTE];
+/// Mathe-Formel (Wurzelzeichen mit x). Hohe Nummer, damit parallel ergänzte Icons nicht kollidieren.
+pub const FORMULA: i32 = 80;
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -367,6 +369,11 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, false, &[20.5, 4.0, 20.5, 20.0]);
             rect(&mut pb, 9.0, 7.0, 15.0, 17.0);
         }
+        FORMULA => {
+            poly(&mut pb, false, &[2.5, 13.0, 5.0, 11.5, 8.5, 20.0, 12.5, 4.0, 21.5, 4.0]);
+            poly(&mut pb, false, &[14.0, 9.0, 20.0, 17.0]);
+            poly(&mut pb, false, &[20.0, 9.0, 14.0, 17.0]);
+        }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
             poly(&mut pb, false, &[5.0, 12.0, 19.0, 12.0]);
@@ -394,7 +401,7 @@ mod tests {
 
     #[test]
     fn alle_icons_sichtbar() {
-        for id in (0..=37).chain(BLOCK60) {
+        for id in (0..=37).chain(BLOCK60).chain([FORMULA]) {
             for filled in [false, true] {
                 let pm = render(id, 48, 0xFFFFFFFF, filled).expect("pixmap");
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();

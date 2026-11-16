@@ -173,6 +173,23 @@
           "covers": ["tool:Kommentar", "action:tool.pin", "extra:kommentar-antworten"]
         },
         {
+          "id": "tool-formel",
+          "title": "Formel",
+          "text": "Setzt Mathe-Formeln in LaTeX-Schreibweise. Tippe aufs Blatt, schreibe die Formel und sieh sie live in der Vorschau. Fehlerhafte Stellen erscheinen rot. Einschalten unter Einstellungen → Werkzeuge (Extras).",
+          "how": [
+            "Schnellknöpfe fügen Bruch, Wurzel, Hoch-/Tiefstellung, Summe, Integral, Klammern, griechische Buchstaben und Zeichen ein; markierter Text wird eingepackt.",
+            "Brüche und Wurzeln: \\frac{a}{b}, \\sqrt{x}, \\sqrt[3]{x}. Hoch/tief: x^2, a_{n+1}.",
+            "Klammern, die mitwachsen: \\left( \\frac{1}{2} \\right). Summe/Integral mit Grenzen: \\sum_{k=1}^{n} k, \\int_0^\\infty e^{-x}\\,dx, \\lim_{x \\to 0}.",
+            "Griechisch und Zeichen: \\alpha \\beta \\pi \\Omega, \\cdot \\times \\pm \\le \\ge \\ne \\approx \\infty \\rightarrow \\Rightarrow \\in.",
+            "Text und Akzente: \\text{Fläche}, \\vec{v}, \\bar{x}, \\hat{y}. Matrizen: \\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix}, auch bmatrix, vmatrix und cases.",
+            "Bearbeiten: mit dem Werkzeug auf die Formel tippen oder eine ausgewählte Formel erneut antippen. Strg+Enter übernimmt, Esc bricht ab, leerer Text löscht die Formel.",
+            "Formeln lassen sich wie Text verschieben, skalieren, drehen und einfärben; PNG/PDF zeigen sie exakt, Xournal++ bekommt Texte und Linien."
+          ],
+          "keys": ["Y"],
+          "action": ["tool.math"],
+          "covers": ["tool:Formel", "action:tool.math"]
+        },
+        {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",

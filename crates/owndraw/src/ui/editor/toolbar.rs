@@ -380,6 +380,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         Tool::Connector => ic::CONNECTOR,
         Tool::Table => ic::TABLE,
         Tool::Pin => ic::PIN,
+        Tool::Math => ic::FORMULA,
     })
 }
 
@@ -395,7 +396,7 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
         None => super::glyphs::paint_tool(ui.painter(), rect, ed, t, isz, c(tint)),
     }
     // Farbpunkt als Hinweis auf die aktuelle Farbe
-    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin) {
+    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin | Tool::Math) {
         let pos = rect.right_bottom() - Vec2::new(size * 0.22, size * 0.22);
         ui.painter().circle_filled(pos, 4.5, c(ed.board.color));
         ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.0, c(p.line)));

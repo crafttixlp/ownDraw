@@ -11,6 +11,7 @@ pub mod icons;
 pub mod item;
 pub mod laser;
 pub mod layer;
+pub mod math;
 pub mod migrate;
 pub mod pages;
 pub mod recognizer;

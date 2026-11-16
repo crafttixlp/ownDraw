@@ -270,6 +270,10 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             colors(ui, ed, sh);
         }
         Tool::Pin => colors(ui, ed, sh),
+        Tool::Math => {
+            ui.label(egui::RichText::new("Aufs Blatt tippen: neue Formel. Auf eine Formel tippen: bearbeiten.").size(12.0).color(c(style::pal().dim)));
+            colors(ui, ed, sh);
+        }
     }
 }
 

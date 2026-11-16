@@ -107,6 +107,7 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::neu(Tool::Connector, "connector", "Verbinder", Group::Formen, ic::CONNECTOR, "Linie oder Pfeil, der an Objekten andockt und beim Verschieben mitgeht.").key("W"),
     ToolDef::neu(Tool::Table, "table", "Tabelle", Group::Ordnen, ic::TABLE, "Setzt eine Tabelle; Zellen beschriftest du direkt auf dem Blatt.").key("B"),
     ToolDef::neu(Tool::Pin, "pin", "Kommentar", Group::Extras, ic::PIN, "Stecknadel mit Kommentar und Antworten, für alle im Board sichtbar.").key("C"),
+    ToolDef::neu(Tool::Math, "math", "Formel", Group::Extras, ic::FORMULA, "Setzt Mathe-Formeln in LaTeX-Schreibweise mit Live-Vorschau.").key("Y"),
 ];
 
 /// Werkzeug nach Kennung.

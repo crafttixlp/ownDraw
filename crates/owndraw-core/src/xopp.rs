@@ -604,6 +604,57 @@ fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
         }
         // Kommentare gehören nicht in den Export
         Kind::Pin(_) => {}
+        Kind::Math(m) => {
+            // Formel: Zeichenfolgen als Texte (Xournal++ dreht keine Texte: nur der Startpunkt dreht mit),
+            // Bruchstriche, Wurzeln und Klammern als Striche bzw. gefüllte Flächen.
+            use crate::math::{Fnt, Prim, ERR_COLOR};
+            let k = m.size / crate::item::MATH_BASE;
+            let col = |err: bool| if err { ERR_COLOR } else { it.color };
+            let pts = |p: &[f32]| -> Vec<f32> {
+                p.chunks_exact(2).flat_map(|c| {
+                    let (x, y) = m.world(c[0], c[1]);
+                    [x, y, 0.5]
+                }).collect()
+            };
+            for pr in &m.formula().prims {
+                match pr {
+                    Prim::Glyphs { s, x, y, size, f, err } => {
+                        let ts = size * k;
+                        let (bx, by) = m.world(*x, *y);
+                        let top = by - crate::text::metrics(ts).0;
+                        let font = match f {
+                            Fnt::It => "Sans Italic",
+                            Fnt::Bold => "Sans Bold",
+                            Fnt::Up => "Sans",
+                        };
+                        emit_text(out, s, col(*err), ts, bx - ox, top - oy, &[("font", font)]);
+                    }
+                    Prim::Line { p, w, err } => {
+                        let mut st = it.clone();
+                        st.color = col(*err);
+                        st.width = w * k;
+                        emit_stroke(out, &st, &pts(p), false, false, ox, oy, &[], None);
+                    }
+                    Prim::Poly { p, err } if p.len() >= 6 => {
+                        let mut q = pts(p);
+                        q.extend_from_slice(&q[..3].to_vec());
+                        let mut st = it.clone();
+                        st.color = col(*err);
+                        st.width = 0.01;
+                        emit_stroke(out, &st, &q, false, false, ox, oy, &[], Some(255));
+                    }
+                    Prim::Poly { .. } => {}
+                    Prim::Rect { x, y, w, h, err } => {
+                        let mut q = pts(&[*x, *y, x + w, *y, x + w, y + h, *x, y + h]);
+                        q.extend_from_slice(&q[..3].to_vec());
+                        let mut st = it.clone();
+                        st.color = col(*err);
+                        st.width = 0.01;
+                        emit_stroke(out, &st, &q, false, false, ox, oy, &[], Some(255));
+                    }
+                }
+            }
+        }
         Kind::Shape(g) => {
             if g.kind == crate::item::DIM && g.q.len() >= 4 {
                 // Maßtext waagerecht über der Mitte (Xournal++-Texte lassen sich nicht drehen)

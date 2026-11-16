@@ -103,6 +103,30 @@
           "covers": ["tool:Bild", "action:tool.image"]
         },
         {
+          "id": "tool-verbinder",
+          "title": "Verbinder",
+          "text": "Zeichnet eine Linie oder einen Pfeil, der an Formen, Texten und Bildern andockt. Verschiebst du ein Objekt, gehen angedockte Verbinder mit.",
+          "how": ["Beginne und ende das Ziehen auf einem Objekt. Das Ziel, an dem angedockt wird, ist hervorgehoben.", "Im Popover wählst du Pfeil, Linie oder Doppelpfeil.", "Mit der Auswahl ziehst du ein Ende auf ein anderes Objekt. „Lösen“ in der Auswahlleiste hängt den Verbinder ab.", "Neues Werkzeug: in den Einstellungen unter „Werkzeuge“ einschalten."],
+          "action": ["tool.connector"],
+          "covers": ["tool:Verbinder", "action:tool.connector", "extra:verbinder-loesen"]
+        },
+        {
+          "id": "tool-tabelle",
+          "title": "Tabelle",
+          "text": "Setzt mit einem Tippen eine Tabelle. Zeilen und Spalten stellst du im Popover ein (Standard 3 × 3).",
+          "how": ["Tippe mit der Auswahl in eine Zelle der ausgewählten Tabelle (oder doppelt in die Tabelle), um sie direkt zu beschriften. Die Zeile wächst mit dem Text.", "In der Auswahlleiste fügst du an der aktuellen Zelle Zeilen und Spalten hinzu oder entfernst sie.", "Neues Werkzeug: in den Einstellungen unter „Werkzeuge“ einschalten."],
+          "action": ["tool.table"],
+          "covers": ["tool:Tabelle", "action:tool.table", "extra:tabelle-zellen"]
+        },
+        {
+          "id": "tool-kommentar",
+          "title": "Kommentar",
+          "text": "Tippen setzt eine Stecknadel und öffnet ein kleines Fenster für deinen Kommentar. Andere können antworten; Kommentare laufen bei der Live-Zusammenarbeit mit und erscheinen nicht im Export.",
+          "how": ["Ein Tipp auf eine Stecknadel öffnet den Kommentar mit jedem Werkzeug.", "Als Autor steht dein Kontoname, ohne Anmeldung „Ich“.", "Mit dem Recht „Nur ansehen“ kannst du Kommentare lesen, aber nicht schreiben.", "Neues Werkzeug: in den Einstellungen unter „Werkzeuge“ einschalten."],
+          "action": ["tool.pin"],
+          "covers": ["tool:Kommentar", "action:tool.pin", "extra:kommentar-antworten"]
+        },
+        {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",
@@ -156,6 +180,21 @@
           "how": ["Strg+V fügt an der Mausposition ein, der Knopf in der Mitte der Ansicht.", "Rechtsklick oder langes Tippen auf die Fläche öffnet ein Menü mit Kopieren, Ausschneiden und Einfügen."],
           "action": ["copy", "cut", "paste"],
           "covers": ["action:copy", "action:cut", "action:paste"]
+        },
+        {
+          "id": "sel-gruppen",
+          "title": "Gruppieren, ausrichten, verteilen",
+          "text": "Mehrere ausgewählte Objekte fasst du zu einer Gruppe zusammen; ein Tipp auf ein Mitglied wählt dann die ganze Gruppe. Ab zwei Objekten richtest du sie links, mittig, rechts, oben, in der Mitte oder unten aus, ab drei verteilst du sie waagerecht oder senkrecht mit gleichen Abständen.",
+          "how": ["Knöpfe in der Auswahlleiste oder Rechtsklick/langes Tippen auf die Auswahl.", "Gruppen zählen beim Ausrichten und Verteilen als ein Objekt."],
+          "action": ["group", "ungroup"],
+          "covers": ["action:group", "action:ungroup", "extra:ausrichten", "extra:verteilen"]
+        },
+        {
+          "id": "sel-zuschneiden",
+          "title": "Bild zuschneiden",
+          "text": "Wähle ein Bild aus und tippe in der Auswahlleiste auf „Zuschneiden“ (oder tippe doppelt auf das Bild). Ziehe die Kanten- und Eckgriffe; der abgeschnittene Teil wird abgedunkelt, den Ausschnitt kannst du verschieben.",
+          "how": ["„Fertig“ (Enter) übernimmt, „Abbrechen“ (Esc) verwirft, „Zurücksetzen“ zeigt wieder das ganze Bild.", "Der Zuschnitt lässt sich jederzeit ändern oder zurücksetzen, das Original bleibt erhalten."],
+          "covers": ["extra:zuschneiden"]
         }
       ]
     },

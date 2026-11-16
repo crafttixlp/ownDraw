@@ -174,6 +174,26 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
         }
         Tool::Note => colors(ui, ed, sh),
         Tool::Image => {}
+        Tool::Connector => {
+            style::caption(ui, "Art");
+            ui.horizontal_wrapped(|ui| {
+                for (i, l) in super::arrange::CONN_STYLES.iter().enumerate() {
+                    if style::chip(ui, l, ed.xs.conn_style == i as i32, h).clicked() {
+                        ed.xs.conn_style = i as i32;
+                        ed.apply_conn_style();
+                        sh.settings.extra.insert("conn".into(), (i as i64).into());
+                    }
+                }
+            });
+            ui.label(egui::RichText::new("Beginne und ende auf einem Objekt: Der Verbinder dockt an und geht beim Verschieben mit.").size(12.0).color(c(style::pal().dim)));
+            colors(ui, ed, sh);
+            widths(ui, ed, sh, "Linienbreite");
+        }
+        Tool::Table => {
+            super::table::options(ui, ed);
+            colors(ui, ed, sh);
+        }
+        Tool::Pin => colors(ui, ed, sh),
     }
 }
 

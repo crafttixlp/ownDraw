@@ -279,6 +279,7 @@ pub fn context_menu(editor: &mut Editor, resp: &egui::Response, sh: &mut Shared)
         if action != 0 {
             ui.close();
         }
+        super::arrange::context_items(ui, editor);
     });
     match action {
         1 => copy(editor, &*sh.platform),

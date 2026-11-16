@@ -97,6 +97,9 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::std(Tool::Text, "text", "Text", Group::Extras, ic::TEXT, "Schreibt Text direkt auf das Blatt.").key("T"),
     ToolDef::std(Tool::Note, "note", "Haftnotiz", Group::Extras, ic::NOTE, "Farbiger Zettel mit Text, erreichbar über das Text-Werkzeug.").key("N").inside("text"),
     ToolDef::std(Tool::Image, "image", "Bild", Group::Extras, ic::IMAGE, "Fügt ein Bild aus einer Datei ein.").key("I"),
+    ToolDef::neu(Tool::Connector, "connector", "Verbinder", Group::Formen, ic::CONNECTOR, "Linie oder Pfeil, der an Objekten andockt und beim Verschieben mitgeht.").key("W"),
+    ToolDef::neu(Tool::Table, "table", "Tabelle", Group::Ordnen, ic::TABLE, "Setzt eine Tabelle; Zellen beschriftest du direkt auf dem Blatt.").key("B"),
+    ToolDef::neu(Tool::Pin, "pin", "Kommentar", Group::Extras, ic::PIN, "Stecknadel mit Kommentar und Antworten, für alle im Board sichtbar.").key("C"),
 ];
 
 /// Werkzeug nach Kennung.

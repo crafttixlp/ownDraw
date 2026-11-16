@@ -168,6 +168,8 @@ const ACTIONS: &[Def] = &[
     press("paste", "Einfügen", "Bearbeiten", &["Ctrl+V"]),
     rep(press("duplicate", "Auswahl duplizieren", "Bearbeiten", &["Ctrl+D"])),
     press("delete", "Auswahl löschen", "Bearbeiten", &["Delete", "Backspace"]),
+    press("group", "Auswahl gruppieren", "Bearbeiten", &["Ctrl+G"]),
+    press("ungroup", "Gruppierung lösen", "Bearbeiten", &["Ctrl+Shift+G"]),
     press("save", "Speichern", "Datei", &["Ctrl+S"]),
     press("menu", "Menü öffnen", "Datei", &["Ctrl+E"]),
     press("help", "Anleitung & Tipps", "Datei", &["F1"]),

@@ -9,12 +9,12 @@
 //! - Bilder: vor dem Senden per HTTP hochladen; fremde Bilder werden nachgeladen (bei 404 mit Wiederholung).
 //! - Präsenz: Teilnehmerliste mit Farben, fremde Mauszeiger mit Namen (eigener Zeiger höchstens alle 60 ms).
 
-use super::{Editor, Lay, M};
+use super::{toolbar, Editor, Lay, M};
 use crate::app::Shared;
 use crate::platform::web::api::{self, SockEv, Socket};
 use crate::session;
 use crate::style::{self, c};
-use egui::{Align2, Color32, CornerRadius, Order, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use owndraw_core::collab::{self as oc, Op, State, Sync};
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -438,56 +438,93 @@ impl Live {
     }
 
     /// Kleine Leiste rechts oben unter den Knöpfen: Status, Teilnehmer, „Teilen“.
+    /// Verschiebbar und andockbar wie die anderen Leisten (Griff ⠿; seitlich angedockt senkrecht).
     pub(super) fn overlay(&mut self, ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
         let pal = style::pal();
-        let h = sh.env.btn.min(36.0);
+        let btn = sh.env.btn;
+        let h = btn.min(36.0);
         let owner = self.role == "owner" || api::board(&self.board_id).is_some_and(|b| b.role == "owner");
         let can_share = owner && api::licensed();
         let pos = Pos2::new(lay.canvas.right() - M, lay.y_below);
-        let r = Editor::float(ctx, "live-bar", pos, Align2::RIGHT_TOP, lay.canvas.shrink(M), Order::Foreground, |ui| {
-            style::pill(18).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                    let (col, tip) = match self.conn {
-                        Conn::Live => (0xFF30A46C, "Live verbunden"),
-                        Conn::Connecting => (0xFFFFC53D, "Verbinde …"),
-                        Conn::Retry(_) => (0xFFFFC53D, "Getrennt – neuer Versuch läuft"),
-                        Conn::Gone => (pal.danger, "Kein Zugriff"),
+        let (col, tip) = match self.conn {
+            Conn::Live => (0xFF30A46C, "Live verbunden"),
+            Conn::Connecting => (0xFFFFC53D, "Verbinde …"),
+            Conn::Retry(_) => (0xFFFFC53D, "Getrennt – neuer Versuch läuft"),
+            Conn::Gone => (pal.danger, "Kein Zugriff"),
+        };
+        let n = self.peers.len();
+        let label = match self.conn {
+            Conn::Live if n == 0 => "Live".to_string(),
+            Conn::Live => format!("Live · {}", n + 1),
+            Conn::Connecting => "Verbinde …".into(),
+            Conn::Retry(_) => "Offline".into(),
+            Conn::Gone => "Kein Zugriff".into(),
+        };
+        let peers = &self.peers;
+        let mut share = false;
+        let r = toolbar::tile(ed, ctx, sh, lay, "live-bar", pos, Align2::RIGHT_TOP, None, false, |_ed, sh, ui, tl| {
+            let vert = tl.vert;
+            tl.frame
+                .show(ui, |ui| {
+                    let body = |ui: &mut Ui| {
+                        ui.spacing_mut().item_spacing = if vert { Vec2::new(0.0, 4.0) } else { Vec2::new(4.0, 0.0) };
+                        let g = toolbar::grip(ui, if vert { btn } else { h }, !vert);
+                        let dot = if vert { Vec2::new(btn, 14.0) } else { Vec2::new(14.0, h) };
+                        let (rect, resp) = ui.allocate_exact_size(dot, Sense::hover());
+                        ui.painter().circle_filled(rect.center(), 4.5, c(col));
+                        resp.on_hover_text(tip);
+                        if vert {
+                            // senkrecht schmal: nur Anzahl statt „Live · n“
+                            let short = match self.conn {
+                                Conn::Live => format!("{}", n + 1),
+                                _ => "–".into(),
+                            };
+                            ui.label(egui::RichText::new(short).size(12.0).color(c(pal.text))).on_hover_text(&label);
+                        } else {
+                            ui.label(egui::RichText::new(&label).size(13.0).color(c(pal.text)));
+                        }
+                        // Teilnehmer als farbige Kreise mit Anfangsbuchstaben
+                        let av = if vert { Vec2::new(btn, 26.0) } else { Vec2::new(26.0, h) };
+                        for peer in peers.iter().take(6) {
+                            let (rect, resp) = ui.allocate_exact_size(av, Sense::hover());
+                            ui.painter().circle_filled(rect.center(), 11.0, peer.color);
+                            let ch: String = peer.name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+                            ui.painter().text(rect.center(), Align2::CENTER_CENTER, ch, egui::FontId::proportional(12.0), Color32::WHITE);
+                            let role = match peer.role.as_str() {
+                                "owner" => "Besitzer",
+                                "edit" => "bearbeiten",
+                                _ => "ansehen",
+                            };
+                            resp.on_hover_text(format!("{} ({role})", peer.name));
+                        }
+                        if n > 6 {
+                            ui.label(egui::RichText::new(format!("+{}", n - 6)).size(12.0).color(c(pal.dim)));
+                        }
+                        if can_share {
+                            let clicked = if vert {
+                                let (rect, resp) = ui.allocate_exact_size(Vec2::splat(btn - 6.0), Sense::click());
+                                style::btn_bg(ui, rect, &resp, true);
+                                sh.icons.paint(ui, rect, owndraw_core::icons::EXPORT, pal.accent, false, (btn * 0.5).round());
+                                resp.on_hover_text("Teilen").clicked()
+                            } else {
+                                style::accent_btn(ui, "Teilen", h - 4.0).clicked()
+                            };
+                            share |= clicked;
+                        }
+                        g
                     };
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(14.0, h), Sense::hover());
-                    ui.painter().circle_filled(rect.center(), 4.5, c(col));
-                    resp.on_hover_text(tip);
-                    let label = match self.conn {
-                        Conn::Live if self.peers.is_empty() => "Live".to_string(),
-                        Conn::Live => format!("Live · {}", self.peers.len() + 1),
-                        Conn::Connecting => "Verbinde …".into(),
-                        Conn::Retry(_) => "Offline".into(),
-                        Conn::Gone => "Kein Zugriff".into(),
-                    };
-                    ui.label(egui::RichText::new(label).size(13.0).color(c(pal.text)));
-                    // Teilnehmer als farbige Kreise mit Anfangsbuchstaben
-                    for peer in self.peers.iter().take(6) {
-                        let (rect, resp) = ui.allocate_exact_size(Vec2::new(26.0, h), Sense::hover());
-                        ui.painter().circle_filled(rect.center(), 11.0, peer.color);
-                        let ch: String = peer.name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
-                        ui.painter().text(rect.center(), Align2::CENTER_CENTER, ch, egui::FontId::proportional(12.0), Color32::WHITE);
-                        let role = match peer.role.as_str() {
-                            "owner" => "Besitzer",
-                            "edit" => "bearbeiten",
-                            _ => "ansehen",
-                        };
-                        resp.on_hover_text(format!("{} ({role})", peer.name));
+                    if vert {
+                        toolbar::orient(ui, true, btn, body)
+                    } else {
+                        ui.horizontal(body).inner
                     }
-                    if self.peers.len() > 6 {
-                        ui.label(egui::RichText::new(format!("+{}", self.peers.len() - 6)).size(12.0).color(c(pal.dim)));
-                    }
-                    if can_share && style::accent_btn(ui, "Teilen", h - 4.0).clicked() {
-                        api::load_members(&self.board_id);
-                        self.share = Some(ShareDlg { edit: true, ..ShareDlg::default() });
-                    }
-                });
-            });
+                })
+                .inner
         });
+        if share {
+            api::load_members(&self.board_id);
+            self.share = Some(ShareDlg { edit: true, ..ShareDlg::default() });
+        }
         ed.st.popup_rects.push(r);
         self.share_dialog(ctx, sh);
         self.conflict_dialog(ed, ctx, sh);

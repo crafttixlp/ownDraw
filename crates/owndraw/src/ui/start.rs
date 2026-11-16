@@ -566,13 +566,17 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                         sh.reqs.push(Req::OpenFile(e.file.clone()));
                     }
                     let menu = |ui: &mut egui::Ui, sh: &mut Shared| {
-                        if !missing && style::menu_row(ui, "Öffnen", false, 34.0) {
-                            sh.reqs.push(Req::OpenFile(e.file.clone()));
-                            ui.close();
+                        use owndraw_core::icons;
+                        let mut items = Vec::new();
+                        if !missing {
+                            items.push(style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false });
                         }
-                        if style::menu_row(ui, "Aus der Liste entfernen", true, 34.0) {
-                            sh.reqs.push(Req::RemoveRecent(e.file.clone()));
-                            ui.close();
+                        items.push(style::MenuItem { icon: icons::TRASH, label: "Aus der Liste entfernen", danger: true });
+                        let off = usize::from(missing);
+                        match style::card_menu(ui, &mut sh.icons, &items).map(|i| i + off) {
+                            Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
+                            Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
+                            _ => {}
                         }
                     };
                     resp.context_menu(|ui| menu(ui, sh));

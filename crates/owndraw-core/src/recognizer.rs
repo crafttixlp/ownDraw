@@ -93,7 +93,8 @@ pub fn run_cfg(s: &Item, sc: f32, snap: SnapCfg) -> Option<Item> {
     if g.q.iter().any(|v| !v.is_finite()) || !g.ang.is_finite() {
         return None;
     }
-    let mut it = Item::shape(g.kind, g.q, s.color, s.width);
+    let kind = poly_kind(g.kind, &g.q);
+    let mut it = Item::shape(kind, g.q, s.color, s.width);
     it.layer = s.layer;
     if let Kind::Shape(sh) = &mut it.kind {
         sh.hl = hl;
@@ -101,6 +102,33 @@ pub fn run_cfg(s: &Item, sc: f32, snap: SnapCfg) -> Option<Item> {
     }
     it.touch();
     Some(it)
+}
+
+/// Erkanntes Vieleck genauer benennen: 3 Ecken = Dreieck, 4 Ecken mit waagerechter und senkrechter Diagonale,
+/// die sich halbieren = Raute. Die Eckpunkte bleiben unverändert.
+fn poly_kind(kind: i32, q: &[f32]) -> i32 {
+    if kind != item::POLY {
+        return kind;
+    }
+    if q.len() == 6 {
+        return item::TRIANGLE;
+    }
+    if q.len() == 8 {
+        let d1 = (q[4] - q[0], q[5] - q[1]);
+        let d2 = (q[6] - q[2], q[7] - q[3]);
+        let tilt = |d: (f32, f32)| d.1.atan2(d.0).to_degrees().rem_euclid(90.0);
+        let axis = |d: (f32, f32)| {
+            let t = tilt(d);
+            t.min(90.0 - t) < 8.0
+        };
+        let (m1, m2) = (((q[0] + q[4]) / 2.0, (q[1] + q[5]) / 2.0), ((q[2] + q[6]) / 2.0, (q[3] + q[7]) / 2.0));
+        let l = crate::geom::hypot(d1.0, d1.1).max(crate::geom::hypot(d2.0, d2.1));
+        let perp = (d1.0 * d2.0 + d1.1 * d2.1).abs() < 0.2 * crate::geom::hypot(d1.0, d1.1) * crate::geom::hypot(d2.0, d2.1);
+        if l > 0.0 && axis(d1) && axis(d2) && perp && crate::geom::hypot(m1.0 - m2.0, m1.1 - m2.1) < 0.12 * l {
+            return item::DIAMOND;
+        }
+    }
+    kind
 }
 
 #[inline]
@@ -1937,7 +1965,16 @@ mod tests {
     fn triangle_shape() {
         let pts = poly_path(&[(200.0, 100.0), (350.0, 360.0), (50.0, 360.0)], 30);
         let r = run(&stroke(&pts), 1.0).expect("Dreieck");
-        assert_eq!(kind_of(&r), (item::POLY, 6));
+        assert_eq!(kind_of(&r), (item::TRIANGLE, 6));
+    }
+
+    #[test]
+    fn diamond_shape() {
+        let pts = poly_path(&[(200.0, 100.0), (320.0, 250.0), (200.0, 400.0), (80.0, 250.0)], 30);
+        let r = run(&stroke(&pts), 1.0).expect("Raute");
+        assert_eq!(kind_of(&r), (item::DIAMOND, 8));
+        assert_eq!(poly_kind(item::POLY, &[0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0]), item::POLY, "Rechteck bleibt");
+        assert_eq!(poly_kind(item::ELLIPSE, &[0.0, 0.0, 1.0, 1.0]), item::ELLIPSE);
     }
 
     #[test]

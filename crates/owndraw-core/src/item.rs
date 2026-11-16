@@ -1,4 +1,16 @@
-//! Board-Objekte: Freihand-Strich, geometrische Form, Notiz/Text und Bild. Koordinaten sind Welt-Koordinaten.
+//! Board-Objekte: Freihand-Strich, geometrische Form, Notiz/Text, Bild, Tabelle und Kommentar-Stecknadel.
+//! Koordinaten sind Welt-Koordinaten.
+//!
+//! Verträglichkeit der Erweiterungen aus 4.25 mit älteren Versionen:
+//! - Neue Felder an bekannten Typen (`fc`, `gid`, `a0`/`a1`, `ps`, `cr`) landen bei älteren Rust-Versionen in
+//!   `Item::extra` und bleiben beim Speichern erhalten; dort werden sie nur nicht dargestellt.
+//! - Neue Formtypen 11–15 sind Vielecke mit Eckpunkten in `q` (ältere Versionen zeichnen sie als Polygon),
+//!   ARC (16) ist eine Polylinie (dort mit Sehne geschlossen), DIM (17) erscheint dort als Linie ohne Maß.
+//! - Neue Objektarten `"t":"tb"` (Tabelle) und `"t":"pin"` (Kommentar): ältere Rust-Versionen fallen bei
+//!   unbekanntem `t` auf eine Notiz zurück, scheitern an den fehlenden Pflichtfeldern und lassen den Eintrag
+//!   weg (kein Absturz; beim Speichern mit einer alten Version geht er aber verloren). Für Java 2.x liegt der
+//!   Quelltext nicht im Repo; erwartet wird dasselbe Verhalten (unbekannte Einträge überspringen) – ungeprüft.
+//! - `.xopp`: alles wird auf Striche, gefüllte Polygone und Texte heruntergebrochen; Kommentare entfallen.
 
 use crate::canvas::{Canvas, Cap, Paint, Style};
 use crate::geom::{hypot, RectF};
@@ -263,7 +275,20 @@ pub struct Stroke {
     pub var: bool,
     /// Eckige Polylinie ohne Glaettung (aus Formen entstanden, z. B. durch den Teil-Radierer).
     pub sharp: bool,
+    /// Stiftart (JSON `"ps"`): siehe [`PS_NORMAL`] … [`PS_DOTTED`].
+    pub ps: u8,
 }
+
+/// Stiftart normal (schneller Kapsel-Weg).
+pub const PS_NORMAL: u8 = 0;
+/// Füller: Breite nach Druck und Schreibrichtung (Feder unter 45°).
+pub const PS_FOUNTAIN: u8 = 1;
+/// Bleistift: halbdeckend, leicht körnig (deterministisch).
+pub const PS_PENCIL: u8 = 2;
+/// Gestrichelt.
+pub const PS_DASHED: u8 = 3;
+/// Gepunktet.
+pub const PS_DOTTED: u8 = 4;
 
 impl Stroke {
     pub fn n(&self) -> usize {
@@ -300,6 +325,132 @@ pub fn arrow_spec(kind: i32) -> Option<(bool, bool, bool)> {
         ARROW2_DASHED => Some((true, false, true)),
         _ => None,
     }
+}
+
+/// Dreieck (gleichschenklig, Spitze oben). Wie alle Vielecks-Typen (POLY, 11–15) als Eckpunkte in `q`
+/// gespeichert: ältere Versionen/Java zeichnen sie als Polygon.
+pub const TRIANGLE: i32 = 11;
+/// Raute.
+pub const DIAMOND: i32 = 12;
+/// Stern mit 5 Zacken.
+pub const STAR: i32 = 13;
+/// Regelmäßiges Sechseck.
+pub const HEXAGON: i32 = 14;
+/// Sprechblase (Rechteck mit Zipfel unten links).
+pub const BUBBLE: i32 = 15;
+/// Kreisbogen (halbe Ellipse) als offene Polylinie in `q` (ältere Versionen schließen ihn mit einer Sehne).
+pub const ARC: i32 = 16;
+/// Maßlinie: zwei Endpunkte wie LINE, Maßpfeile an beiden Enden und Länge in mm in der Mitte.
+pub const DIM: i32 = 17;
+
+/// Millimeter je Welteinheit: Seitenformate sind in pt angelegt (A4 = 595 × 842), also 1 Einheit = 1/72 Zoll.
+pub const MM_PER_UNIT: f32 = 25.4 / 72.0;
+
+/// Vielecks-Formen (Eckpunkte in `q`, geschlossen).
+pub fn is_poly_kind(kind: i32) -> bool {
+    kind == POLY || (TRIANGLE..=BUBBLE).contains(&kind)
+}
+
+/// Geschlossene Formen (können gefüllt werden).
+pub fn is_closed_kind(kind: i32) -> bool {
+    is_poly_kind(kind) || kind == ELLIPSE || kind == HEART
+}
+
+/// Vieleck aus Einheitspunkten (beliebige Lage), auf das Rechteck (l, t, r, b) gestreckt.
+fn fit_unit(u: &[(f32, f32)], l: f32, t: f32, r: f32, b: f32) -> Vec<f32> {
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for &(x, y) in u {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    let (sx, sy) = ((r - l) / (x1 - x0).max(1e-6), (b - t) / (y1 - y0).max(1e-6));
+    u.iter().flat_map(|&(x, y)| [l + (x - x0) * sx, t + (y - y0) * sy]).collect()
+}
+
+/// Formdaten `q` einer neuen Form aus dem Zieh-Rechteck (x0, y0) – (x1, y1). Lineare Formen (Linie, Pfeile,
+/// Maßlinie) nehmen die beiden Punkte als Endpunkte, ELLIPSE/HEART die Box, alle anderen ihre Eckpunkte.
+pub fn shape_q(kind: i32, x0: f32, y0: f32, x1: f32, y1: f32) -> Vec<f32> {
+    if is_linear(kind) {
+        return vec![x0, y0, x1, y1];
+    }
+    let (l, t, r, b) = (x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1));
+    let (cx, cy, w, h) = ((l + r) / 2.0, (t + b) / 2.0, r - l, b - t);
+    let reg = |n: usize, inner: f32, phase: f32| -> Vec<(f32, f32)> {
+        let k = if inner > 0.0 { n * 2 } else { n };
+        (0..k)
+            .map(|i| {
+                let a = phase + i as f32 * std::f32::consts::TAU / k as f32;
+                let rr = if inner > 0.0 && i % 2 == 1 { inner } else { 1.0 };
+                (rr * a.sin(), -rr * a.cos())
+            })
+            .collect()
+    };
+    match kind {
+        ELLIPSE | HEART => vec![l, t, r, b],
+        TRIANGLE => vec![cx, t, r, b, l, b],
+        DIAMOND => vec![cx, t, r, cy, cx, b, l, cy],
+        STAR => fit_unit(&reg(5, 0.382, 0.0), l, t, r, b),
+        HEXAGON => fit_unit(&reg(6, 0.0, std::f32::consts::FRAC_PI_6), l, t, r, b),
+        BUBBLE => {
+            let bb = t + h * 0.78;
+            vec![l, t, r, t, r, bb, l + w * 0.42, bb, l + w * 0.18, b, l + w * 0.22, bb, l, bb]
+        }
+        ARC => {
+            // halbe Ellipse: Enden unten links/rechts, Scheitel oben in der Mitte
+            let n = 32;
+            (0..=n)
+                .flat_map(|i| {
+                    let a = std::f32::consts::PI * (1.0 + i as f32 / n as f32);
+                    [cx + w / 2.0 * a.cos(), b + h * a.sin()]
+                })
+                .collect()
+        }
+        _ => vec![l, t, r, t, r, b, l, b],
+    }
+}
+
+/// Text einer Maßlinie der Länge `len` (Welteinheiten), z. B. „12,5 mm“.
+pub fn dim_text(len: f32) -> String {
+    format!("{:.1} mm", len * MM_PER_UNIT).replace('.', ",")
+}
+
+/// Schriftgröße des Maßtexts.
+pub fn dim_text_size(width: f32) -> f32 {
+    (width * 4.0).max(11.0)
+}
+
+/// Spitzen einer Maßlinie: zwei gefüllte Dreiecke [Spitze, Basis 1, Basis 2] (Ende, Anfang).
+pub fn dim_heads(q: &[f32], width: f32) -> [[f32; 6]; 2] {
+    let tri = |tx: f32, ty: f32, fx: f32, fy: f32| -> [f32; 6] {
+        let (dx, dy) = (tx - fx, ty - fy);
+        let l = hypot(dx, dy);
+        if l <= 0.0 {
+            return [tx, ty, tx, ty, tx, ty];
+        }
+        let len = (width * 4.0).max(8.0).min(l * 0.45);
+        let (ux, uy) = (dx / l, dy / l);
+        let half = len * 0.3;
+        let (bx, by) = (tx - ux * len, ty - uy * len);
+        [tx, ty, bx - uy * half, by + ux * half, bx + uy * half, by - ux * half]
+    };
+    [tri(q[2], q[3], q[0], q[1]), tri(q[0], q[1], q[2], q[3])]
+}
+
+/// Lage des Maßtexts: Mittelpunkt der Grundlinie und Drehung (Grad, immer lesbar, nie kopfüber).
+pub fn dim_label(q: &[f32], width: f32) -> (f32, f32, f32) {
+    let (dx, dy) = (q[2] - q[0], q[3] - q[1]);
+    let mut a = dy.atan2(dx);
+    if a > std::f32::consts::FRAC_PI_2 {
+        a -= std::f32::consts::PI;
+    } else if a < -std::f32::consts::FRAC_PI_2 {
+        a += std::f32::consts::PI;
+    }
+    let off = dim_text_size(width) * 0.35 + width;
+    // Normale „nach oben“ bezogen auf die lesbare Richtung
+    let (nx, ny) = (a.sin(), -a.cos());
+    ((q[0] + q[2]) / 2.0 + nx * off, (q[1] + q[3]) / 2.0 + ny * off, a.to_degrees())
 }
 
 /// Wählbare Pfeilstile (Index = `Board::arrow_style`): Name und Zieltyp für (einfacher, doppelter) erkannter Pfeil.
@@ -375,6 +526,34 @@ pub struct Shape {
     pub hl: bool,
     /// Drehung (Bogenmass) der Ellipse bzw. des Herzens um den Mittelpunkt.
     pub ang: f32,
+    /// Verbinder (nur lineare Formen): Anfang (`"a0"`) und Ende (`"a1"`) hängen an einem anderen Objekt.
+    pub a: [Option<Anchor>; 2],
+}
+
+/// Andockpunkt eines Verbinder-Endes: Ziel-uid und `rel` = Lage in der (ungedrehten) Box des Ziels (0..1, 0..1),
+/// None = Mitte (der Endpunkt sitzt dann auf dem Rand des Ziels in Richtung des anderen Endes).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Anchor {
+    pub uid: u64,
+    pub rel: Option<(f32, f32)>,
+}
+
+impl Anchor {
+    fn json(&self) -> Value {
+        match self.rel {
+            None => json!([uid_str(self.uid)]),
+            Some((x, y)) => json!([uid_str(self.uid), (x * 1000.0).round() / 1000.0, (y * 1000.0).round() / 1000.0]),
+        }
+    }
+    fn parse(v: &Value) -> Option<Anchor> {
+        let a = v.as_array()?;
+        let uid = parse_uid(a.first()?)?;
+        let rel = match (a.get(1).and_then(Value::as_f64), a.get(2).and_then(Value::as_f64)) {
+            (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Some((x.clamp(0.0, 1.0) as f32, y.clamp(0.0, 1.0) as f32)),
+            _ => None,
+        };
+        Some(Anchor { uid, rel })
+    }
 }
 
 /// Herz im Einheitsquadrat (y nach unten): rechte Haelfte als Kubik-Bezier Kerbe -> Spitze; die linke ist gespiegelt.
@@ -455,7 +634,104 @@ pub struct Img {
     /// Drehung (Bogenmass) um den eigenen Mittelpunkt.
     pub ang: f32,
     pub file: String,
+    /// Zuschnitt (JSON `"cr"`): sichtbarer Teil des Bildes [links, oben, rechts, unten] relativ (0..1).
+    /// Die Box (x, y, w, h) ist immer der sichtbare Ausschnitt.
+    pub cr: Option<[f32; 4]>,
 }
+
+/// Tabelle (JSON `"t":"tb"`): linke obere Ecke, Spaltenbreiten, Zeilenhöhen, Zelltexte zeilenweise, Schriftgröße.
+/// Linienfarbe/-breite = `Item::color`/`Item::width`. Wird nicht gedreht.
+#[derive(Clone, Debug, Default)]
+pub struct Table {
+    pub x: f32,
+    pub y: f32,
+    pub cw: Vec<f32>,
+    pub rh: Vec<f32>,
+    /// rows × cols Texte, zeilenweise.
+    pub cells: Vec<String>,
+    pub size: f32,
+}
+
+impl Table {
+    pub fn cols(&self) -> usize {
+        self.cw.len()
+    }
+    pub fn rows(&self) -> usize {
+        self.rh.len()
+    }
+    pub fn w(&self) -> f32 {
+        self.cw.iter().sum()
+    }
+    pub fn h(&self) -> f32 {
+        self.rh.iter().sum()
+    }
+    pub fn cell(&self, r: usize, c: usize) -> &str {
+        self.cells.get(r * self.cols() + c).map(String::as_str).unwrap_or("")
+    }
+    /// Innenabstand der Zellen.
+    pub fn pad(&self) -> f32 {
+        self.size * 0.3
+    }
+    /// Zelle (Zeile, Spalte) am Weltpunkt.
+    pub fn cell_at(&self, x: f32, y: f32) -> Option<(usize, usize)> {
+        if x < self.x || y < self.y {
+            return None;
+        }
+        let find = |v: &[f32], mut d: f32| -> Option<usize> {
+            for (i, s) in v.iter().enumerate() {
+                if d <= *s {
+                    return Some(i);
+                }
+                d -= s;
+            }
+            None
+        };
+        Some((find(&self.rh, y - self.y)?, find(&self.cw, x - self.x)?))
+    }
+    /// Linke obere Ecke der Zelle.
+    pub fn cell_origin(&self, r: usize, c: usize) -> (f32, f32) {
+        (self.x + self.cw[..c.min(self.cols())].iter().sum::<f32>(), self.y + self.rh[..r.min(self.rows())].iter().sum::<f32>())
+    }
+    fn layout(&self, r: usize, c: usize) -> TextLayout {
+        let k = self.size / NOTE_BASE;
+        let lw = ((self.cw[c] - 2.0 * self.pad()) / k).max(1.0);
+        TextLayout::new(self.cell(r, c), NOTE_BASE, lw, 1.15)
+    }
+    /// Lässt Zeile r mitwachsen, bis alle Texte passen.
+    pub fn fit_row(&mut self, r: usize) {
+        if r >= self.rows() {
+            return;
+        }
+        let k = self.size / NOTE_BASE;
+        let need = (0..self.cols()).map(|c| self.layout(r, c).height() * k + 2.0 * self.pad()).fold(0.0f32, f32::max);
+        if need > self.rh[r] {
+            self.rh[r] = need;
+        }
+    }
+}
+
+/// Antwort auf einen Kommentar.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reply {
+    pub author: String,
+    /// Zeit in ms seit 1970.
+    pub time: i64,
+    pub text: String,
+}
+
+/// Kommentar-Stecknadel (JSON `"t":"pin"`): Spitze bei (x, y). Wird in PNG/PDF/.xopp nicht ausgegeben.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Pin {
+    pub x: f32,
+    pub y: f32,
+    pub author: String,
+    pub time: i64,
+    pub text: String,
+    pub replies: Vec<Reply>,
+}
+
+/// Radius des Nadelkopfs (Welteinheiten).
+pub const PIN_R: f32 = 9.0;
 
 #[derive(Clone, Debug)]
 pub enum Kind {
@@ -463,6 +739,8 @@ pub enum Kind {
     Shape(Shape),
     Note(Note),
     Img(Img),
+    Table(Table),
+    Pin(Pin),
 }
 
 /// Ein Board-Objekt. `id` ist nur zur Laufzeit eindeutig (Auswahl), nicht Teil des Dateiformats.
@@ -479,6 +757,10 @@ pub struct Item {
     pub kind: Kind,
     /// Wird gerade verschoben/gedreht (nicht im Board-Cache, sondern obenauf gezeichnet).
     pub lift: bool,
+    /// Füllfarbe (JSON `"fc"`) geschlossener Formen und geschlossener Freihand-Striche.
+    pub fill: Option<u32>,
+    /// Gruppe (JSON `"gid"`, 0 = keine): alle Objekte mit gleicher gid werden zusammen ausgewählt.
+    pub gid: u64,
     /// Unbekannte JSON-Felder (z. B. Xournal++-Attribute "xa", "xraw", Seitenzuordnung "page"), werden unverändert zurückgeschrieben.
     pub extra: Option<Box<Map<String, Value>>>,
     b: Cell<Option<RectF>>,
@@ -487,18 +769,18 @@ pub struct Item {
 
 impl Item {
     pub fn new(kind: Kind) -> Item {
-        Item { id: next_id(), uid: new_uid(), color: INK, width: 4.0, layer: 1, kind, lift: false, extra: None, b: Cell::new(None), path: RefCell::new(None) }
+        Item { id: next_id(), uid: new_uid(), color: INK, width: 4.0, layer: 1, kind, lift: false, fill: None, gid: 0, extra: None, b: Cell::new(None), path: RefCell::new(None) }
     }
 
     pub fn stroke(color: u32, width: f32, hl: bool, var: bool) -> Item {
-        let mut it = Item::new(Kind::Stroke(Stroke { p: Vec::with_capacity(96), hl, var, sharp: false }));
+        let mut it = Item::new(Kind::Stroke(Stroke { p: Vec::with_capacity(96), hl, var, sharp: false, ps: 0 }));
         it.color = color;
         it.width = width;
         it
     }
 
     pub fn shape(kind: i32, q: Vec<f32>, color: u32, width: f32) -> Item {
-        let mut it = Item::new(Kind::Shape(Shape { kind, q, hl: false, ang: 0.0 }));
+        let mut it = Item::new(Kind::Shape(Shape { kind, q, hl: false, ang: 0.0, a: [None, None] }));
         it.color = color;
         it.width = width;
         it
@@ -602,7 +884,13 @@ impl Item {
                     for c in q.chunks_exact(2) {
                         r.union(&RectF::new(c[0], c[1], c[0], c[1]));
                     }
-                    let w = if arrow_spec(g.kind).is_some() { w * 3.0 } else { w };
+                    let w = if g.kind == DIM {
+                        (w * 3.0).max(8.0 * 0.3) + dim_text_size(w) * 1.4
+                    } else if arrow_spec(g.kind).is_some() {
+                        w * 3.0
+                    } else {
+                        w
+                    };
                     RectF::new(r.left - w, r.top - w, r.right + w, r.bottom + w)
                 }
             }
@@ -620,6 +908,11 @@ impl Item {
                     RectF::new(m.x.min(m.x + m.w), m.y.min(m.y + m.h), m.x.max(m.x + m.w), m.y.max(m.y + m.h))
                 }
             }
+            Kind::Table(t) => {
+                let h = w / 2.0;
+                RectF::new(t.x - h, t.y - h, t.x + t.w() + h, t.y + t.h() + h)
+            }
+            Kind::Pin(p) => RectF::new(p.x - PIN_R, p.y - PIN_R * 3.3, p.x + PIN_R, p.y),
         };
         self.b.set(Some(b));
         b
@@ -672,9 +965,15 @@ impl Item {
                     c.rotate(m.ang.to_degrees(), m.x + m.w / 2.0, m.y + m.h / 2.0);
                 }
                 match load_image(&m.file) {
-                    Some(pm) => {
-                        c.draw_image(&pm, m.x, m.y, m.x + m.w, m.y + m.h);
-                    }
+                    Some(pm) => match m.full_rect() {
+                        Some((fx, fy, fw, fh)) => {
+                            c.save();
+                            c.clip_rect(m.x, m.y, m.x + m.w, m.y + m.h);
+                            c.draw_image(&pm, fx, fy, fx + fw, fy + fh);
+                            c.restore();
+                        }
+                        None => c.draw_image(&pm, m.x, m.y, m.x + m.w, m.y + m.h),
+                    },
                     None => {
                         c.draw_rect(m.x, m.y, m.x + m.w, m.y + m.h, &Paint::fill(0xFFC9CBD2));
                         let p = Paint::stroke(0xFF7A7D88, (m.w.abs().min(m.h.abs()) / 60.0).max(1.0), Cap::Butt);
@@ -687,6 +986,181 @@ impl Item {
                     c.restore();
                 }
             }
+            Kind::Table(t) => self.draw_table(t, c, dark),
+            Kind::Pin(p) => {
+                let col = if self.color == INK { 0xFFE5484D } else { self.color };
+                let (hx, hy) = (p.x, p.y - PIN_R * 2.2);
+                c.draw_line(p.x, p.y, hx, hy, &Paint::stroke(if dark { 0xFFB8BBC6 } else { 0xFF5A5D68 }, PIN_R * 0.22, Cap::Round));
+                c.draw_circle(hx + PIN_R * 0.08, hy + PIN_R * 0.12, PIN_R, &Paint::fill(0x30000000));
+                c.draw_circle(hx, hy, PIN_R, &Paint::fill(col));
+                c.draw_circle(hx - PIN_R * 0.3, hy - PIN_R * 0.3, PIN_R * 0.3, &Paint::fill(0x80FFFFFF));
+                if !p.replies.is_empty() {
+                    c.draw_circle(hx + PIN_R * 0.8, hy - PIN_R * 0.8, PIN_R * 0.35, &Paint::fill(0xFF3E63DD));
+                }
+            }
+        }
+    }
+
+    fn draw_table(&self, t: &Table, c: &mut Canvas, dark: bool) {
+        let col = ink(self.color, dark);
+        let p = Paint::stroke(col, self.width, Cap::Butt);
+        let (w, h) = (t.w(), t.h());
+        let mut pb = PathBuilder::new();
+        let mut y = t.y;
+        pb.move_to(t.x, y);
+        pb.line_to(t.x + w, y);
+        for rh in &t.rh {
+            y += rh;
+            pb.move_to(t.x, y);
+            pb.line_to(t.x + w, y);
+        }
+        let mut x = t.x;
+        pb.move_to(x, t.y);
+        pb.line_to(x, t.y + h);
+        for cw in &t.cw {
+            x += cw;
+            pb.move_to(x, t.y);
+            pb.line_to(x, t.y + h);
+        }
+        if let Some(path) = pb.finish() {
+            c.draw_path(&path, &p);
+        }
+        let k = t.size / NOTE_BASE;
+        for r in 0..t.rows() {
+            for cc in 0..t.cols() {
+                if t.cell(r, cc).is_empty() {
+                    continue;
+                }
+                let (ox, oy) = t.cell_origin(r, cc);
+                let lay = t.layout(r, cc);
+                c.save();
+                c.clip_rect(ox, oy, ox + t.cw[cc], oy + t.rh[r]);
+                c.translate(ox + t.pad(), oy + t.pad());
+                c.scale(k, k);
+                lay.draw(c, col);
+                c.restore();
+            }
+        }
+    }
+
+    /// Ist der Freihand-Strich geschlossen (Anfang und Ende nah beieinander, mindestens 3 Punkte)?
+    pub fn stroke_closed(s: &Stroke, width: f32) -> bool {
+        let n = s.n();
+        if n < 3 {
+            return false;
+        }
+        let (mut l, mut t, mut r, mut b) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for c in s.p.chunks_exact(3) {
+            l = l.min(c[0]);
+            t = t.min(c[1]);
+            r = r.max(c[0]);
+            b = b.max(c[1]);
+        }
+        let size = (r - l).max(b - t);
+        let gap = hypot(s.p[0] - s.p[n * 3 - 3], s.p[1] - s.p[n * 3 - 2]);
+        size > width * 2.0 && gap <= (width * 2.0).max(size * 0.12)
+    }
+
+    /// Kann das Objekt gefüllt werden (geschlossene Form oder geschlossener Strich)?
+    pub fn fillable(&self) -> bool {
+        match &self.kind {
+            Kind::Shape(g) => is_closed_kind(g.kind),
+            Kind::Stroke(s) => Item::stroke_closed(s, self.width),
+            _ => false,
+        }
+    }
+
+    /// Umriss der Füllfläche (Weltkoordinaten, x/y-Paare), None ohne geschlossene Fläche.
+    pub fn fill_outline(&self) -> Option<Vec<f32>> {
+        match &self.kind {
+            Kind::Shape(g) if is_poly_kind(g.kind) => Some(g.q.clone()),
+            Kind::Shape(g) if g.kind == HEART => Some(heart_pts(&g.q, g.ang, 32)),
+            Kind::Shape(g) if g.kind == ELLIPSE => {
+                let q = &g.q;
+                let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
+                let (rx, ry) = ((q[2] - q[0]).abs() / 2.0, (q[3] - q[1]).abs() / 2.0);
+                let (ca, sa) = (g.ang.cos(), g.ang.sin());
+                let n = 72;
+                Some(
+                    (0..n)
+                        .flat_map(|i| {
+                            let t = std::f32::consts::TAU * i as f32 / n as f32;
+                            let (ux, uy) = (rx * t.cos(), ry * t.sin());
+                            [cx + ux * ca - uy * sa, cy + ux * sa + uy * ca]
+                        })
+                        .collect(),
+                )
+            }
+            Kind::Stroke(s) if Item::stroke_closed(s, self.width) => Some(s.p.chunks_exact(3).flat_map(|c| [c[0], c[1]]).collect()),
+            _ => None,
+        }
+    }
+
+    /// Liegt der Punkt innerhalb der geschlossenen Fläche (Form, geschlossener Strich, Notiz, Bild, Tabelle)?
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        match &self.kind {
+            Kind::Shape(g) if g.kind == ELLIPSE => {
+                let q = &g.q;
+                let (cx, cy) = ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
+                let (rx, ry) = ((q[2] - q[0]).abs() / 2.0, (q[3] - q[1]).abs() / 2.0);
+                if rx < 1e-3 || ry < 1e-3 {
+                    return false;
+                }
+                let (x, y) = if g.ang != 0.0 { rot_pt(x, y, cx, cy, -g.ang) } else { (x, y) };
+                let (u, v) = ((x - cx) / rx, (y - cy) / ry);
+                u * u + v * v <= 1.0
+            }
+            Kind::Shape(_) | Kind::Stroke(_) => self.fill_outline().map(|o| point_in_poly(&o, x, y)).unwrap_or(false),
+            Kind::Note(_) | Kind::Img(_) | Kind::Table(_) => self.hit(x, y, 0.0),
+            Kind::Pin(_) => false,
+        }
+    }
+
+    /// Farbe des Bildes am Weltpunkt (nicht vormultipliziert, 0xAARRGGBB); None, wenn kein Bild, das Bild nicht
+    /// geladen werden kann oder der Punkt daneben liegt.
+    pub fn img_pixel(&self, x: f32, y: f32) -> Option<u32> {
+        let Kind::Img(m) = &self.kind else { return None };
+        let pm = load_image(&m.file)?;
+        let (px, py) = if m.ang != 0.0 { rot_pt(x, y, m.x + m.w / 2.0, m.y + m.h / 2.0, -m.ang) } else { (x, y) };
+        let (fx, fy, fw, fh) = m.full_rect().unwrap_or((m.x, m.y, m.w, m.h));
+        if fw == 0.0 || fh == 0.0 || !self.hit(x, y, 0.0) {
+            return None;
+        }
+        let (u, v) = ((px - fx) / fw, (py - fy) / fh);
+        let ix = ((u * pm.width() as f32) as i64).clamp(0, pm.width() as i64 - 1) as u32;
+        let iy = ((v * pm.height() as f32) as i64).clamp(0, pm.height() as i64 - 1) as u32;
+        let c = pm.pixel(ix, iy)?.demultiply();
+        Some((c.alpha() as u32) << 24 | (c.red() as u32) << 16 | (c.green() as u32) << 8 | c.blue() as u32)
+    }
+
+    fn draw_fill(&self, c: &mut Canvas) {
+        let Some(fc) = self.fill else { return };
+        if let Kind::Shape(g) = &self.kind {
+            if g.kind == ELLIPSE {
+                let q = &g.q;
+                if g.ang != 0.0 {
+                    c.save();
+                    c.rotate(g.ang.to_degrees(), (q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0);
+                }
+                c.draw_oval(q[0].min(q[2]), q[1].min(q[3]), q[0].max(q[2]), q[1].max(q[3]), &Paint::fill(fc));
+                if g.ang != 0.0 {
+                    c.restore();
+                }
+                return;
+            }
+        }
+        let Some(o) = self.fill_outline() else { return };
+        if o.len() < 6 {
+            return;
+        }
+        let mut pb = PathBuilder::new();
+        pb.move_to(o[0], o[1]);
+        for xy in o[2..].chunks_exact(2) {
+            pb.line_to(xy[0], xy[1]);
+        }
+        pb.close();
+        if let Some(path) = pb.finish() {
+            c.draw_path(&path, &Paint::fill(fc));
         }
     }
 
@@ -701,6 +1175,13 @@ impl Item {
             pt.style = Style::Fill;
             let k = if s.var { 0.35 + 1.3 * p[2] } else { 1.0 };
             c.draw_circle(p[0], p[1], self.width * k / 2.0, &pt);
+            return;
+        }
+        if self.fill.is_some() {
+            self.draw_fill(c);
+        }
+        if s.ps != PS_NORMAL {
+            self.draw_styled_stroke(s, c, pt.color);
             return;
         }
         // Schneller Weg: Kapseln mit Abstandsfeld-Kantenglaettung (Canvas::fill_capsules)
@@ -725,6 +1206,80 @@ impl Item {
                 }
             }
         }
+    }
+
+    /// Stiftarten außer normal (ohne Kapsel-Weg).
+    fn draw_styled_stroke(&self, s: &Stroke, c: &mut Canvas, color: u32) {
+        let (n, p, w) = (s.n(), &s.p, self.width);
+        match s.ps {
+            PS_FOUNTAIN => {
+                // Feder unter 45°: dünn entlang der Feder, breit quer dazu; dazu der Druck
+                let mut pt = Paint::stroke(color, w, Cap::Round);
+                for i in 1..n {
+                    let (ax, ay, bx, by) = (p[i * 3 - 3], p[i * 3 - 2], p[i * 3], p[i * 3 + 1]);
+                    let dir = (by - ay).atan2(bx - ax) + std::f32::consts::FRAC_PI_4;
+                    let pr = if s.var { 0.35 + 1.3 * (p[i * 3 - 1] + p[i * 3 + 2]) * 0.5 } else { 1.0 };
+                    pt.stroke_width = w * pr * (0.25 + 1.1 * dir.sin().abs());
+                    c.draw_line(ax, ay, bx, by, &pt);
+                }
+            }
+            PS_PENCIL => {
+                // halbdeckende Grundlinie + deterministische Körnung
+                let a = (color >> 24) as f32 / 255.0;
+                let base = (color & 0xFFFFFF) | (((a * 0.55 * 255.0) as u32) << 24);
+                let grain = (color & 0xFFFFFF) | (((a * 0.5 * 255.0) as u32) << 24);
+                if let Some(path) = self.center_path(s) {
+                    c.draw_path(&path, &Paint::stroke(base, w * 0.85, Cap::Round));
+                }
+                let mut dots = Vec::new();
+                let step = (w * 0.45).max(0.3);
+                let mut k = 0u32;
+                walk(p, 3, step, |x, y, nx, ny| {
+                    k = k.wrapping_add(1);
+                    let h = k.wrapping_mul(2654435761) ^ (x.to_bits() >> 7);
+                    let off = ((h & 0xFF) as f32 / 255.0 - 0.5) * w * 0.8;
+                    if h & 0x300 != 0 {
+                        dots.extend_from_slice(&[x + nx * off, y + ny * off]);
+                    }
+                });
+                c.draw_points(&dots, &Paint::stroke(grain, (w * 0.32).max(0.3), Cap::Round));
+            }
+            PS_DASHED => {
+                if let Some(path) = self.center_path(s) {
+                    let mut pd = Paint::stroke(color, w, Cap::Butt);
+                    pd.dash = Some(((w * 3.0).max(3.0), (w * 2.0).max(2.0)));
+                    c.draw_path(&path, &pd);
+                }
+            }
+            _ => {
+                let mut dots = Vec::new();
+                walk(p, 3, (w * 2.2).max(1.5), |x, y, _, _| dots.extend_from_slice(&[x, y]));
+                c.draw_points(&dots, &Paint::stroke(color, w, Cap::Round));
+            }
+        }
+    }
+
+    /// Geglättete Mittellinie (zwischengespeichert, wie beim normalen Strich ohne Druck).
+    fn center_path(&self, s: &Stroke) -> Option<Path> {
+        let (n, p) = (s.n(), &s.p);
+        let mut cache = self.path.borrow_mut();
+        if cache.is_none() {
+            let mut pb = PathBuilder::new();
+            pb.move_to(p[0], p[1]);
+            if s.sharp {
+                for i in 1..n {
+                    pb.line_to(p[i * 3], p[i * 3 + 1]);
+                }
+            } else {
+                for i in 1..n {
+                    let (ax, ay) = (p[i * 3 - 3], p[i * 3 - 2]);
+                    pb.quad_to(ax, ay, (ax + p[i * 3]) / 2.0, (ay + p[i * 3 + 1]) / 2.0);
+                }
+                pb.line_to(p[n * 3 - 3], p[n * 3 - 2]);
+            }
+            *cache = pb.finish();
+        }
+        cache.clone()
     }
 
     /// Mittellinien des Strichs mit Breite. Druckstriche werden in Abschnitte nahezu gleicher Breite
@@ -858,6 +1413,9 @@ impl Item {
         if g.kind == ARROW_ENG {
             return vec![arrow_eng_head(q[0], q[1], q[2], q[3], self.width)];
         }
+        if g.kind == DIM {
+            return dim_heads(q, self.width).to_vec();
+        }
         match arrow_spec(g.kind) {
             Some((both, true, _)) => {
                 let tips = [(q[2], q[3]), (q[0], q[1])];
@@ -873,8 +1431,63 @@ impl Item {
             return;
         }
         let p = Paint::stroke(self.line_color(g.hl, dark), self.width, Cap::Round);
+        if self.fill.is_some() && is_closed_kind(g.kind) {
+            self.draw_fill(c);
+        }
         match g.kind {
             LINE => c.draw_line(q[0], q[1], q[2], q[3], &p),
+            DIM => {
+                let heads = dim_heads(q, self.width);
+                let (a, b) = (((heads[1][2] + heads[1][4]) / 2.0, (heads[1][3] + heads[1][5]) / 2.0), ((heads[0][2] + heads[0][4]) / 2.0, (heads[0][3] + heads[0][5]) / 2.0));
+                let mut pb2 = p.clone();
+                pb2.cap = Cap::Butt;
+                c.draw_line(a.0, a.1, b.0, b.1, &pb2);
+                for h in heads {
+                    let mut pb = PathBuilder::new();
+                    pb.move_to(h[0], h[1]);
+                    pb.line_to(h[2], h[3]);
+                    pb.line_to(h[4], h[5]);
+                    pb.close();
+                    if let Some(path) = pb.finish() {
+                        c.draw_path(&path, &Paint::fill(p.color));
+                    }
+                }
+                // Begrenzungsstriche quer zur Linie
+                let (dx, dy) = (q[2] - q[0], q[3] - q[1]);
+                let l = hypot(dx, dy);
+                if l > 0.0 {
+                    let tl = (self.width * 3.0).max(6.0);
+                    let (nx, ny) = (-dy / l * tl, dx / l * tl);
+                    let mut pt = p.clone();
+                    pt.stroke_width = (self.width * 0.6).max(0.5);
+                    c.draw_line(q[0] - nx, q[1] - ny, q[0] + nx, q[1] + ny, &pt);
+                    c.draw_line(q[2] - nx, q[3] - ny, q[2] + nx, q[3] + ny, &pt);
+                }
+                let txt = dim_text(l);
+                let (mx, my, deg) = dim_label(q, self.width);
+                let ts = dim_text_size(self.width);
+                let tw = crate::text::measure(&txt, ts);
+                let mut tp = Paint::fill(p.color);
+                tp.text_size = ts;
+                c.save();
+                c.rotate(deg, mx, my);
+                c.draw_text(&txt, mx - tw / 2.0, my, &tp);
+                c.restore();
+            }
+            ARC => {
+                let mut cache = self.path.borrow_mut();
+                if cache.is_none() {
+                    let mut pb = PathBuilder::new();
+                    pb.move_to(q[0], q[1]);
+                    for xy in q[2..].chunks_exact(2) {
+                        pb.line_to(xy[0], xy[1]);
+                    }
+                    *cache = pb.finish();
+                }
+                if let Some(path) = cache.as_ref() {
+                    c.draw_path(path, &p);
+                }
+            }
             ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED => {
                 let (both, filled, dashed) = arrow_spec(g.kind).unwrap_or_default();
                 let heads = self.arrow_heads(q, both);
@@ -987,8 +1600,16 @@ impl Item {
         }
     }
 
-    /// Trifft der Kreis (x, y, r) das Objekt?
+    /// Trifft der Kreis (x, y, r) das Objekt? Gefüllte Flächen treffen auch innen.
     pub fn hit(&self, x: f32, y: f32, r: f32) -> bool {
+        if self.fill.is_some() && matches!(self.kind, Kind::Stroke(_) | Kind::Shape(_)) && self.contains(x, y) {
+            return true;
+        }
+        self.hit_outline(x, y, r)
+    }
+
+    /// Wie hit(), aber bei Formen/Strichen nur der Umriss (ohne Füllung).
+    pub fn hit_outline(&self, x: f32, y: f32, r: f32) -> bool {
         let lim = r + self.width / 2.0;
         match &self.kind {
             Kind::Stroke(s) => {
@@ -1004,7 +1625,8 @@ impl Item {
             Kind::Shape(g) => {
                 let q = &g.q;
                 match g.kind {
-                    LINE | ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
+                    LINE | ARROW | ARROW2 | ARROW_FILLED | ARROW2_FILLED | ARROW_DASHED | ARROW2_DASHED | DIM => seg(x, y, q[0], q[1], q[2], q[3]) <= lim,
+                    ARC => q.len() >= 4 && (1..q.len() / 2).any(|i| seg(x, y, q[i * 2 - 2], q[i * 2 - 1], q[i * 2], q[i * 2 + 1]) <= lim),
                     ARROW_ENG => {
                         let h = arrow_eng_head(q[0], q[1], q[2], q[3], self.width);
                         seg(x, y, q[0], q[1], q[2], q[3]) <= lim || poly_hit(&h, x, y, lim)
@@ -1030,6 +1652,11 @@ impl Item {
             Kind::Img(m) => {
                 let (px, py) = if m.ang != 0.0 { rot_pt(x, y, m.x + m.w / 2.0, m.y + m.h / 2.0, -m.ang) } else { (x, y) };
                 px >= m.x.min(m.x + m.w) - r && px <= m.x.max(m.x + m.w) + r && py >= m.y.min(m.y + m.h) - r && py <= m.y.max(m.y + m.h) + r
+            }
+            Kind::Table(t) => x >= t.x - r && x <= t.x + t.w() + r && y >= t.y - r && y <= t.y + t.h() + r,
+            Kind::Pin(p) => {
+                let (hx, hy) = (p.x, p.y - PIN_R * 2.2);
+                hypot(x - hx, y - hy) <= PIN_R + r || seg(x, y, p.x, p.y, hx, hy) <= r + PIN_R * 0.3
             }
         }
     }
@@ -1073,6 +1700,21 @@ impl Item {
                 m.w *= s;
                 m.h *= s;
             }
+            Kind::Table(t) => {
+                t.x = px + (t.x - px) * s + dx;
+                t.y = py + (t.y - py) * s + dy;
+                if s != 1.0 {
+                    t.cw.iter_mut().for_each(|v| *v *= s);
+                    t.rh.iter_mut().for_each(|v| *v *= s);
+                    t.size *= s;
+                    self.width *= s;
+                }
+            }
+            Kind::Pin(p) => {
+                // Nadel behaelt ihre Groesse, nur die Spitze wandert
+                p.x = px + (p.x - px) * s + dx;
+                p.y = py + (p.y - py) * s + dy;
+            }
         }
         self.touch();
     }
@@ -1107,6 +1749,18 @@ impl Item {
                 m.y = cy - m.h / 2.0;
                 m.ang = norm_ang(m.ang as f64 + rad as f64);
             }
+            Kind::Table(t) => {
+                // Tabellen bleiben achsenparallel: nur der Mittelpunkt dreht mit
+                let (w, h) = (t.w(), t.h());
+                let (cx, cy) = rot_pt(t.x + w / 2.0, t.y + h / 2.0, px, py, rad);
+                t.x = cx - w / 2.0;
+                t.y = cy - h / 2.0;
+            }
+            Kind::Pin(p) => {
+                let (x, y) = rot_pt(p.x, p.y, px, py, rad);
+                p.x = x;
+                p.y = y;
+            }
         }
         self.touch();
     }
@@ -1126,7 +1780,7 @@ impl Item {
         for xy in v.chunks_exact(2) {
             p.extend_from_slice(&[xy[0], xy[1], 0.5]);
         }
-        let mut it = Item::new(Kind::Stroke(Stroke { p, hl, var: false, sharp: true }));
+        let mut it = Item::new(Kind::Stroke(Stroke { p, hl, var: false, sharp: true, ps: 0 }));
         it.color = self.color;
         it.width = self.width;
         it.layer = self.layer;
@@ -1141,6 +1795,28 @@ impl Item {
         let mut out = Vec::new();
         match g.kind {
             LINE => out.push(self.mk(hl, &[q[0], q[1], q[2], q[3]])),
+            ARC => out.push(self.mk(hl, q)),
+            DIM => {
+                let heads = dim_heads(q, self.width);
+                let (a, b) = (((heads[1][2] + heads[1][4]) / 2.0, (heads[1][3] + heads[1][5]) / 2.0), ((heads[0][2] + heads[0][4]) / 2.0, (heads[0][3] + heads[0][5]) / 2.0));
+                out.push(self.mk(hl, &[a.0, a.1, b.0, b.1]));
+                let (dx, dy) = (q[2] - q[0], q[3] - q[1]);
+                let l = hypot(dx, dy);
+                if l > 0.0 {
+                    let tl = (self.width * 3.0).max(6.0);
+                    let (nx, ny) = (-dy / l * tl, dx / l * tl);
+                    let mut t0 = self.mk(hl, &[q[0] - nx, q[1] - ny, q[0] + nx, q[1] + ny]);
+                    let mut t1 = self.mk(hl, &[q[2] - nx, q[3] - ny, q[2] + nx, q[3] + ny]);
+                    t0.width = (self.width * 0.6).max(0.5);
+                    t1.width = t0.width;
+                    out.push(t0);
+                    out.push(t1);
+                }
+                // Spitzen zuletzt (xopp-Export füllt sie über filled_heads)
+                for h in heads {
+                    out.push(self.mk(hl, &[h[0], h[1], h[2], h[3], h[4], h[5], h[0], h[1]]));
+                }
+            }
             ARROW | ARROW2 => {
                 // unverändert zur Vorversion (Teil-Radierer)
                 let both = g.kind == ARROW2;
@@ -1239,6 +1915,9 @@ impl Item {
                 o.insert("v".into(), json!(s.var));
                 o.insert("sh".into(), json!(s.sharp));
                 o.insert("p".into(), arr(&s.p));
+                if s.ps != 0 {
+                    o.insert("ps".into(), json!(s.ps));
+                }
             }
             Kind::Shape(g) => {
                 o.insert("t".into(), json!("g"));
@@ -1249,6 +1928,11 @@ impl Item {
                 o.insert("q".into(), arr(&g.q));
                 if g.ang != 0.0 {
                     o.insert("an".into(), num(g.ang));
+                }
+                for (k, a) in ["a0", "a1"].iter().zip(&g.a) {
+                    if let Some(a) = a {
+                        o.insert((*k).into(), a.json());
+                    }
                 }
             }
             Kind::Note(n) => {
@@ -1278,7 +1962,39 @@ impl Item {
                 if m.ang != 0.0 {
                     o.insert("an".into(), num(m.ang));
                 }
+                if let Some(cr) = m.cr {
+                    o.insert("cr".into(), Value::Array(cr.iter().map(|v| json!(((*v as f64) * 10000.0).round() / 10000.0)).collect()));
+                }
             }
+            Kind::Table(t) => {
+                o.insert("t".into(), json!("tb"));
+                o.insert("c".into(), json!(c));
+                o.insert("w".into(), num(self.width));
+                o.insert("x".into(), num(t.x));
+                o.insert("y".into(), num(t.y));
+                o.insert("cw".into(), arr(&t.cw));
+                o.insert("rh".into(), arr(&t.rh));
+                o.insert("cl".into(), json!(t.cells));
+                o.insert("s".into(), num(t.size));
+            }
+            Kind::Pin(p) => {
+                o.insert("t".into(), json!("pin"));
+                o.insert("c".into(), json!(c));
+                o.insert("w".into(), num(self.width));
+                o.insert("x".into(), num(p.x));
+                o.insert("y".into(), num(p.y));
+                o.insert("au".into(), json!(p.author));
+                o.insert("tm".into(), json!(p.time));
+                o.insert("tx".into(), json!(p.text));
+                let re: Vec<Value> = p.replies.iter().map(|r| json!({"au": r.author, "tm": r.time, "tx": r.text})).collect();
+                o.insert("re".into(), Value::Array(re));
+            }
+        }
+        if let Some(fc) = self.fill {
+            o.insert("fc".into(), json!(fc as i32));
+        }
+        if self.gid != 0 {
+            o.insert("gid".into(), json!(uid_str(self.gid)));
         }
         o.insert("ly".into(), json!(self.layer));
         o.insert("uid".into(), json!(uid_str(self.uid)));
@@ -1300,7 +2016,8 @@ impl Item {
                 if p.is_empty() {
                     return None;
                 }
-                Kind::Stroke(Stroke { p, hl: jbool(o, "h"), var: jbool(o, "v"), sharp: jbool(o, "sh") })
+                let ps = o.get("ps").and_then(jint).unwrap_or(0).clamp(0, 4) as u8;
+                Kind::Stroke(Stroke { p, hl: jbool(o, "h"), var: jbool(o, "v"), sharp: jbool(o, "sh"), ps })
             }
             "g" => {
                 let kind = jint(o.get("k")?)?;
@@ -1309,7 +2026,8 @@ impl Item {
                 if q.len() < 4 {
                     return None;
                 }
-                Kind::Shape(Shape { kind, q, hl: jbool(o, "h"), ang: jf(o, "an").unwrap_or(0.0) })
+                let a = [o.get("a0").and_then(Anchor::parse), o.get("a1").and_then(Anchor::parse)];
+                Kind::Shape(Shape { kind, q, hl: jbool(o, "h"), ang: jf(o, "an").unwrap_or(0.0), a })
             }
             "i" => Kind::Img(Img {
                 x: jf(o, "x")?,
@@ -1318,7 +2036,29 @@ impl Item {
                 h: jf(o, "ih")?,
                 file: o.get("f")?.as_str()?.to_string(),
                 ang: jf(o, "an").unwrap_or(0.0),
+                cr: o.get("cr").and_then(farr).filter(|v| v.len() == 4).map(|v| [v[0], v[1], v[2], v[3]]).and_then(valid_crop),
             }),
+            "tb" => {
+                let cw = farr(o.get("cw")?)?;
+                let rh = farr(o.get("rh")?)?;
+                if cw.is_empty() || rh.is_empty() || cw.len() * rh.len() > 10_000 {
+                    return None;
+                }
+                let mut cells: Vec<String> = o.get("cl").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default();
+                cells.resize(cw.len() * rh.len(), String::new());
+                let size = jf(o, "s").filter(|s| *s > 0.0 && s.is_finite()).unwrap_or(16.0);
+                Kind::Table(Table { x: jf(o, "x")?, y: jf(o, "y")?, cw, rh, cells, size })
+            }
+            "pin" => {
+                let st = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+                let tm = |v: &Value| v.get("tm").and_then(Value::as_i64).unwrap_or(0);
+                let replies = o
+                    .get("re")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter(|r| r.is_object()).map(|r| Reply { author: st(r, "au"), time: tm(r), text: st(r, "tx") }).collect())
+                    .unwrap_or_default();
+                Kind::Pin(Pin { x: jf(o, "x")?, y: jf(o, "y")?, author: st(o, "au"), time: tm(o), text: st(o, "tx"), replies })
+            }
             _ => {
                 let mut n = Note {
                     x: jf(o, "x")?,
@@ -1343,6 +2083,8 @@ impl Item {
         it.color = jint(o.get("c")?)? as u32;
         it.width = jf(o, "w")?;
         it.layer = o.get("ly").and_then(jint).unwrap_or(1);
+        it.fill = o.get("fc").and_then(jint).map(|c| c as u32);
+        it.gid = o.get("gid").and_then(parse_uid).unwrap_or(0);
         // ältere Dateien (Java 2.x, Rust < 4.6) haben keine uid: neue vergeben (bei Item::new schon geschehen)
         if let Some(u) = o.get("uid").and_then(parse_uid) {
             it.uid = u;
@@ -1393,7 +2135,90 @@ fn poly_hit(q: &[f32], x: f32, y: f32, lim: f32) -> bool {
 // ---------------------------------------------------------------- JSON-Helfer
 
 /// Vom Kern selbst geschriebene Item-Felder; alle anderen landen in `Item::extra`.
-const KNOWN_KEYS: [&str; 22] = ["an", "bg", "c", "f", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "q", "s", "sh", "t", "tx", "uid", "v", "w", "x", "y"];
+/// Neu in 4.25: "a0"/"a1" (Verbinder), "au"/"tm"/"re" (Stecknadel), "cl"/"cw"/"rh" (Tabelle), "cr" (Zuschnitt),
+/// "fc" (Füllfarbe), "gid" (Gruppe), "ps" (Stiftart).
+const KNOWN_KEYS: [&str; 34] = [
+    "a0", "a1", "an", "au", "bg", "c", "cl", "cr", "cw", "f", "fc", "gid", "h", "ih", "iw", "k", "ly", "mh", "nw", "p", "ps", "q", "re", "rh", "s", "sh", "t",
+    "tm", "tx", "uid", "v", "w", "x", "y",
+];
+
+/// Zuschnitt prüfen: 0 ≤ l < r ≤ 1, 0 ≤ t < b ≤ 1; der volle Ausschnitt ergibt None.
+pub fn valid_crop(c: [f32; 4]) -> Option<[f32; 4]> {
+    let c = [c[0].clamp(0.0, 1.0), c[1].clamp(0.0, 1.0), c[2].clamp(0.0, 1.0), c[3].clamp(0.0, 1.0)];
+    if !c.iter().all(|v| v.is_finite()) || c[2] - c[0] < 0.005 || c[3] - c[1] < 0.005 {
+        return None;
+    }
+    if c == [0.0, 0.0, 1.0, 1.0] {
+        return None;
+    }
+    Some(c)
+}
+
+impl Img {
+    /// Box des ganzen (unbeschnittenen) Bildes (x, y, w, h) in ungedrehten Koordinaten; None ohne Zuschnitt.
+    pub fn full_rect(&self) -> Option<(f32, f32, f32, f32)> {
+        let cr = self.cr?;
+        let (fw, fh) = (self.w / (cr[2] - cr[0]).max(1e-4), self.h / (cr[3] - cr[1]).max(1e-4));
+        Some((self.x - cr[0] * fw, self.y - cr[1] * fh, fw, fh))
+    }
+
+    /// Setzt den Zuschnitt; die Box folgt so, dass das Bild an seinem Platz bleibt (auch gedreht).
+    pub fn set_crop(&mut self, cr: Option<[f32; 4]>) {
+        let cr = cr.and_then(valid_crop);
+        let (fx, fy, fw, fh) = self.full_rect().unwrap_or((self.x, self.y, self.w, self.h));
+        let n = cr.unwrap_or([0.0, 0.0, 1.0, 1.0]);
+        let (nx, ny, nw, nh) = (fx + n[0] * fw, fy + n[1] * fh, (n[2] - n[0]) * fw, (n[3] - n[1]) * fh);
+        // Mittelpunkt der neuen Box um den alten Mittelpunkt mitdrehen
+        let (ocx, ocy) = (self.x + self.w / 2.0, self.y + self.h / 2.0);
+        let (cx, cy) = rot_pt(nx + nw / 2.0, ny + nh / 2.0, ocx, ocy, self.ang);
+        self.x = cx - nw / 2.0;
+        self.y = cy - nh / 2.0;
+        self.w = nw;
+        self.h = nh;
+        self.cr = cr;
+    }
+}
+
+/// Punkt im Vieleck (gerade-ungerade-Regel), q = x/y-Paare.
+pub fn point_in_poly(q: &[f32], x: f32, y: f32) -> bool {
+    let n = q.len() / 2;
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi, xj, yj) = (q[i * 2], q[i * 2 + 1], q[j * 2], q[j * 2 + 1]);
+        if (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+/// Läuft die Polylinie p (Schrittweite `stride`, x/y vorn) in Abständen `step` ab: f(x, y, nx, ny) mit Normale.
+fn walk(p: &[f32], stride: usize, step: f32, mut f: impl FnMut(f32, f32, f32, f32)) {
+    let n = p.len() / stride;
+    if n == 0 || step <= 0.0 {
+        return;
+    }
+    let mut rest = 0.0f32;
+    for i in 1..n {
+        let (ax, ay, bx, by) = (p[i * stride - stride], p[i * stride - stride + 1], p[i * stride], p[i * stride + 1]);
+        let l = hypot(bx - ax, by - ay);
+        if l <= 0.0 {
+            continue;
+        }
+        let (ux, uy) = ((bx - ax) / l, (by - ay) / l);
+        let mut d = rest;
+        while d <= l {
+            f(ax + ux * d, ay + uy * d, -uy, ux);
+            d += step;
+        }
+        rest = d - l;
+    }
+}
 
 /// f32 als JSON-Zahl (kuerzeste Darstellung; NaN/Unendlich werden 0).
 pub fn num(v: f32) -> Value {
@@ -1422,7 +2247,7 @@ fn arr(a: &[f32]) -> Value {
 
 /// Lineare Formtypen (Linie, Pfeile): zwei Endpunkte q[0..2] und q[2..4].
 pub fn is_linear(kind: i32) -> bool {
-    matches!(kind, LINE | ARROW | ARROW2 | ARROW_ENG) || (7..=10).contains(&kind)
+    matches!(kind, LINE | ARROW | ARROW2 | ARROW_ENG | DIM) || (7..=10).contains(&kind)
 }
 
 impl Item {
@@ -1489,8 +2314,139 @@ impl Item {
                 m.x = cx - m.w / 2.0;
                 m.y = cy - m.h / 2.0;
             }
+            Kind::Table(t) => {
+                let (cx, cy) = pt(t.x + t.w() / 2.0, t.y + t.h() / 2.0);
+                let (fx, fy) = box_f(0.0);
+                t.cw.iter_mut().for_each(|v| *v *= fx);
+                t.rh.iter_mut().for_each(|v| *v *= fy);
+                t.x = cx - t.w() / 2.0;
+                t.y = cy - t.h() / 2.0;
+            }
+            Kind::Pin(p) => {
+                let (x, y) = pt(p.x, p.y);
+                p.x = x;
+                p.y = y;
+            }
         }
         self.touch();
+    }
+
+    /// Setzt bzw. löst (None) den Andockpunkt des Endes `i` einer linearen Form.
+    pub fn set_anchor(&mut self, i: usize, a: Option<Anchor>) {
+        if let Kind::Shape(g) = &mut self.kind {
+            if i < 2 && (a.is_none() || is_linear(g.kind)) {
+                g.a[i] = a;
+            }
+        }
+    }
+
+    /// Andockpunkte (Anfang, Ende) einer linearen Form.
+    pub fn anchors(&self) -> [Option<Anchor>; 2] {
+        match &self.kind {
+            Kind::Shape(g) if is_linear(g.kind) => g.a,
+            _ => [None, None],
+        }
+    }
+
+    /// Rahmen des Objekts: Mittelpunkt, ungedrehte Breite/Höhe, Drehung (für Verbinder und Ausrichten).
+    pub fn frame(&self) -> (f32, f32, f32, f32, f32) {
+        let pts = |v: &[f32], stride: usize| {
+            let (mut l, mut t, mut r, mut b) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for c in v.chunks_exact(stride) {
+                l = l.min(c[0]);
+                t = t.min(c[1]);
+                r = r.max(c[0]);
+                b = b.max(c[1]);
+            }
+            if l > r {
+                (0.0, 0.0, 0.0, 0.0, 0.0)
+            } else {
+                ((l + r) / 2.0, (t + b) / 2.0, r - l, b - t, 0.0)
+            }
+        };
+        match &self.kind {
+            Kind::Stroke(s) => pts(&s.p, 3),
+            Kind::Shape(g) if g.kind == ELLIPSE || g.kind == HEART => {
+                let q = &g.q;
+                ((q[0] + q[2]) / 2.0, (q[1] + q[3]) / 2.0, (q[2] - q[0]).abs(), (q[3] - q[1]).abs(), g.ang)
+            }
+            Kind::Shape(g) => pts(&g.q, 2),
+            Kind::Note(n) => (n.x + n.w / 2.0, n.y + n.h / 2.0, n.w, n.h, n.ang),
+            Kind::Img(m) => (m.x + m.w / 2.0, m.y + m.h / 2.0, m.w.abs(), m.h.abs(), m.ang),
+            Kind::Table(t) => (t.x + t.w() / 2.0, t.y + t.h() / 2.0, t.w(), t.h(), 0.0),
+            Kind::Pin(p) => (p.x, p.y - PIN_R * 2.2, PIN_R * 2.0, PIN_R * 2.0, 0.0),
+        }
+    }
+
+    /// Andockpunkt relativ zum Rahmen (0..1) für den Weltpunkt: nahe der Mitte None (Mitte), sonst die
+    /// nächstgelegene Stelle auf einer Kante.
+    pub fn anchor_rel(&self, x: f32, y: f32) -> Option<(f32, f32)> {
+        let (cx, cy, w, h, ang) = self.frame();
+        let (lx, ly) = rot_pt(x, y, cx, cy, -ang);
+        let (dx, dy) = (lx - cx, ly - cy);
+        if w <= 0.0 || h <= 0.0 || (dx.abs() <= w * 0.25 && dy.abs() <= h * 0.25) {
+            return None;
+        }
+        let (u, v) = ((dx / w + 0.5).clamp(0.0, 1.0), (dy / h + 0.5).clamp(0.0, 1.0));
+        let d = [u, 1.0 - u, v, 1.0 - v];
+        let k = (0..4).min_by(|a, b| d[*a].total_cmp(&d[*b])).unwrap_or(0);
+        Some(match k {
+            0 => (0.0, v),
+            1 => (1.0, v),
+            2 => (u, 0.0),
+            _ => (u, 1.0),
+        })
+    }
+
+    /// Weltpunkt zum relativen Andockpunkt.
+    pub fn rel_point(&self, rel: (f32, f32)) -> (f32, f32) {
+        let (cx, cy, w, h, ang) = self.frame();
+        rot_pt(cx + (rel.0 - 0.5) * w, cy + (rel.1 - 0.5) * h, cx, cy, ang)
+    }
+
+    /// Punkt auf dem Rand des Objekts auf dem Strahl von seiner Mitte Richtung (tx, ty).
+    pub fn edge_toward(&self, tx: f32, ty: f32) -> (f32, f32) {
+        let (cx, cy, w, h, ang) = self.frame();
+        let (dx, dy) = (tx - cx, ty - cy);
+        let l = hypot(dx, dy);
+        if l < 1e-4 {
+            return (cx, cy);
+        }
+        let (ux, uy) = (dx / l, dy / l);
+        // geschlossener Umriss: erster Schnitt des Strahls
+        if let Some(o) = self.fill_outline() {
+            let m = o.len() / 2;
+            let mut best: Option<f32> = None;
+            for i in 0..m {
+                let j = (i + 1) % m;
+                let (ax, ay, bx, by) = (o[i * 2] - cx, o[i * 2 + 1] - cy, o[j * 2] - cx, o[j * 2 + 1] - cy);
+                let (ex, ey) = (bx - ax, by - ay);
+                let den = ux * ey - uy * ex;
+                if den.abs() < 1e-9 {
+                    continue;
+                }
+                let t = (ax * ey - ay * ex) / den;
+                let s = (ax * uy - ay * ux) / den;
+                if t > 0.0 && (-1e-4..=1.0001).contains(&s) && best.is_none_or(|b| t < b) {
+                    best = Some(t);
+                }
+            }
+            if let Some(t) = best {
+                return (cx + ux * t, cy + uy * t);
+            }
+        }
+        // Rechteck des Rahmens
+        let (lx, ly) = rot_pt(cx + ux, cy + uy, cx, cy, -ang);
+        let (lx, ly) = (lx - cx, ly - cy);
+        let t = {
+            let tx = if lx.abs() > 1e-6 { (w / 2.0) / lx.abs() } else { f32::MAX };
+            let ty = if ly.abs() > 1e-6 { (h / 2.0) / ly.abs() } else { f32::MAX };
+            tx.min(ty)
+        };
+        if !t.is_finite() || t == f32::MAX {
+            return (cx, cy);
+        }
+        (cx + ux * t, cy + uy * t)
     }
 
     /// Setzt bei linearen Formen den Endpunkt `i` (0 = Anfang, 1 = Ende) auf (x, y).
@@ -1715,4 +2671,11 @@ mod extra_tests {
         assert!(d.filled_heads().is_empty());
     }
 
+}
+
+/// Test-Hilfe: JSON → Item → JSON ergibt dasselbe.
+#[cfg(test)]
+pub fn json_roundtrip_eq(it: &Item) -> bool {
+    let j = it.json();
+    Item::from_json(&j).map(|b| b.json() == j).unwrap_or(false)
 }

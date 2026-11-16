@@ -115,6 +115,46 @@ impl Op {
     }
 }
 
+/// Laserpointer-Nachricht (`{"t":"laser","c":Farbe,"p":[x,y,…]}`, vom Server zusätzlich mit `peer`): neue Punkte
+/// einer Spur in Board-Koordinaten. Wird nur weitergereicht – nicht gespeichert, keine Operation, kein Rückgängig.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LaserMsg {
+    pub peer: Option<u64>,
+    pub color: u32,
+    pub pts: Vec<(f32, f32)>,
+}
+
+impl LaserMsg {
+    /// Höchstzahl Punkte je Nachricht.
+    pub const MAX_PTS: usize = 256;
+
+    pub fn to_json(&self) -> Value {
+        let p: Vec<Value> = self.pts.iter().flat_map(|&(x, y)| [item::num((x * 10.0).round() / 10.0), item::num((y * 10.0).round() / 10.0)]).collect();
+        let mut o = json!({"t": "laser", "c": self.color as i32, "p": p});
+        if let Some(peer) = self.peer {
+            o["peer"] = json!(peer);
+        }
+        o
+    }
+
+    /// None bei anderer Nachricht oder ungültigen Feldern; zu viele Punkte werden abgeschnitten.
+    pub fn from_json(o: &Value) -> Option<LaserMsg> {
+        if o.get("t")?.as_str()? != "laser" {
+            return None;
+        }
+        let p = o.get("p")?.as_array()?;
+        let mut pts = Vec::with_capacity(p.len() / 2);
+        for xy in p.chunks_exact(2).take(Self::MAX_PTS) {
+            let (x, y) = (xy[0].as_f64()? as f32, xy[1].as_f64()? as f32);
+            if !x.is_finite() || !y.is_finite() {
+                return None;
+            }
+            pts.push((x, y));
+        }
+        Some(LaserMsg { peer: o.get("peer").and_then(Value::as_u64), color: o.get("c").and_then(item::jint).map(|c| c as u32).unwrap_or(crate::laser::LASER_COLOR), pts })
+    }
+}
+
 pub fn ops_to_json(ops: &[Op]) -> Value {
     Value::Array(ops.iter().map(Op::to_json).collect())
 }
@@ -476,6 +516,23 @@ mod tests {
         assert_eq!(bd.items.len(), 2);
         assert_ne!(bd.items[0].uid, bd.items[1].uid);
         assert!(bd.items[0].uid == a.uid || bd.items[1].uid == a.uid);
+    }
+
+    #[test]
+    fn laser_nachricht() {
+        let m = LaserMsg { peer: None, color: 0xFFFF0000, pts: vec![(1.04, 2.0), (3.0, -4.5)] };
+        let j = m.to_json();
+        assert_eq!(j["t"], "laser");
+        let back = LaserMsg::from_json(&j).unwrap();
+        assert_eq!(back.pts, vec![(1.0, 2.0), (3.0, -4.5)]);
+        assert_eq!(back.color, 0xFFFF0000);
+        let mut j2 = j.clone();
+        j2["peer"] = json!(7);
+        assert_eq!(LaserMsg::from_json(&j2).unwrap().peer, Some(7));
+        assert!(LaserMsg::from_json(&json!({"t":"cursor","x":1,"y":2})).is_none());
+        assert!(LaserMsg::from_json(&json!({"t":"laser","p":[1,"x"]})).is_none());
+        // keine Operation: wird nie gespeichert
+        assert!(Op::from_json(&j).is_none());
     }
 
     #[test]

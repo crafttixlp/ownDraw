@@ -9,6 +9,7 @@ pub mod export;
 pub mod geom;
 pub mod icons;
 pub mod item;
+pub mod laser;
 pub mod layer;
 pub mod migrate;
 pub mod pages;

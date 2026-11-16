@@ -756,9 +756,22 @@ pub fn load_invites(board: &str) {
 }
 
 /// Neuer Einladungslink; `days` `None` = unbefristet. Das Ergebnis steht in [`Net::new_link`].
-pub fn create_invite(board: &str, role: &str, days: Option<u32>) {
+/// Laufzeit eines neuen Einladungslinks.
+#[derive(Clone, Copy)]
+pub enum LinkTime {
+    Hours(u32),
+    Days(u32),
+    Forever,
+}
+
+pub fn create_invite(board: &str, role: &str, time: LinkTime) {
     let id = board.to_string();
-    request("POST", format!("/api/boards/{board}/invites"), Some(Body::Json(json!({"role": role, "days": days}))), vec![], move |r| match r {
+    let body = match time {
+        LinkTime::Hours(h) => json!({"role": role, "hours": h}),
+        LinkTime::Days(d) => json!({"role": role, "days": d}),
+        LinkTime::Forever => json!({"role": role, "days": null}),
+    };
+    request("POST", format!("/api/boards/{board}/invites"), Some(Body::Json(body)), vec![], move |r| match r {
         Ok(r) if r.ok() => {
             let v = r.json();
             let Some(token) = v.get("token").and_then(Value::as_str) else { return };

@@ -202,6 +202,14 @@ docker compose pull caddy && docker compose up -d      # Caddy aktualisieren
 Ohne Docker (z. B. zum Testen): `OWNDRAW_DATA=./data OWNDRAW_WEB=dist/web owndraw-server`. Nach einem
 Self-Update beendet sich der Prozess nur; einen Neustart muss dann ein Supervisor (systemd `Restart=always`) übernehmen.
 
+**Mitteilungen und Wartung (ab 4.8.0).** Im Admin-Panel unter **Mitteilungen** lassen sich Hinweise (z. B. zu
+Updates) anlegen, bearbeiten, (de)aktivieren und löschen; Typ Info oder Warnung, optional mit Zeitraum. Jeder
+Besucher der Web-App, auch Gäste, sieht aktive Mitteilungen beim Start einmal pro Browser. Unter **Wartung** schaltet
+man den Wartungsmodus ein (optional mit eigener Nachricht und Endzeit, danach endet er automatisch): Nutzer und Gäste
+sehen dann eine Wartungsseite, die API antwortet ihnen mit 503 `maintenance`, Live-Verbindungen werden getrennt.
+Admins arbeiten weiter; `/admin` und `/api/health` bleiben erreichbar. Details: [`web-api.md`](web-api.md).
+Tipp für Updates: vorher Wartung einschalten, nach dem Neustart prüfen, dann ausschalten.
+
 ## 9. Hinweise zum Vertrag (`web-api.md`)
 
 - Umgesetzt wie beschrieben, einschließlich Live-Zusammenarbeit über `/api/collab/{board_id}` (WebSocket).

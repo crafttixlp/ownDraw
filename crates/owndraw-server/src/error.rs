@@ -51,6 +51,10 @@ impl ApiError {
     pub fn not_implemented(m: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_IMPLEMENTED, "not_implemented", m)
     }
+    /// Wartungsmodus (503).
+    pub fn maintenance(m: impl Into<String>) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, "maintenance", m)
+    }
     pub fn upstream(m: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, "upstream_error", m)
     }

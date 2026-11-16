@@ -27,6 +27,17 @@
   #lade small { opacity: .65; }
   @keyframes dreh { to { transform: rotate(360deg); } }
   noscript { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  /* Mitteilungen vom Server (/api/notices) und Hinweis für Admins im Wartungsmodus */
+  #mitteilung { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0,0,0,.45); }
+  #mitteilung .karte { background: #fff; color: #303138; max-width: 30em; width: 100%; max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; border-radius: 14px; padding: 20px 22px; border-top: 5px solid #5b6cff; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  #mitteilung .karte.warnung { border-top-color: #e08a00; }
+  #mitteilung h2 { margin: 0 0 8px; font-size: 1.15rem; }
+  #mitteilung p { margin: 0 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+  #mitteilung .fuss { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  #mitteilung small { opacity: .6; }
+  #mitteilung button { font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: 0; background: #5b6cff; color: #fff; cursor: pointer; min-height: 40px; }
+  #wartung-admin { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 40; background: #e08a00; color: #fff; font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; pointer-events: none; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (prefers-color-scheme: dark) { #mitteilung .karte { background: #25262d; color: #e9eaee; } }
 </style>
 </head>
 <body>
@@ -67,6 +78,58 @@
     window.addEventListener("paste", (e) => {
       if (performance.now() - mitte < 800) { e.preventDefault(); e.stopImmediatePropagation(); }
     }, true);
+  })();
+</script>
+<script>
+  // Mitteilungen des Servers (Admin-Panel → Mitteilungen): jede einmal pro Browser zeigen.
+  // Ohne Server (statische Web-App) schlägt der Abruf fehl und es passiert nichts.
+  (() => {
+    if (!/^https?:$/.test(location.protocol)) return;
+    const KEY = "owndraw-mitteilungen-gesehen";
+    let gesehen = [];
+    try { gesehen = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { gesehen = []; }
+    if (!Array.isArray(gesehen)) gesehen = [];
+    const merke = (k) => {
+      gesehen.push(k);
+      try { localStorage.setItem(KEY, JSON.stringify(gesehen.slice(-200))); } catch (e) { /* privat */ }
+    };
+    const holen = async (pfad) => {
+      const r = await fetch(pfad, { credentials: "same-origin", cache: "no-store" });
+      if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) throw new Error("kein Server");
+      return r.json();
+    };
+    holen("api/notices").then((liste) => {
+      if (!Array.isArray(liste)) return;
+      const offen = liste.filter((n) => n && n.id && !gesehen.includes(n.id + ":" + n.updated));
+      let i = 0;
+      const zeige = () => {
+        document.getElementById("mitteilung")?.remove();
+        if (i >= offen.length) { document.getElementById("owndraw-canvas")?.focus(); return; }
+        const n = offen[i];
+        const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+        const huelle = el("div"); huelle.id = "mitteilung";
+        huelle.setAttribute("role", "dialog"); huelle.setAttribute("aria-modal", "true");
+        const karte = el("div", "karte" + (n.kind === "warning" ? " warnung" : ""));
+        if (n.title) karte.append(el("h2", null, n.title));
+        if (n.body) karte.append(el("p", null, n.body));
+        const fuss = el("div", "fuss");
+        fuss.append(el("small", null, offen.length > 1 ? (i + 1) + " von " + offen.length : ""));
+        const ok = el("button", null, i + 1 < offen.length ? "Weiter" : "OK");
+        ok.addEventListener("click", () => { merke(n.id + ":" + n.updated); i++; zeige(); });
+        fuss.append(ok); karte.append(fuss); huelle.append(karte);
+        document.body.append(huelle);
+        ok.focus();
+      };
+      zeige();
+    }).catch(() => {});
+    // Admins sehen die App auch im Wartungsmodus; ein Hinweis erinnert daran.
+    holen("api/maintenance").then((m) => {
+      if (!m || !m.active) return;
+      const b = document.createElement("div");
+      b.id = "wartung-admin";
+      b.textContent = "Wartungsmodus aktiv – nur Admins können OwnDraw gerade nutzen";
+      document.body.append(b);
+    }).catch(() => {});
   })();
 </script>
 <script type="module">

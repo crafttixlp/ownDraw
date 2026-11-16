@@ -751,3 +751,151 @@ async fn gast_beitritt_hat_rate_limit() {
     assert_eq!(app.post(&join, None, json!({"name": "B"})).await.status, StatusCode::OK);
     assert_eq!(app.post(&join, None, json!({"name": "C"})).await.status, StatusCode::TOO_MANY_REQUESTS);
 }
+
+#[tokio::test]
+async fn mitteilungen_anlegen_zeitraum_und_rechte() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+
+    // Ohne Mitteilungen: leere Liste, auch ohne Anmeldung
+    let r = app.get("/api/notices", None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json(), json!([]));
+
+    // Nur Admins dürfen anlegen
+    let r = app.post("/api/admin/notices", Some(&user), json!({"title": "x"})).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = app.post("/api/admin/notices", Some(&admin), json!({"title": " ", "body": ""})).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::BAD_REQUEST, "invalid"));
+    let r = app.post("/api/admin/notices", Some(&admin), json!({"title": "x", "kind": "bunt"})).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let r = app.post("/api/admin/notices", Some(&admin), json!({"title": "x", "starts_at": 200, "ends_at": 100})).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let t = now();
+    let r = app.post("/api/admin/notices", Some(&admin), json!({"title": "Neu in 4.8", "body": "Mitteilungen\n<b>und</b> Wartung", "kind": "info"})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let n = r.json();
+    let id = n["id"].as_str().unwrap().to_string();
+    assert_eq!((n["active"].clone(), n["visible"].clone()), (json!(true), json!(true)));
+    // Geplant (Zukunft), abgelaufen und inaktiv: nicht öffentlich
+    app.post("/api/admin/notices", Some(&admin), json!({"title": "Später", "starts_at": t + 3600})).await;
+    app.post("/api/admin/notices", Some(&admin), json!({"title": "Vorbei", "ends_at": t - 10})).await;
+    app.post("/api/admin/notices", Some(&admin), json!({"title": "Aus", "active": false, "kind": "warning"})).await;
+
+    let r = app.get("/api/notices", None).await;
+    let list = r.json();
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["title"], "Neu in 4.8");
+    assert_eq!(list[0]["body"], "Mitteilungen\n<b>und</b> Wartung");
+    assert!(list[0].get("active").is_none(), "öffentlich nur das Nötige");
+    assert_eq!(app.get("/api/admin/notices", Some(&admin)).await.json().as_array().unwrap().len(), 4);
+    assert_eq!(app.get("/api/admin/notices", Some(&user)).await.status, StatusCode::FORBIDDEN);
+
+    // Bearbeiten: Zeitraum entfernen, Typ ändern; deaktivieren blendet aus
+    let r = app.patch(&format!("/api/admin/notices/{id}"), Some(&admin), json!({"kind": "warning", "ends_at": null, "title": "Geändert"})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["kind"], "warning");
+    assert_eq!(app.get("/api/notices", None).await.json()[0]["title"], "Geändert");
+    app.patch(&format!("/api/admin/notices/{id}"), Some(&admin), json!({"active": false})).await;
+    assert_eq!(app.get("/api/notices", None).await.json(), json!([]));
+
+    // Löschen
+    let r = app.api(Method::DELETE, &format!("/api/admin/notices/{id}"), Some(&admin), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let r = app.api(Method::DELETE, &format!("/api/admin/notices/{id}"), Some(&admin), None).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.get("/api/admin/notices", Some(&admin)).await.json().as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn wartungsmodus_sperrt_nutzer_aber_nicht_admins() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    app.give_license(&admin, &user, json!(null), 100).await;
+    let r = app.upload(&user, "Vorher", zip_bytes(0)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let id = r.json()["id"].as_str().unwrap().to_string();
+
+    assert_eq!(app.get("/api/maintenance", None).await.json()["active"], false);
+    // Nur Admins schalten
+    let r = app.api(Method::PUT, "/api/admin/maintenance", Some(&user), Some(json!({"active": true}))).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true, "until": now() - 5}))).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "Endzeit in der Vergangenheit");
+    let r = app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true, "message": "Umzug auf neuen Server"}))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["active"], true);
+
+    // Öffentlicher Zustand, Health und Mitteilungen bleiben erreichbar
+    let m = app.get("/api/maintenance", None).await.json();
+    assert_eq!((m["active"].clone(), m["message"].clone()), (json!(true), json!("Umzug auf neuen Server")));
+    let h = app.get("/api/health", None).await;
+    assert_eq!((h.status, h.json()["maintenance"].clone()), (StatusCode::OK, json!(true)));
+    assert_eq!(app.get("/api/notices", None).await.status, StatusCode::OK);
+
+    // Nutzer: Lesen, Speichern, Hochladen, Registrieren -> 503 maintenance mit Nachricht
+    let r = app.get("/api/boards", Some(&user)).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::SERVICE_UNAVAILABLE, "maintenance"));
+    assert_eq!(r.json()["message"], "Umzug auf neuen Server");
+    assert!(r.headers.get(header::RETRY_AFTER).is_some());
+    assert_eq!(app.put_board(&user, &id, "1", zip_bytes(1)).await.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(app.upload(&user, "Neu", zip_bytes(0)).await.status, StatusCode::SERVICE_UNAVAILABLE);
+    let r = app.post("/api/auth/register", None, json!({"email": "n@example.org", "password": "geheim1234", "name": "N"})).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(app.get(&format!("/api/collab/{id}"), Some(&user)).await.status, StatusCode::SERVICE_UNAVAILABLE);
+    // Anmelden und /api/me bleiben möglich (Admins müssen sich anmelden können)
+    assert_eq!(app.get("/api/me", Some(&user)).await.status, StatusCode::OK);
+
+    // Admins arbeiten weiter
+    assert_eq!(app.get("/api/boards", Some(&admin)).await.status, StatusCode::OK);
+    assert_eq!(app.get("/api/admin/users", Some(&admin)).await.status, StatusCode::OK);
+    // Nicht-Admin auf Admin-Routen weiterhin 403 (nicht 503)
+    assert_eq!(app.get("/api/admin/users", Some(&user)).await.status, StatusCode::FORBIDDEN);
+
+    // Web-App: Nutzer und Gäste bekommen die Wartungsseite, Admins die App; andere Dateien bleiben
+    let r = app.send(Method::GET, "/", None, &[], Body::empty(), false).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    let html = String::from_utf8_lossy(&r.bytes).to_string();
+    assert!(html.contains("Wartungsarbeiten") && html.contains("Umzug auf neuen Server"), "{html}");
+    let r = app.send(Method::GET, "/index.html", Some(&user), &[], Body::empty(), false).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    let r = app.send(Method::GET, "/", Some(&admin), &[], Body::empty(), false).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(String::from_utf8_lossy(&r.bytes).contains("OwnDraw Web"));
+    let r = app.send(Method::GET, "/admin", None, &[], Body::empty(), false).await;
+    assert_eq!(r.status, StatusCode::OK);
+
+    // HTML in der Nachricht wird maskiert
+    app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true, "message": "<script>x</script>"}))).await;
+    let r = app.send(Method::GET, "/", None, &[], Body::empty(), false).await;
+    let html = String::from_utf8_lossy(&r.bytes).to_string();
+    assert!(html.contains("&lt;script&gt;x&lt;/script&gt;") && !html.contains("<script>x"));
+
+    // Ausschalten: alles wieder normal; Zustand überlebt einen Neustart (DB)
+    let r = app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": false}))).await;
+    assert_eq!(r.json()["active"], false);
+    assert_eq!(app.get("/api/boards", Some(&user)).await.status, StatusCode::OK);
+    assert_eq!(app.send(Method::GET, "/", None, &[], Body::empty(), false).await.status, StatusCode::OK);
+
+    app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true}))).await;
+    *app.state.maintenance.write().unwrap() = None; // Zwischenspeicher verwerfen wie nach Neustart
+    let r = app.get("/api/boards", Some(&user)).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(r.json()["message"].as_str().unwrap().contains("gewartet"), "Standardtext ohne eigene Nachricht");
+}
+
+#[tokio::test]
+async fn wartungsmodus_endet_automatisch() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    let r = app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true, "until": now() + 2}))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(app.get("/api/boards", Some(&user)).await.status, StatusCode::SERVICE_UNAVAILABLE);
+    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+    assert_eq!(app.get("/api/boards", Some(&user)).await.status, StatusCode::OK);
+    assert_eq!(app.get("/api/maintenance", None).await.json()["active"], false);
+}

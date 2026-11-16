@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS invites (
     expires_at INTEGER,
     uses INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS notices (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'info',
+    active INTEGER NOT NULL DEFAULT 1,
+    starts_at INTEGER,
+    ends_at INTEGER,
+    created INTEGER NOT NULL,
+    updated INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

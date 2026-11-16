@@ -11,7 +11,7 @@ Domain im Betrieb: `https://owndraw.thepepelex.at` (Caddy davor, Auto-HTTPS). Al
 | Gast mit Gast-ID | über einen Einladungslink beigetreten: eigene ID `<Name>#XXXX`, arbeitet an den eingeladenen Boards live mit (Rolle des Links); keine eigenen Boards am Server, kein Passwort, keine Lizenz |
 | Account ohne Lizenz | wie Gast; kann zu fremden Boards eingeladen werden und dort mitarbeiten |
 | Account mit gültiger Lizenz | zusätzlich Boards am Server speichern, Boards teilen, Kollaboration starten |
-| Admin | Admin-Panel `/admin`: Nutzer, Lizenzcodes, Updates |
+| Admin | Admin-Panel `/admin`: Nutzer, Lizenzcodes, Mitteilungen, Wartungsmodus, Updates |
 
 Lizenz gültig = eingelöst, nicht widerrufen, `expires_at` leer oder in der Zukunft. Läuft sie ab, bleiben Boards
 erhalten, sind aber nur noch lesbar/herunterladbar (kein Speichern, kein Teilen).
@@ -27,7 +27,7 @@ erhalten, sind aber nur noch lesbar/herunterladbar (kein Speichern, kein Teilen)
 
 - JSON (`Content-Type: application/json`), UTF-8. Fehler: HTTP-Status + `{"error":"code","message":"Text auf Deutsch"}`.
   Codes: `unauthorized` (401), `forbidden` (403), `license_required` (403), `not_found` (404), `conflict` (409),
-  `invalid` (400), `too_large` (413), `quota` (507), `rate_limited` (429).
+  `invalid` (400), `too_large` (413), `quota` (507), `rate_limited` (429), `maintenance` (503, siehe „Wartungsmodus“).
 - Anmeldung per Cookie `owndraw_session` (HttpOnly, Secure, SameSite=Lax, 30 Tage). Schreibende Anfragen
   brauchen zusätzlich Header `X-OwnDraw: 1` (CSRF-Schutz; einfache Formulare können ihn nicht setzen).
 - Zeiten: Unix-Sekunden (i64). IDs: UUID-Strings.
@@ -157,14 +157,50 @@ speichert geänderte Räume höchstens alle 5 s, wenn der letzte Teilnehmer geht
 | POST | `/api/admin/update/check` | sucht neue Version |
 | POST | `/api/admin/update/install` | installiert neueste Version (Backup, Austausch, Neustart) |
 | PATCH | `/api/admin/update` | `{auto, auto_hour}` |
+| GET | `/api/admin/notices` | → `[Notice]` (alle, neueste zuerst) |
+| POST | `/api/admin/notices` | `{title, body, kind:"info"\|"warning", active:true, starts_at?:…\|null, ends_at?:…\|null}` → `Notice` |
+| PATCH | `/api/admin/notices/{id}` | Felder wie POST, alle optional (`null` bei `starts_at`/`ends_at` = ohne Grenze) |
+| DELETE | `/api/admin/notices/{id}` | löscht die Mitteilung |
+| GET | `/api/admin/maintenance` | → `{active, enabled, message, until, since, default_message}` |
+| PUT | `/api/admin/maintenance` | `{active, message?, until?:…\|null}` (Ein-/Ausschalten; `until` = endet automatisch) |
 
 ```json
 License = {"code":"OWND-XXXX-XXXX-XXXX","created":…,"days":365|null,"expires_at":…|null,"quota_mb":500,
            "note":"…","revoked":false,"redeemed_by":{"id","email"}|null,"redeemed_at":…|null}
 ```
 
+```json
+Notice = {"id":"…","title":"…","body":"…","kind":"info"|"warning","active":true,"starts_at":…|null,
+          "ends_at":…|null,"created":…,"updated":…,"visible":true}
+```
+
 Laufzeit `days` beginnt beim Einlösen. Erster Admin: Umgebungsvariablen `OWNDRAW_ADMIN_EMAIL` +
 `OWNDRAW_ADMIN_PASSWORD` beim ersten Start (oder `owndraw-server admin create`).
+
+## Mitteilungen (ab 4.8.0)
+
+`GET /api/notices` (ohne Anmeldung, auch im Wartungsmodus) → `[{id,title,body,kind,updated}]`: alle aktiven
+Mitteilungen im Zeitraum `starts_at ≤ jetzt < ends_at`, neueste zuerst. Die Web-App (`index.html`) zeigt sie beim Start
+nacheinander als Dialog, noch bevor der Editor bereit ist. Bestätigte Mitteilungen merkt sich der Browser
+(`localStorage` `owndraw-mitteilungen-gesehen`, Schlüssel `id:updated`): jede erscheint pro Browser einmal, nach einer
+Änderung erneut. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
+(Zeilenumbrüche bleiben), kein HTML.
+
+## Wartungsmodus (ab 4.8.0)
+
+`GET /api/maintenance` (ohne Anmeldung) → `{active, message, until, since}`. Solange er aktiv ist (eingeschaltet und
+`until` nicht erreicht):
+
+- `/`, `/index.html` liefern Nicht-Admins eine Wartungsseite (503, `Retry-After`), die sich alle 30 s prüft und neu lädt.
+  Andere Dateien (`.js`, `.wasm`, Icons) bleiben erreichbar.
+- Alle anderen API-Anfragen von Nicht-Admins (auch Gäste, Lesen, Speichern, Hochladen, Registrieren, Einladungen,
+  `/api/collab`) → `503 {"error":"maintenance","message":"…","until":…|null}`.
+- Immer erreichbar: `/api/health` (zusätzlich `"maintenance":bool`), `/api/notices`, `/api/maintenance`,
+  `/api/auth/login`, `/api/auth/logout`, `GET /api/me`, `/api/admin/*` (nur Admins, wie immer).
+- Beim Einschalten werden offene Live-Verbindungen von Nicht-Admins mit `{"t":"error","code":"maintenance",…}` und
+  Close-Code 4503 getrennt; Admins bleiben verbunden.
+- Admins nutzen Web-App und API normal; die Web-App zeigt ihnen oben den Hinweis „Wartungsmodus aktiv“.
+- Gespeichert in `settings` (Schlüssel `maintenance`) und damit auch nach einem Neustart aktiv.
 
 ## Server-Update
 

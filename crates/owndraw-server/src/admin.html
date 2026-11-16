@@ -95,6 +95,8 @@ dialog .row { justify-content: flex-end; }
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" id="tab-users" data-tab="users" aria-selected="true">Nutzer</button>
       <button class="tab" role="tab" id="tab-licenses" data-tab="licenses" aria-selected="false">Lizenzen</button>
+      <button class="tab" role="tab" id="tab-notices" data-tab="notices" aria-selected="false">Mitteilungen</button>
+      <button class="tab" role="tab" id="tab-maint" data-tab="maint" aria-selected="false">Wartung <span id="maintChip" class="chip warn" hidden>aktiv</span></button>
       <button class="tab" role="tab" id="tab-update" data-tab="update" aria-selected="false">Updates</button>
     </div>
     <div id="flash"></div>
@@ -118,6 +120,41 @@ dialog .row { justify-content: flex-end; }
         <div id="newCodes" class="newcodes" hidden></div>
       </div>
       <div class="card"><h2>Alle Lizenzen</h2><div id="licList"></div></div>
+    </section>
+
+    <section id="panel-notices" role="tabpanel" hidden>
+      <div class="card">
+        <h2 id="nFormTitle">Neue Mitteilung</h2>
+        <p class="hint" style="margin-top:0">Aktive Mitteilungen sieht jeder Besucher beim Start der Web-App (auch Gäste). Jede Mitteilung erscheint pro Browser nur einmal; nach einer Änderung erscheint sie erneut.</p>
+        <form id="nForm">
+          <label for="nTitle">Titel</label>
+          <input id="nTitle" type="text" maxlength="120" placeholder="z. B. Neue Version 4.8">
+          <label for="nBody">Text</label>
+          <textarea id="nBody" rows="5" maxlength="4000" placeholder="Was gibt es Neues?"></textarea>
+          <div class="grid">
+            <div><label for="nKind">Typ</label><select id="nKind"><option value="info">Info</option><option value="warning">Warnung</option></select></div>
+            <div><label for="nStart">Sichtbar ab (optional)</label><input id="nStart" type="datetime-local"></div>
+            <div><label for="nEnd">Sichtbar bis (optional)</label><input id="nEnd" type="datetime-local"></div>
+          </div>
+          <div class="row"><label><input id="nActive" type="checkbox" checked> Aktiv</label></div>
+          <div class="row"><button class="primary" type="submit" id="nSubmit">Mitteilung anlegen</button><button type="button" id="nCancel" hidden>Abbrechen</button></div>
+        </form>
+      </div>
+      <div class="card"><h2>Alle Mitteilungen</h2><div id="nList"></div></div>
+    </section>
+
+    <section id="panel-maint" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Wartungsmodus</h2>
+        <div id="mStatus" class="msg"></div>
+        <p class="hint" style="margin-top:0">Solange der Wartungsmodus aktiv ist, sehen Nutzer und Gäste eine Wartungsseite; Speichern, Laden und Live-Bearbeitung am Server werden abgelehnt und offene Live-Verbindungen getrennt. Admins können weiter alles nutzen. Die Web-App ohne Server (statisch) ist nicht betroffen.</p>
+        <label for="mMsg">Nachricht (optional)</label>
+        <textarea id="mMsg" rows="3" maxlength="1000"></textarea>
+        <label for="mUntil">Endet automatisch um (optional)</label>
+        <input id="mUntil" type="datetime-local">
+        <p class="hint">Leer lassen = bleibt aktiv, bis du ihn ausschaltest. Die Zeit wird Besuchern als „voraussichtlich bis“ angezeigt.</p>
+        <div class="row"><button id="mOn" class="primary">Wartungsmodus einschalten</button><button id="mOff" hidden>Wartungsmodus beenden</button></div>
+      </div>
     </section>
 
     <section id="panel-update" role="tabpanel" hidden>
@@ -153,7 +190,7 @@ dialog .row { justify-content: flex-end; }
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { me: null, tab: "users", users: [], licenses: [], update: null };
+const state = { me: null, tab: "users", users: [], licenses: [], update: null, notices: [], editNotice: null, maint: null };
 
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
@@ -234,6 +271,7 @@ async function showApp(me) {
   $("loginView").hidden = true; $("appView").hidden = false;
   $("logout").hidden = false; $("who").textContent = me.email;
   selectTab(state.tab);
+  if (state.tab !== "maint") loadMaint(true);
 }
 $("loginForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -253,9 +291,9 @@ $("logout").addEventListener("click", async () => { try { await api("POST", "/ap
 function selectTab(name) {
   state.tab = name;
   for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
-  for (const n of ["users", "licenses", "update"]) $("panel-" + n).hidden = n !== name;
+  for (const n of ["users", "licenses", "notices", "maint", "update"]) $("panel-" + n).hidden = n !== name;
   flash("");
-  if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else loadUpdate();
+  if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "maint") loadMaint(); else loadUpdate();
 }
 for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => selectTab(t.dataset.tab));
 
@@ -353,6 +391,100 @@ async function editExpiry(l) {
   }
   try { await api("PATCH", "/api/admin/licenses/" + encodeURIComponent(l.code), { expires_at: expires }); flash("Ablauf gespeichert."); loadLicenses(); } catch (e) { fail(e); }
 }
+
+// ---------- Mitteilungen ----------
+// datetime-local <-> Unix-Sekunden (lokale Zeit des Browsers)
+const toLocalInput = (s) => { if (s == null) return ""; const d = new Date(s * 1000); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+const fromLocalInput = (v) => (v ? Math.floor(new Date(v).getTime() / 1000) : null);
+function noticeStatus(n) {
+  const t = Date.now() / 1000;
+  if (!n.active) return ["inaktiv", ""];
+  if (n.starts_at != null && t < n.starts_at) return ["geplant", "acc"];
+  if (n.ends_at != null && t >= n.ends_at) return ["abgelaufen", "warn"];
+  return ["sichtbar", "ok"];
+}
+async function loadNotices() {
+  try { state.notices = await api("GET", "/api/admin/notices"); } catch (e) { return fail(e); }
+  const list = $("nList");
+  if (!state.notices.length) return list.replaceChildren(h("div", { class: "empty" }, "Noch keine Mitteilungen."));
+  list.replaceChildren(...state.notices.map((n) => {
+    const [label, kind] = noticeStatus(n);
+    const range = (n.starts_at != null ? "ab " + fmtDate(n.starts_at) : "") + (n.starts_at != null && n.ends_at != null ? " · " : "") + (n.ends_at != null ? "bis " + fmtDate(n.ends_at) : "");
+    return h("div", { class: "item" },
+      h("div", { class: "main" },
+        h("div", {}, h("b", {}, n.title || "(ohne Titel)"), h("span", { class: "chip " + kind }, label), n.kind === "warning" && h("span", { class: "chip warn" }, "Warnung")),
+        n.body && h("div", { class: "meta", style: "white-space:pre-wrap" }, n.body.length > 240 ? n.body.slice(0, 240) + " …" : n.body),
+        h("div", { class: "meta" }, "geändert " + fmtDate(n.updated), range ? " · " + range : "")),
+      h("div", { class: "actions" },
+        h("button", { class: "small", onclick: () => patchNotice(n, { active: !n.active }) }, n.active ? "Deaktivieren" : "Aktivieren"),
+        h("button", { class: "small", onclick: () => editNotice(n) }, "Bearbeiten"),
+        h("button", { class: "small danger", onclick: () => deleteNotice(n) }, "Löschen")));
+  }));
+}
+function resetNoticeForm() {
+  state.editNotice = null;
+  $("nForm").reset(); $("nActive").checked = true;
+  $("nFormTitle").textContent = "Neue Mitteilung"; $("nSubmit").textContent = "Mitteilung anlegen"; $("nCancel").hidden = true;
+}
+function editNotice(n) {
+  state.editNotice = n.id;
+  $("nTitle").value = n.title; $("nBody").value = n.body; $("nKind").value = n.kind; $("nActive").checked = n.active;
+  $("nStart").value = toLocalInput(n.starts_at); $("nEnd").value = toLocalInput(n.ends_at);
+  $("nFormTitle").textContent = "Mitteilung bearbeiten"; $("nSubmit").textContent = "Speichern"; $("nCancel").hidden = false;
+  $("nTitle").focus();
+}
+$("nCancel").addEventListener("click", resetNoticeForm);
+$("nForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const body = { title: $("nTitle").value, body: $("nBody").value, kind: $("nKind").value, active: $("nActive").checked, starts_at: fromLocalInput($("nStart").value), ends_at: fromLocalInput($("nEnd").value) };
+  try {
+    if (state.editNotice) await api("PATCH", "/api/admin/notices/" + encodeURIComponent(state.editNotice), body);
+    else await api("POST", "/api/admin/notices", body);
+    flash(state.editNotice ? "Mitteilung gespeichert." : "Mitteilung angelegt.");
+    resetNoticeForm(); loadNotices();
+  } catch (e) { fail(e); }
+});
+async function patchNotice(n, body) {
+  try { await api("PATCH", "/api/admin/notices/" + encodeURIComponent(n.id), body); loadNotices(); } catch (e) { fail(e); }
+}
+async function deleteNotice(n) {
+  const ok = await confirmDialog("Mitteilung löschen?", "„" + (n.title || n.body.slice(0, 60)) + "“ wird gelöscht.", "Löschen");
+  if (!ok) return;
+  try { await api("DELETE", "/api/admin/notices/" + encodeURIComponent(n.id)); if (state.editNotice === n.id) resetNoticeForm(); flash("Mitteilung gelöscht."); loadNotices(); } catch (e) { fail(e); }
+}
+
+// ---------- Wartung ----------
+function renderMaint(m) {
+  state.maint = m;
+  $("maintChip").hidden = !m.active;
+  const st = $("mStatus");
+  if (m.active) {
+    st.className = "msg err";
+    st.textContent = "Der Wartungsmodus ist aktiv" + (m.since ? " (seit " + fmtDate(m.since) + ")" : "") + (m.until ? " und endet " + fmtDate(m.until) + "." : ". Er bleibt aktiv, bis du ihn beendest.");
+  } else { st.className = "msg"; st.textContent = "Der Wartungsmodus ist aus. Alle können OwnDraw normal nutzen."; }
+  $("mMsg").placeholder = m.default_message;
+  $("mMsg").value = m.message || "";
+  $("mUntil").value = m.active ? toLocalInput(m.until) : "";
+  $("mOn").textContent = m.active ? "Änderungen speichern" : "Wartungsmodus einschalten";
+  $("mOff").hidden = !m.active;
+}
+async function loadMaint(quiet) {
+  try { const m = await api("GET", "/api/admin/maintenance"); if (quiet) { state.maint = m; $("maintChip").hidden = !m.active; } else renderMaint(m); } catch (e) { if (!quiet) fail(e); }
+}
+async function putMaint(active) {
+  try {
+    renderMaint(await api("PUT", "/api/admin/maintenance", { active, message: $("mMsg").value, until: active ? fromLocalInput($("mUntil").value) : null }));
+    flash(active ? "Wartungsmodus aktiv." : "Wartungsmodus beendet.");
+  } catch (e) { fail(e); }
+}
+$("mOn").addEventListener("click", async () => {
+  if (!state.maint || !state.maint.active) {
+    const ok = await confirmDialog("Wartungsmodus einschalten?", "Nutzer und Gäste können OwnDraw am Server dann nicht mehr nutzen. Offene Live-Sitzungen werden getrennt.", "Einschalten");
+    if (!ok) return;
+  }
+  putMaint(true);
+});
+$("mOff").addEventListener("click", () => putMaint(false));
 
 // ---------- Updates ----------
 for (let i = 0; i < 24; i++) $("uHour").append(h("option", { value: i }, String(i).padStart(2, "0") + ":00"));

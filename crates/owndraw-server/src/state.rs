@@ -4,7 +4,7 @@ use crate::config::Config;
 use crate::db::Db;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -16,11 +16,13 @@ pub struct AppState {
     pub installing: Arc<AtomicBool>,
     /// Offene Live-Sitzungen (`collab.rs`).
     pub hub: Arc<crate::collab::Hub>,
+    /// Wartungsmodus, zwischengespeichert (`None` = noch nicht aus der DB geladen), siehe `notices.rs`.
+    pub maintenance: Arc<RwLock<Option<crate::notices::Maintenance>>>,
 }
 
 impl AppState {
     pub fn new(db: Db, cfg: Config) -> Self {
-        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)), hub: Arc::default() }
+        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)), hub: Arc::default(), maintenance: Arc::default() }
     }
 }
 

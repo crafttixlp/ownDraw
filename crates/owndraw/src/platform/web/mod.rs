@@ -70,6 +70,15 @@ pub fn install_page_hooks() {
     cb.forget();
 }
 
+/// Öffnet den Dialog „Fehler melden“ aus `index.html` (`window.owndrawFehlerMelden`). `false`, wenn es ihn nicht gibt.
+pub fn open_bug_report() -> bool {
+    let Some(w) = web_sys::window() else { return false };
+    match js_sys::Reflect::get(&w, &JsValue::from_str("owndrawFehlerMelden")).ok().and_then(|f| f.dyn_into::<js_sys::Function>().ok()) {
+        Some(f) => f.call0(&w).is_ok(),
+        None => false,
+    }
+}
+
 // ---------------------------------------------------------------- IndexedDB
 
 /// Wartet auf ein IndexedDB-Ergebnis (`onsuccess`/`onerror`).

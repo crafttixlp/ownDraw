@@ -149,13 +149,14 @@ speichert geänderte Räume höchstens alle 5 s, wenn der letzte Teilnehmer geht
 ## Admin (`admin:true`)
 
 Alle `/api/admin/*`-Routen brauchen eine mit Passwort **und** 2FA-Code bestätigte Sitzung, sonst 403
-`mfa_required` (ab 4.15.0). Falsche Codes: 401; nach 5 Fehlversuchen je Konto 15 min 429 `rate_limited`.
+`mfa_required` (ab 4.16.0). Falsche Codes: 401; nach 5 Fehlversuchen je Konto 15 min 429 `rate_limited`.
 Ein TOTP-Code gilt nur einmal (Fenster ±1 Schritt à 30 s). Notfall-Reset: `owndraw-server admin reset-2fa <email>`.
 
 | Methode | Pfad | |
 |---|---|---|
 | GET | `/api/admin/users` | → `[{id,email,name,admin,disabled,created,license,used_mb,boards}]` |
-| PATCH | `/api/admin/users/{id}` | `{disabled?, admin?}` |
+| PATCH | `/api/admin/users/{id}` | `{disabled?, admin?}`; `disabled:true` meldet ab und löscht sofort alle eigenen Boards (Dateien, Mitglieder, Einladungen, Live-Räume) |
+| POST | `/api/admin/users/{id}/license` | `{active:false}` deaktiviert die Lizenz (`revoked`); `{active:true, code?}` weist einen freien Code zu, sonst wird die deaktivierte Lizenz wieder aktiv bzw. (keine/abgelaufen) ein neuer Code mit `{days:null\|n, quota_mb}` erzeugt → Nutzer-Objekt |
 | DELETE | `/api/admin/users/{id}` | löscht Nutzer + eigene Boards |
 | POST | `/api/admin/2fa/recovery-codes` | `{code}` (aktueller App-Code) → `{recovery_codes:[10]}`; alte werden ungültig |
 | GET | `/api/admin/licenses` | → `[License]` |
@@ -190,9 +191,8 @@ Laufzeit `days` beginnt beim Einlösen. Erster Admin: Umgebungsvariablen `OWNDRA
 
 `GET /api/notices` (ohne Anmeldung, auch im Wartungsmodus) → `[{id,title,body,kind,updated}]`: alle aktiven
 Mitteilungen im Zeitraum `starts_at ≤ jetzt < ends_at`, neueste zuerst. Die Web-App (`index.html`) zeigt sie beim Start
-nacheinander als Dialog, noch bevor der Editor bereit ist. Bestätigte Mitteilungen merkt sich der Browser
-(`localStorage` `owndraw-mitteilungen-gesehen`, Schlüssel `id:updated`): jede erscheint pro Browser einmal, nach einer
-Änderung erneut. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
+nacheinander als Dialog, noch bevor der Editor bereit ist. Es wird nichts gemerkt: bei jedem Laden
+der Seite erscheinen alle aktiven Mitteilungen erneut, Wegklicken gilt nur bis zum nächsten Neuladen. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
 (Zeilenumbrüche bleiben), kein HTML.
 
 ## Fehlerberichte (ab 4.10.0)

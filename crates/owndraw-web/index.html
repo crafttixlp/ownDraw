@@ -110,18 +110,12 @@
   })();
 </script>
 <script>
-  // Mitteilungen des Servers (Admin-Panel → Mitteilungen): jede einmal pro Browser zeigen.
+  // Mitteilungen des Servers (Admin-Panel → Mitteilungen): bei jedem Laden der Seite alle aktiven zeigen.
   // Ohne Server (statische Web-App) schlägt der Abruf fehl und es passiert nichts.
   (() => {
     if (!/^https?:$/.test(location.protocol)) return;
-    const KEY = "owndraw-mitteilungen-gesehen";
-    let gesehen = [];
-    try { gesehen = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { gesehen = []; }
-    if (!Array.isArray(gesehen)) gesehen = [];
-    const merke = (k) => {
-      gesehen.push(k);
-      try { localStorage.setItem(KEY, JSON.stringify(gesehen.slice(-200))); } catch (e) { /* privat */ }
-    };
+    // Früher gemerkter Stand wird nicht mehr genutzt: einmalig aufräumen.
+    try { localStorage.removeItem("owndraw-mitteilungen-gesehen"); } catch (e) { /* privat */ }
     const holen = async (pfad) => {
       const r = await fetch(pfad, { credentials: "same-origin", cache: "no-store" });
       if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) throw new Error("kein Server");
@@ -129,7 +123,7 @@
     };
     holen("api/notices").then((liste) => {
       if (!Array.isArray(liste)) return;
-      const offen = liste.filter((n) => n && n.id && !gesehen.includes(n.id + ":" + n.updated));
+      const offen = liste.filter((n) => n && n.id);
       let i = 0;
       const zeige = () => {
         document.getElementById("mitteilung")?.remove();
@@ -144,7 +138,7 @@
         const fuss = el("div", "fuss");
         fuss.append(el("small", null, offen.length > 1 ? (i + 1) + " von " + offen.length : ""));
         const ok = el("button", null, i + 1 < offen.length ? "Weiter" : "OK");
-        ok.addEventListener("click", () => { merke(n.id + ":" + n.updated); i++; zeige(); });
+        ok.addEventListener("click", () => { i++; zeige(); });
         fuss.append(ok); karte.append(fuss); huelle.append(karte);
         document.body.append(huelle);
         ok.focus();

@@ -455,3 +455,16 @@ pub fn paint_arrow_eng(painter: &egui::Painter, rect: egui::Rect, color: Color32
     painter.line_segment([a, base], Stroke::new(1.8, color));
     painter.add(egui::Shape::convex_polygon(vec![b, base + n * half, base - n * half], color, Stroke::NONE));
 }
+
+/// OwnDraw-Logo (assets/owndraw.png) als Textur, einmal pro Kontext geladen.
+pub fn logo(ctx: &egui::Context) -> Option<TextureHandle> {
+    let id = egui::Id::unique("owndraw-logo");
+    if let Some(t) = ctx.data(|d| d.get_temp::<TextureHandle>(id)) {
+        return Some(t);
+    }
+    let pm = owndraw_core::tiny_skia::Pixmap::decode_png(include_bytes!("../../../assets/owndraw.png")).ok()?;
+    let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
+    let t = ctx.load_texture("owndraw-logo", img, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, t.clone()));
+    Some(t)
+}

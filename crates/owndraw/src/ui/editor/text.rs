@@ -4,7 +4,7 @@
 
 use super::Editor;
 use crate::style::{self, c};
-use egui::{CornerRadius, Key, Stroke, Vec2};
+use egui::{CornerRadius, Stroke, Vec2};
 use owndraw_core::{board, item};
 use std::sync::Arc;
 
@@ -57,7 +57,7 @@ impl Editor {
         self.board.set_hidden(Some(id));
     }
 
-    pub(super) fn text_editor(&mut self, ctx: &egui::Context) {
+    pub(super) fn text_editor(&mut self, ctx: &egui::Context, keymap: &crate::settings::Settings) {
         let Some(te) = self.text.as_mut() else { return };
         let b = &self.board;
         let canvas = self.canvas;
@@ -75,7 +75,7 @@ impl Editor {
             mw.max(fpx * 4.0) + fpx
         };
         let min_h = if te.note { mh * sc } else { 0.0 };
-        let mut done = te.commit || ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::Enter) || i.consume_key(egui::Modifiers::CTRL, Key::Enter) || i.consume_key(egui::Modifiers::NONE, Key::Escape));
+        let mut done = te.commit || ctx.input_mut(|i| super::keys::consume(i, keymap, "text_done"));
         let pal = style::pal();
         let hint = if te.note { "Notiz schreiben …" } else { "Text schreiben …" };
         let hint_col = if te.note { 0x801F2025u32 } else { (pal.dim & 0x00FF_FFFF) | 0x9900_0000 };

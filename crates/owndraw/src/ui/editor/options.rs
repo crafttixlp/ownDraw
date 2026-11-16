@@ -159,16 +159,20 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             ui.label(egui::RichText::new(hint).size(12.0).color(c(style::pal().dim)));
         }
         Tool::Text => {
-            style::caption(ui, "Art");
-            ui.horizontal_wrapped(|ui| {
-                for (bt, l) in [(board::TEXT, "Text"), (board::NOTE, "Haftnotiz")] {
-                    if style::chip(ui, l, ed.board.tool == bt, h).clicked() {
-                        ed.board.set_tool(bt);
+            // Haftnotiz nur, solange sie eingeschaltet ist (Einstellungen → Werkzeuge)
+            if super::tools::enabled(&sh.settings, "note") {
+                style::caption(ui, "Art");
+                ui.horizontal_wrapped(|ui| {
+                    for (bt, l) in [(board::TEXT, "Text"), (board::NOTE, "Haftnotiz")] {
+                        if style::chip(ui, l, ed.board.tool == bt, h).clicked() {
+                            ed.board.set_tool(bt);
+                        }
                     }
-                }
-            });
+                });
+            }
             colors(ui, ed, sh);
         }
+        Tool::Note => colors(ui, ed, sh),
         Tool::Image => {}
     }
 }

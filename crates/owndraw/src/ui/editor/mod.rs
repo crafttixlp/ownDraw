@@ -3,6 +3,7 @@
 
 pub mod clip;
 pub mod drop;
+pub mod keys;
 mod layers;
 #[cfg(target_arch = "wasm32")]
 pub mod live;
@@ -11,13 +12,14 @@ mod options;
 pub mod pages;
 mod text;
 mod toolbar;
+pub mod tools;
 
 use crate::app::{PickPurpose, Req, Shared};
 use crate::autosave::{Autosave, AutosaveStatus, SaveFormat};
 use crate::layout::{self, Env, FormFactor};
 use crate::platform::{FileKind, FileRef};
 use crate::session;
-use crate::settings::{BarPos, Settings, ALL_TOOLS, DEFAULT_TOOLS};
+use crate::settings::{BarPos, Settings};
 use crate::ui::dialogs::{AnimDlg, ConfirmAction, RenameWhat};
 use egui::{Align2, Color32, CursorIcon, Event, Key, Order, PointerButton, Pos2, Rect, Sense, TextureHandle, TouchPhase, Ui};
 use owndraw_core::board::{self, Action, Board, Motion, Pointer, ToolType};
@@ -45,7 +47,7 @@ const PAD: f32 = 5.0;
 const DOCK_LAYERS: f32 = 300.0;
 const DOCK_PAGES: f32 = 188.0;
 
-/// Die sieben Hauptwerkzeuge der Leiste.
+/// Werkzeuge der Leiste. Name, Gruppe, Symbol, Kürzel usw. stehen in der Registry [`tools::TOOLS`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
     Pen,
@@ -54,43 +56,23 @@ pub enum Tool {
     Select,
     Shape,
     Text,
+    Note,
     Image,
 }
 
 impl Tool {
     pub fn from_id(s: &str) -> Option<Tool> {
-        Some(match s {
-            "pen" => Tool::Pen,
-            "marker" => Tool::Marker,
-            "eraser" => Tool::Eraser,
-            "select" => Tool::Select,
-            "shape" => Tool::Shape,
-            "text" | "note" => Tool::Text,
-            "image" => Tool::Image,
-            _ => return None,
-        })
+        tools::def(s).map(|d| d.tool)
+    }
+    pub fn id(self) -> &'static str {
+        tools::of(self).id
     }
     pub fn label(self) -> &'static str {
-        match self {
-            Tool::Pen => "Stift",
-            Tool::Marker => "Marker",
-            Tool::Eraser => "Radierer",
-            Tool::Select => "Auswahl",
-            Tool::Shape => "Form",
-            Tool::Text => "Text",
-            Tool::Image => "Bild",
-        }
+        tools::of(self).name
     }
-    pub fn key(self) -> &'static str {
-        match self {
-            Tool::Pen => "P",
-            Tool::Marker => "M",
-            Tool::Eraser => "E",
-            Tool::Select => "S",
-            Tool::Shape => "R",
-            Tool::Text => "T",
-            Tool::Image => "I",
-        }
+    /// Kennung der Tastenkürzel-Aktion (`tool.<id>`).
+    pub fn action(self) -> String {
+        keys::tool_action(self.id())
     }
     /// Hat das Werkzeug Optionen (Kontext-Popover bzw. Bottom-Sheet)?
     pub fn has_options(self) -> bool {
@@ -98,20 +80,9 @@ impl Tool {
     }
 }
 
-/// Sichtbare Werkzeuge in der Reihenfolge der Einstellungen (unbekannte Kennungen werden übersprungen).
+/// Sichtbare Werkzeuge der Leiste (eingeschaltet, in eingestellter Reihenfolge).
 pub fn visible_tools(s: &Settings) -> Vec<Tool> {
-    let mut v: Vec<Tool> = Vec::new();
-    for id in &s.tools {
-        if let Some(t) = Tool::from_id(id) {
-            if !v.contains(&t) {
-                v.push(t);
-            }
-        }
-    }
-    if v.is_empty() {
-        v = DEFAULT_TOOLS.iter().filter_map(|i| Tool::from_id(i)).collect();
-    }
-    v
+    tools::bar_tools(s)
 }
 
 /// Oberflächenzustand des Editors (Popover, Menü, Panels).
@@ -140,6 +111,8 @@ pub struct UiState {
     pub dock_rects: Vec<(BarPos, Rect)>,
     /// Werkzeugleiste im letzten Frame senkrecht angeordnet.
     pub tools_vert: bool,
+    /// Haftnotiz hat einen eigenen Knopf (Text ist ausgeschaltet).
+    pub note_in_bar: bool,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).
@@ -484,6 +457,7 @@ impl Editor {
             board::ERASER => Tool::Eraser,
             board::SELECT => Tool::Select,
             board::SHAPE => Tool::Shape,
+            board::NOTE if self.st.note_in_bar => Tool::Note,
             _ => Tool::Text,
         }
     }
@@ -497,12 +471,13 @@ impl Editor {
             Tool::Select => board::SELECT,
             Tool::Shape => board::SHAPE,
             Tool::Text => {
-                if self.board.tool == board::NOTE {
+                if self.board.tool == board::NOTE && !self.st.note_in_bar {
                     board::NOTE
                 } else {
                     board::TEXT
                 }
             }
+            Tool::Note => board::NOTE,
             Tool::Image => {
                 self.pick_image(sh);
                 return;
@@ -578,7 +553,10 @@ impl Editor {
     /// Zeichnet den Editor.
     pub fn ui(&mut self, ui: &mut Ui, sh: &mut Shared) {
         let ctx = ui.ctx().clone();
-        let tools = if self.st.edit_tools.is_some() { ALL_TOOLS.iter().filter_map(|i| Tool::from_id(i)).collect() } else { visible_tools(&sh.settings) };
+        let tools: Vec<Tool> = if self.st.edit_tools.is_some() { tools::ordered(&sh.settings).iter().map(|d| d.tool).collect() } else { visible_tools(&sh.settings) };
+        if self.st.edit_tools.is_none() {
+            self.st.note_in_bar = tools.contains(&Tool::Note);
+        }
         let lay = self.layout(sh, ui.max_rect(), tools.len());
         let rect = lay.canvas;
         self.canvas = rect;
@@ -612,7 +590,8 @@ impl Editor {
             }
         }
         if !modal && !swallow {
-            self.handle_pointer(&ctx, rect, layer);
+            let pan_key = ctx.input(|i| keys::held(i, &sh.settings, "pan"));
+            self.handle_pointer(&ctx, rect, layer, pan_key);
         }
         if !modal && self.text.is_none() && !ctx.egui_wants_keyboard_input() {
             self.shortcuts(&ctx, sh);
@@ -686,7 +665,7 @@ impl Editor {
             }
         }
         if resp.hovered() || self.drawing {
-            let space = ctx.input(|i| i.key_down(Key::Space)) && !ctx.egui_wants_keyboard_input();
+            let space = ctx.input(|i| keys::held(i, &sh.settings, "pan")) && !ctx.egui_wants_keyboard_input();
             let cur = if self.panning.is_some() {
                 CursorIcon::Grabbing
             } else if space {
@@ -710,8 +689,8 @@ impl Editor {
         toolbar::show(self, &ctx, sh, &lay, &tools);
         options::show(self, &ctx, sh, &lay);
         menu::show(self, &ctx, sh, &lay);
-        self.text_editor(&ctx);
-        self.close_popups_on_esc(&ctx);
+        self.text_editor(&ctx, &sh.settings);
+        self.close_popups_on_esc(&ctx, &sh.settings);
         self.drain_events(sh);
 
         // Autosave
@@ -758,8 +737,8 @@ impl Editor {
         }
     }
 
-    fn close_popups_on_esc(&mut self, ctx: &egui::Context) {
-        if (self.st.opts_open || self.st.menu_open) && self.text.is_none() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+    fn close_popups_on_esc(&mut self, ctx: &egui::Context, s: &Settings) {
+        if (self.st.opts_open || self.st.menu_open) && self.text.is_none() && ctx.input_mut(|i| keys::consume(i, s, "cancel")) {
             self.st.opts_open = false;
             self.st.menu_open = false;
         }
@@ -797,10 +776,10 @@ impl Editor {
 
     // ---------------------------------------------------------------- Eingabe
 
-    fn handle_pointer(&mut self, ctx: &egui::Context, rect: Rect, layer: egui::LayerId) {
+    fn handle_pointer(&mut self, ctx: &egui::Context, rect: Rect, layer: egui::LayerId, pan_key: bool) {
         let events = ctx.input(|i| i.events.clone());
         let hover = ctx.input(|i| i.pointer.hover_pos());
-        let space = ctx.input(|i| i.key_down(Key::Space)) && !ctx.egui_wants_keyboard_input() && self.text.is_none();
+        let space = pan_key && !ctx.egui_wants_keyboard_input() && self.text.is_none();
         let on_board = |p: Pos2| rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
         let has_touch = !self.touches.is_empty() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
         let rel = |p: Pos2| p - rect.min;
@@ -919,82 +898,89 @@ impl Editor {
         self.board.zoom_at(w / 2.0, h / 2.0, f);
     }
 
-    /// Tastenkürzel.
+    /// Tastenkürzel: Nachschlag in der Belegung (`keys`, Einstellungen „Tastenkürzel“).
     fn shortcuts(&mut self, ctx: &egui::Context, sh: &mut Shared) {
+        use keys::{Chord, Scope};
         let events = ctx.input(|i| i.events.clone());
-        let (mut copy, mut cut, mut paste) = (false, false, false);
+        let mut fired: Vec<&'static keys::Action> = Vec::new();
+        let ctrl = |k: Key| Chord { key: k, ctrl: true, alt: false, shift: false };
         for ev in events {
-            match ev {
-                Event::Copy => copy = true,
-                Event::Cut => cut = true,
-                Event::Paste(_) => paste = true,
-                Event::Key { key, pressed: true, modifiers, repeat, .. } => {
-                    let cmd = modifiers.command || modifiers.ctrl;
-                    let sel = self.board.tool == board::SELECT && !self.board.sel.is_empty();
-                    match key {
-                        Key::C if cmd => copy = true,
-                        Key::X if cmd => cut = true,
-                        // Im Browser kommt der Inhalt mit dem `paste`-Ereignis (Event::Paste), sonst doppelt.
-                        Key::V if cmd && !crate::platform::WEB => paste = true,
-                        Key::D if cmd => {
-                            if sel {
-                                self.board.duplicate_sel();
-                            }
-                        }
-                        Key::Z if cmd && modifiers.shift => self.board.redo(),
-                        Key::Z if cmd => self.board.undo(),
-                        Key::Y if cmd => self.board.redo(),
-                        Key::S if cmd => {
-                            self.sync_modified(sh.now);
-                            self.autosave.mark_changed(sh.now);
-                            self.flush(sh);
-                            if crate::platform::WEB && !self.is_server() {
-                                // Browser: Strg+S lädt das Board herunter (Server-Boards speichern selbst).
-                                self.apply_confirm(ConfirmAction::SaveCopy, sh);
-                            } else {
-                                sh.toast("Gespeichert");
-                            }
-                        }
-                        Key::E if cmd => {
-                            self.st.menu_open = true;
-                            self.st.opts_open = false;
-                        }
-                        Key::F1 if !repeat => sh.reqs.push(crate::app::Req::OpenTutorial),
-                        Key::Delete | Key::Backspace if !repeat => {
-                            if sel {
-                                self.board.delete_sel();
-                            }
-                        }
-                        _ if cmd || modifiers.alt || repeat => {}
-                        Key::P => self.select_tool(sh, Tool::Pen),
-                        Key::M => self.select_tool(sh, Tool::Marker),
-                        Key::E => self.select_tool(sh, Tool::Eraser),
-                        Key::S => self.select_tool(sh, Tool::Select),
-                        Key::R => self.select_tool(sh, Tool::Shape),
-                        Key::N => {
-                            self.board.set_tool(board::NOTE);
-                        }
-                        Key::T => {
-                            self.board.set_tool(board::TEXT);
-                        }
-                        Key::I => self.select_tool(sh, Tool::Image),
-                        Key::Num0 => self.board.fit(),
-                        Key::Plus | Key::Equals => self.zoom_center(1.25),
-                        Key::Minus => self.zoom_center(0.8),
-                        _ => {}
-                    }
-                }
-                _ => {}
+            // Kopieren/Ausschneiden/Einfügen kommen je nach Plattform als eigene Ereignisse (= Strg+C/X/V)
+            let (chord, repeat, clip_event) = match ev {
+                Event::Copy => (ctrl(Key::C), false, true),
+                Event::Cut => (ctrl(Key::X), false, true),
+                Event::Paste(_) => (ctrl(Key::V), false, true),
+                Event::Key { key, pressed: true, modifiers, repeat, .. } => (Chord::from_event(key, &modifiers), repeat, false),
+                _ => continue,
+            };
+            let Some(a) = keys::lookup(&sh.settings, chord, Scope::Editor) else { continue };
+            if repeat && !a.repeat {
+                continue;
             }
+            // Im Browser kommt der Inhalt mit dem `paste`-Ereignis (Event::Paste), sonst doppelt.
+            if a.id == "paste" && !clip_event && crate::platform::WEB && chord == ctrl(Key::V) {
+                continue;
+            }
+            // Strg+C kommt oft als Taste UND als Event::Copy: Zwischenablage-Aktionen nur einmal je Frame
+            if matches!(a.id.as_str(), "copy" | "cut" | "paste") && fired.iter().any(|f| f.id == a.id) {
+                continue;
+            }
+            fired.push(a);
         }
-        if copy {
-            clip::copy(self, &*sh.platform);
+        for a in fired {
+            self.run_action(sh, a);
         }
-        if cut {
-            clip::cut(self, &*sh.platform);
+    }
+
+    /// Führt eine Aktion der Tastenkürzel aus.
+    fn run_action(&mut self, sh: &mut Shared, a: &keys::Action) {
+        let sel = self.board.tool == board::SELECT && !self.board.sel.is_empty();
+        if let Some(t) = a.tool {
+            match t {
+                // T/N wählen Text bzw. Haftnotiz direkt (wie bisher)
+                Tool::Text => self.board.set_tool(board::TEXT),
+                Tool::Note => self.board.set_tool(board::NOTE),
+                _ => self.select_tool(sh, t),
+            }
+            return;
         }
-        if paste {
-            clip::paste(self, &*sh.platform);
+        match a.id.as_str() {
+            "undo" => self.board.undo(),
+            "redo" => self.board.redo(),
+            "copy" => clip::copy(self, &*sh.platform),
+            "cut" => clip::cut(self, &*sh.platform),
+            "paste" => clip::paste(self, &*sh.platform),
+            "duplicate" => {
+                if sel {
+                    self.board.duplicate_sel();
+                }
+            }
+            "delete" => {
+                if sel {
+                    self.board.delete_sel();
+                }
+            }
+            "save" => {
+                self.sync_modified(sh.now);
+                self.autosave.mark_changed(sh.now);
+                self.flush(sh);
+                if crate::platform::WEB && !self.is_server() {
+                    // Browser: Speichern lädt das Board herunter (Server-Boards speichern selbst).
+                    self.apply_confirm(ConfirmAction::SaveCopy, sh);
+                } else {
+                    sh.toast("Gespeichert");
+                }
+            }
+            "menu" => {
+                self.st.menu_open = true;
+                self.st.opts_open = false;
+            }
+            "help" => sh.reqs.push(crate::app::Req::OpenTutorial),
+            "fit" => self.board.fit(),
+            "zoom_in" => self.zoom_center(1.25),
+            "zoom_out" => self.zoom_center(0.8),
+            // "cancel": close_popups_on_esc; "pan"/"snap": gehalten; "text_done": Texteingabe
+            _ => {}
         }
     }
 

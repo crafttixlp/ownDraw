@@ -1,6 +1,6 @@
 //! Leisten des Editors: oben (Zurück/Name, Rückgängig/Wiederholen, ⋯), Werkzeugleiste, Auswahl-Aktionen.
 
-use super::{clip, Editor, Lay, Tool, M, PAD};
+use super::{clip, keys, tools, Editor, Lay, Tool, M, PAD};
 use crate::app::{Req, Shared};
 use crate::layout::FormFactor;
 use crate::settings::{self, BarPos, Dock};
@@ -71,11 +71,11 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                 let g = grip(ui, btn, !vert);
                 let b = &mut ed.board;
                 let u = if b.can_undo() { p.text } else { p.disabled };
-                if icon_btn(ui, &mut sh.icons, ic::UNDO, u, false, false, btn, &env.tip("Rückgängig", "Strg+Z")).clicked() {
+                if icon_btn(ui, &mut sh.icons, ic::UNDO, u, false, false, btn, &env.tip("Rückgängig", &keys::label(&sh.settings, "undo"))).clicked() {
                     b.undo();
                 }
                 let rd = if b.can_redo() { p.text } else { p.disabled };
-                if icon_btn(ui, &mut sh.icons, ic::REDO, rd, false, false, btn, &env.tip("Wiederholen", "Strg+Y")).clicked() {
+                if icon_btn(ui, &mut sh.icons, ic::REDO, rd, false, false, btn, &env.tip("Wiederholen", &keys::label(&sh.settings, "redo"))).clicked() {
                     b.redo();
                 }
                 if !compact {
@@ -85,7 +85,7 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     } else {
                         ui.add(egui::Button::new(egui::RichText::new(t).size(13.0)).fill(Color32::TRANSPARENT).min_size(Vec2::new(60.0, btn - 6.0)))
                     };
-                    if r.on_hover_text(env.tip("Alles zeigen", "0")).clicked() {
+                    if r.on_hover_text(env.tip("Alles zeigen", &keys::label(&sh.settings, "fit"))).clicked() {
                         ed.board.fit();
                     }
                 }
@@ -371,6 +371,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
                 ic::TEXT
             }
         }
+        Tool::Note => ic::NOTE,
         Tool::Image => ic::IMAGE,
     })
 }
@@ -387,13 +388,13 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
         None => style::paint_arrow_eng(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(isz + 4.0)), c(tint)),
     }
     // Farbpunkt als Hinweis auf die aktuelle Farbe
-    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text) {
+    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note) {
         let pos = rect.right_bottom() - Vec2::new(size * 0.22, size * 0.22);
         ui.painter().circle_filled(pos, 4.5, c(ed.board.color));
         ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.0, c(p.line)));
     }
     ed.st.tool_rects.push((t, rect));
-    let tip = ed.tool_tip(&sh.env, t);
+    let tip = ed.tool_tip(&sh.env, t, &sh.settings);
     if resp.on_hover_text(tip).clicked() {
         if t == Tool::Image {
             ed.pick_image(sh);
@@ -408,8 +409,8 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
 }
 
 impl Editor {
-    fn tool_tip(&self, env: &crate::layout::Env, t: Tool) -> String {
-        let mut s = env.tip(t.label(), t.key());
+    fn tool_tip(&self, env: &crate::layout::Env, t: Tool, set: &settings::Settings) -> String {
+        let mut s = env.tip(t.label(), &keys::label(set, &t.action()));
         if t.has_options() && self.active_tool() == t {
             s.push_str(" · erneut tippen für Optionen");
         }
@@ -478,18 +479,18 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                     let g = grip(ui, btn, !vert);
                     let env = sh.env;
                     if has_sel {
-                        if icon_btn(ui, &mut sh.icons, ic::COPY, p.text, false, false, btn, &env.tip("Kopieren", "Strg+C")).clicked() {
+                        if icon_btn(ui, &mut sh.icons, ic::COPY, p.text, false, false, btn, &env.tip("Kopieren", &keys::label(&sh.settings, "copy"))).clicked() {
                             clip::copy(ed, &*sh.platform);
                         }
-                        if icon_btn(ui, &mut sh.icons, ic::CUT, p.text, false, false, btn, &env.tip("Ausschneiden", "Strg+X")).clicked() {
+                        if icon_btn(ui, &mut sh.icons, ic::CUT, p.text, false, false, btn, &env.tip("Ausschneiden", &keys::label(&sh.settings, "cut"))).clicked() {
                             clip::cut(ed, &*sh.platform);
                         }
                     }
-                    if icon_btn(ui, &mut sh.icons, ic::PASTE, p.text, false, false, btn, &env.tip("Einfügen", "Strg+V")).clicked() {
+                    if icon_btn(ui, &mut sh.icons, ic::PASTE, p.text, false, false, btn, &env.tip("Einfügen", &keys::label(&sh.settings, "paste"))).clicked() {
                         clip::paste_center(ed, &*sh.platform);
                     }
                     if has_sel {
-                        if icon_btn(ui, &mut sh.icons, ic::DUPLICATE, p.text, false, false, btn, &env.tip("Duplizieren", "Strg+D")).clicked() {
+                        if icon_btn(ui, &mut sh.icons, ic::DUPLICATE, p.text, false, false, btn, &env.tip("Duplizieren", &keys::label(&sh.settings, "duplicate"))).clicked() {
                             ed.board.duplicate_sel();
                         }
                         if icon_btn(ui, &mut sh.icons, ic::ROTATE, p.text, false, false, btn, "Um 90° drehen").clicked() {
@@ -506,7 +507,7 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                                 ed.edit_note(nid);
                             }
                         }
-                        if icon_btn(ui, &mut sh.icons, ic::TRASH, p.danger, false, false, btn, &env.tip("Löschen", "Entf")).clicked() {
+                        if icon_btn(ui, &mut sh.icons, ic::TRASH, p.danger, false, false, btn, &env.tip("Löschen", &keys::label(&sh.settings, "delete"))).clicked() {
                             ed.board.delete_sel();
                         }
                         ui.spacing_mut().slider_width = if vert { 90.0 } else { 110.0 };
@@ -608,9 +609,10 @@ fn sel_colors(ui: &mut Ui, ed: &mut Editor, btn: f32, vert: bool, cur: Option<u3
 
 // ---------------------------------------------------------------- Bearbeiten-Modus (WP9)
 
-/// Zustand des Bearbeiten-Modus: alle Werkzeuge mit Sichtbarkeit, laufender Zieh-Vorgang.
+/// Zustand des Bearbeiten-Modus: alle Werkzeuge (Kennung, eingeschaltet) in Reihenfolge, laufender Zieh-Vorgang.
+/// Die Liste ist eine Ansicht von `Settings::tool_on`/`tool_order` (dieselbe Einstellung wie die Seite „Werkzeuge“).
 pub struct EditTools {
-    pub list: Vec<settings::ToolEntry>,
+    pub list: Vec<(String, bool)>,
     drag: Option<String>,
     /// Letzte Zeigerposition beim Ziehen (Touch liefert beim Loslassen keine mehr).
     last: Option<Pos2>,
@@ -621,12 +623,13 @@ impl Editor {
     pub fn begin_edit_tools(&mut self, sh: &Shared) {
         self.st.opts_open = false;
         self.st.menu_open = false;
-        self.st.edit_tools = Some(EditTools { list: settings::edit_list(&sh.settings.tools), drag: None, last: None });
+        self.st.edit_tools = Some(EditTools { list: edit_list(&sh.settings), drag: None, last: None });
     }
 }
 
-fn apply_edit(sh: &mut Shared, list: &[settings::ToolEntry]) {
-    sh.settings.tools = settings::tools_from_edit(list);
+/// Alle Werkzeuge in Leisten-Reihenfolge mit an/aus.
+fn edit_list(s: &settings::Settings) -> Vec<(String, bool)> {
+    tools::ordered(s).iter().map(|d| (d.id.to_string(), tools::enabled(s, d.id))).collect()
 }
 
 /// Werkzeugleiste im Bearbeiten-Modus: alle Werkzeuge, Ziehen ordnet um, Tippen blendet ein/aus.
@@ -691,10 +694,11 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
 
     // Tippen: ein-/ausblenden
     if let Some(i) = clicked {
-        if settings::toggle_visible(&mut st.list, i) {
-            apply_edit(sh, &st.list);
+        let (id, on) = st.list[i].clone();
+        if tools::set_enabled(&mut sh.settings, &id, !on) {
+            st.list = edit_list(&sh.settings);
         } else {
-            sh.toast("Mindestens ein Werkzeug muss sichtbar bleiben");
+            sh.toast("Mindestens ein Werkzeug muss eingeschaltet bleiben");
         }
     }
     // Ziehen: Ziel nach Mittelpunkten, Einfügemarke, Loslassen ordnet um
@@ -707,8 +711,8 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
             let target = rects.iter().min_by(|a, b| key(&a.1).total_cmp(&key(&b.1))).map(|(k, _)| *k).unwrap_or(i);
             if released {
                 if target != i {
-                    settings::reorder(&mut st.list, i, target);
-                    apply_edit(sh, &st.list);
+                    tools::reorder(&mut sh.settings, i, target);
+                    st.list = edit_list(&sh.settings);
                 }
                 st.drag = None;
             } else {
@@ -765,10 +769,10 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     });
     ed.st.popup_rects.push(panel);
     if reset {
-        st.list = settings::edit_list(&settings::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect::<Vec<_>>());
-        apply_edit(sh, &st.list);
+        tools::reset(&mut sh.settings);
+        st.list = edit_list(&sh.settings);
     }
-    if done || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if done || ctx.input(|i| keys::pressed(i, &sh.settings, "cancel")) {
         sh.reqs.push(Req::ToolsEdited);
     } else {
         ed.st.edit_tools = Some(st);

@@ -2,10 +2,12 @@
 //!
 //! Der Inhalt steht an EINER Stelle: `crates/owndraw/tutorial.json` (Kategorien mit Einträgen). Neue
 //! Editor-Funktionen werden dort eingetragen – der Test `tutorial_deckt_editor_ab` unten prüft, dass jedes
-//! Werkzeug, jedes Tastenkürzel, jeder Menüeintrag des Editors und jede Editor-Einstellung einen Eintrag hat
+//! Werkzeug, jede Tastenkürzel-Aktion, jeder Menüeintrag des Editors und jede Editor-Einstellung einen Eintrag hat
 //! (Feld `covers`). Siehe `CONTRIBUTING.md`.
 
 use crate::layout::{Env, FormFactor};
+use crate::settings::Settings;
+use crate::ui::editor::keys;
 use crate::style::{self, c};
 use egui::{CornerRadius, Margin, Stroke, Ui, Vec2};
 use serde::Deserialize;
@@ -38,9 +40,13 @@ pub struct Entry {
     /// Schritte bzw. Wege, die Funktion auszulösen.
     #[serde(default)]
     pub how: Vec<String>,
-    /// Tastenkürzel (Anzeige), z. B. "Strg+Z".
+    /// Weitere Tasten/Gesten zur Anzeige, z. B. "Strg+Mausrad" (belegbare Kürzel stehen in `action`).
     #[serde(default)]
     pub keys: Vec<String>,
+    /// Aktionen der Tastenkürzel (`undo`, `tool.pen`, …): Die Seite zeigt deren aktuelle Belegung aus den
+    /// Einstellungen. Ein String oder eine Liste.
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub action: Vec<String>,
     /// Einschränkung, z. B. "Nur am PC" oder "Nur in der Web-App".
     #[serde(default)]
     pub only: String,
@@ -48,6 +54,44 @@ pub struct Entry {
     #[serde(default)]
     #[allow(dead_code)] // nur im Test (Abgleich mit dem Code)
     pub covers: Vec<String>,
+}
+
+fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum V {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match V::deserialize(d)? {
+        V::One(s) => vec![s],
+        V::Many(v) => v,
+    })
+}
+
+/// Angezeigte Tasten eines Eintrags: aktuelle Belegung der Aktionen, dann die festen `keys`.
+pub fn key_caps(e: &Entry, s: &Settings) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for id in &e.action {
+        let Some(a) = keys::find(id) else { continue };
+        if !keys::available(s, a) {
+            continue;
+        }
+        for l in keys::labels(s, id) {
+            let l = match a.kind {
+                keys::Kind::Hold => format!("{l} + Ziehen"),
+                keys::Kind::Modifier => format!("{l} halten"),
+                keys::Kind::Press => l,
+            };
+            // mehrere Aktionen: Name dazu („Strg+Z Rückgängig“)
+            let l = if e.action.len() > 1 { format!("{l} {}", a.name) } else { l };
+            if !v.contains(&l) {
+                v.push(l);
+            }
+        }
+    }
+    v.extend(e.keys.iter().cloned());
+    v
 }
 
 pub fn data() -> &'static Data {
@@ -95,14 +139,15 @@ pub fn matches(cat: &Category, e: &Entry, query: &str) -> bool {
     if q.trim().is_empty() {
         return true;
     }
-    let hay = norm(&format!("{} {} {} {} {} {}", cat.title, e.title, e.text, e.how.join(" "), e.keys.join(" "), e.only));
+    let caps = key_caps(e, &Settings::default());
+    let hay = norm(&format!("{} {} {} {} {} {}", cat.title, e.title, e.text, e.how.join(" "), caps.join(" "), e.only));
     q.split_whitespace().all(|w| hay.contains(w))
 }
 
 const MAX_W: f32 = 820.0;
 
 /// Zeichnet die Anleitung; liefert true, wenn „Zurück“ gewählt wurde.
-pub fn show(ui: &mut Ui, env: &Env, st: &mut TutorialState) -> bool {
+pub fn show(ui: &mut Ui, env: &Env, st: &mut TutorialState, settings: &Settings) -> bool {
     let compact = env.ff == FormFactor::Compact;
     let side = if compact { 16 } else { 32 };
     let mut back = false;
@@ -126,14 +171,14 @@ pub fn show(ui: &mut Ui, env: &Env, st: &mut TutorialState) -> bool {
         let col = egui::Rect::from_min_size(egui::pos2(full.center().x - w / 2.0, full.top()), Vec2::new(w, f32::INFINITY));
         ui.scope_builder(egui::UiBuilder::new().max_rect(col).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
             ui.set_max_width(w);
-            content(ui, env, st);
+            content(ui, env, st, settings);
             ui.add_space(32.0);
         });
     });
     back
 }
 
-fn content(ui: &mut Ui, env: &Env, st: &mut TutorialState) {
+fn content(ui: &mut Ui, env: &Env, st: &mut TutorialState, settings: &Settings) {
     let p = style::pal();
     let d = data();
     ui.add_space(8.0);
@@ -169,7 +214,7 @@ fn content(ui: &mut Ui, env: &Env, st: &mut TutorialState) {
             ui.add_space(6.0);
         }
         for e in hits {
-            entry(ui, e);
+            entry(ui, e, settings);
             ui.add_space(8.0);
         }
     }
@@ -194,7 +239,7 @@ fn heading(ui: &mut Ui, title: &str) {
     ui.add_space(6.0);
 }
 
-fn entry(ui: &mut Ui, e: &Entry) {
+fn entry(ui: &mut Ui, e: &Entry, settings: &Settings) {
     let p = style::pal();
     style::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -212,10 +257,11 @@ fn entry(ui: &mut Ui, e: &Entry) {
                 ui.add(egui::Label::new(egui::RichText::new(h).color(c(p.dim))).wrap());
             });
         }
-        if !e.keys.is_empty() {
+        let caps = key_caps(e, settings);
+        if !caps.is_empty() {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
-                for k in &e.keys {
+                for k in &caps {
                     key_cap(ui, k);
                 }
             });
@@ -295,30 +341,13 @@ mod tests {
     /// Alles, was der Editor anbietet und in der Anleitung stehen muss.
     fn editor_features() -> HashSet<String> {
         let mut f = HashSet::new();
-        // Werkzeuge
-        for id in crate::settings::DEFAULT_TOOLS.iter().chain(["image"].iter()) {
-            let t = crate::ui::editor::Tool::from_id(id).expect("Werkzeug");
-            f.insert(format!("tool:{}", t.label()));
+        // Werkzeuge (Registry)
+        for d in crate::ui::editor::tools::TOOLS {
+            f.insert(format!("tool:{}", d.name));
         }
-        // Tastenkürzel im Editor (alle `Key::…`)
-        let editor_src = [
-            include_str!("editor/mod.rs"),
-            include_str!("editor/text.rs"),
-            include_str!("editor/toolbar.rs"),
-            include_str!("editor/options.rs"),
-            include_str!("editor/pages.rs"),
-            include_str!("editor/layers.rs"),
-            include_str!("editor/clip.rs"),
-            include_str!("editor/live.rs"),
-            include_str!("editor/menu.rs"),
-        ];
-        for src in editor_src {
-            for (pos, _) in src.match_indices("Key::") {
-                let name: String = src[pos + 5..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-                if !name.is_empty() {
-                    f.insert(format!("key:{name}"));
-                }
-            }
+        // Tastenkürzel: jede Aktion der Registry (auch die der Werkzeuge)
+        for a in keys::all() {
+            f.insert(format!("action:{}", a.id));
         }
         // Menüeinträge des „⋯“-Menüs
         for l in literals_after(include_str!("editor/menu.rs"), "menu_row(ui, ") {
@@ -385,10 +414,26 @@ mod tests {
     #[test]
     fn abgleich_findet_funktionen() {
         let f = editor_features();
-        for k in ["tool:Bild", "key:Z", "key:F1", "key:Space", "menu:Als PDF …", "menu:Board: dunkel", "menu:Anleitung & Tipps", "setting:Taste", "setting:Winkelraster"] {
+        for k in ["tool:Bild", "tool:Haftnotiz", "action:undo", "action:help", "action:pan", "action:snap", "action:tool.pen", "menu:Als PDF …", "menu:Board: dunkel", "menu:Anleitung & Tipps", "setting:Taste", "setting:Winkelraster"] {
             assert!(f.contains(k), "{k} nicht erkannt");
         }
         assert!(f.len() > 50, "nur {} Funktionen erkannt", f.len());
+    }
+
+    /// Ein Eintrag mit `action` zeigt die aktuelle Belegung, und jede `action` gibt es.
+    #[test]
+    fn eintraege_zeigen_belegung() {
+        for e in data().categories.iter().flat_map(|c| c.entries.iter()) {
+            for id in &e.action {
+                assert!(keys::find(id).is_some(), "{}: unbekannte Aktion {id}", e.id);
+            }
+        }
+        let e = data().categories.iter().flat_map(|c| c.entries.iter()).find(|e| e.action.contains(&"undo".to_string())).expect("Eintrag für undo");
+        let mut s = Settings::default();
+        assert!(key_caps(e, &s).iter().any(|k| k.starts_with("Strg+Z")));
+        keys::assign(&mut s, "undo", Some(0), keys::Chord::parse("Ctrl+U").unwrap());
+        let caps = key_caps(e, &s);
+        assert!(caps.iter().any(|k| k.starts_with("Strg+U")) && !caps.iter().any(|k| k.starts_with("Strg+Z ") || k == "Strg+Z"), "{caps:?}");
     }
 
     #[test]

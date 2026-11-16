@@ -144,8 +144,7 @@ impl Snapping {
     }
 }
 
-/// Werkzeug-Kennungen der Hauptleiste (Reihenfolge = Anzeige-Reihenfolge).
-/// Bekannt: "pen", "marker", "eraser", "select", "shape", "note", "text", "image", "undo", "redo", "layers", "pages".
+/// Werkzeug-Kennung (siehe `ui::editor::tools::TOOLS`).
 pub type ToolId = String;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -165,8 +164,17 @@ pub struct Settings {
     pub tile_pos: BTreeMap<String, [f32; 2]>,
     /// Andock-Zustand der Kacheln (gleiche Schlüssel wie `tile_pos`); fehlt = Vorgabe.
     pub tile_dock: BTreeMap<String, Dock>,
-    /// Sichtbare Werkzeuge in Reihenfolge.
-    pub tools: Vec<ToolId>,
+    /// Alte Einstellung (bis 4.24): sichtbare Werkzeuge in Reihenfolge. Wird beim Laden nach `tool_on` und
+    /// `tool_order` übernommen und nicht mehr geschrieben.
+    #[serde(rename = "tools", skip_serializing)]
+    pub legacy_tools: Option<Vec<ToolId>>,
+    /// Werkzeuge an/aus, nur Abweichungen vom Standard der Registry (`ui::editor::tools`).
+    pub tool_on: BTreeMap<ToolId, bool>,
+    /// Reihenfolge der Werkzeugleiste; leer = Standard. Fehlende Werkzeuge folgen in Registry-Reihenfolge.
+    pub tool_order: Vec<ToolId>,
+    /// Tastenkürzel: Aktion → Kürzel (`Ctrl+Shift+Z`), nur Abweichungen vom Standard; leer = kein Kürzel
+    /// (`ui::editor::keys`).
+    pub keys: BTreeMap<String, Vec<String>>,
     pub save_choice: SaveChoice,
     /// Standard-Ort (FileRef::to_key); None = Plattform-Vorgabe.
     pub default_dir: Option<String>,
@@ -185,9 +193,6 @@ pub struct Settings {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Alle Werkzeuge, die die Leiste kann (Reihenfolge = Vorgabe beim Anzeigen ausgeblendeter Werkzeuge im Bearbeiten-Modus).
-pub const ALL_TOOLS: [&str; 7] = ["pen", "marker", "eraser", "select", "shape", "text", "image"];
-
 /// Auswahl der Akzentfarben (ARGB) in den Einstellungen.
 pub const ACCENTS: [(&str, u32); 8] = [
     ("Indigo", 0xFF7C8CFF),
@@ -203,8 +208,6 @@ pub const ACCENTS: [(&str, u32); 8] = [
 /// Dateiname der Einstellungen im Konfigurationsordner.
 pub const FILE_NAME: &str = "settings.json";
 
-pub const DEFAULT_TOOLS: [&str; 7] = ["pen", "marker", "eraser", "select", "shape", "text", "image"];
-
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -215,7 +218,10 @@ impl Default for Settings {
             options_pos: None,
             tile_pos: BTreeMap::new(),
             tile_dock: BTreeMap::new(),
-            tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            legacy_tools: None,
+            tool_on: BTreeMap::new(),
+            tool_order: Vec::new(),
+            keys: BTreeMap::new(),
             save_choice: SaveChoice::Ask,
             default_dir: None,
             xopp_autosave_direct: false,
@@ -234,17 +240,11 @@ impl Settings {
     pub fn sanitize(&mut self) {
         self.ui_scale = (((self.ui_scale.clamp(75, 200) + 2) / 5) * 5).clamp(75, 200);
         self.accent |= 0xFF00_0000;
-        let mut tools: Vec<ToolId> = Vec::new();
-        for id in &self.tools {
-            let id = if id == "note" { "text" } else { id.as_str() };
-            if ALL_TOOLS.contains(&id) && !tools.iter().any(|t| t == id) {
-                tools.push(id.to_string());
-            }
+        if let Some(old) = self.legacy_tools.take() {
+            crate::ui::editor::tools::migrate_legacy(self, &old);
         }
-        if tools.is_empty() {
-            tools = DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
-        }
-        self.tools = tools;
+        crate::ui::editor::tools::sanitize(self);
+        crate::ui::editor::keys::sanitize(self);
         self.tile_pos.retain(|_, f| f.iter().all(|v| v.is_finite()));
         for f in self.tile_pos.values_mut() {
             *f = [f[0].clamp(0.0, 1.0), f[1].clamp(0.0, 1.0)];
@@ -296,25 +296,6 @@ impl Settings {
     }
 }
 
-/// Eintrag der Werkzeugliste im Bearbeiten-Modus: Kennung + sichtbar?
-pub type ToolEntry = (ToolId, bool);
-
-/// Vollständige Liste für den Bearbeiten-Modus: sichtbare in Reihenfolge, danach die ausgeblendeten.
-pub fn edit_list(visible: &[ToolId]) -> Vec<ToolEntry> {
-    let mut v: Vec<ToolEntry> = visible.iter().filter(|t| ALL_TOOLS.contains(&t.as_str())).map(|t| (t.clone(), true)).collect();
-    for id in ALL_TOOLS {
-        if !v.iter().any(|(t, _)| t == id) {
-            v.push((id.to_string(), false));
-        }
-    }
-    v
-}
-
-/// Sichtbare Kennungen aus der Bearbeiten-Liste.
-pub fn tools_from_edit(list: &[ToolEntry]) -> Vec<ToolId> {
-    list.iter().filter(|(_, on)| *on).map(|(t, _)| t.clone()).collect()
-}
-
 /// Verschiebt den Eintrag `from` an die Stelle `to` (Index in der Liste vor dem Entfernen).
 pub fn reorder<T>(v: &mut Vec<T>, from: usize, to: usize) {
     if from >= v.len() || from == to {
@@ -325,16 +306,6 @@ pub fn reorder<T>(v: &mut Vec<T>, from: usize, to: usize) {
     v.insert(to, it);
 }
 
-/// Schaltet die Sichtbarkeit von Eintrag `i` um. Das letzte sichtbare Werkzeug bleibt sichtbar (Rückgabe false).
-pub fn toggle_visible(list: &mut [ToolEntry], i: usize) -> bool {
-    let Some(on) = list.get(i).map(|e| e.1) else { return false };
-    if on && list.iter().filter(|e| e.1).count() <= 1 {
-        return false;
-    }
-    list[i].1 = !on;
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,13 +313,13 @@ mod tests {
 
     #[test]
     fn parse_tolerant_und_begrenzt() {
-        let s = Settings::parse(br#"{"ui_scale": 999, "unbekannt": 1, "tools": ["x","pen","pen","note"], "accent": 5}"#).unwrap();
+        let s = Settings::parse(br#"{"ui_scale": 999, "unbekannt": 1, "tool_order": ["x","image","image"], "tool_on": {"pen": true, "marker": false}, "accent": 5}"#).unwrap();
         assert_eq!(s.ui_scale, 200);
-        assert_eq!(s.tools, vec!["pen", "text"]);
+        assert_eq!(s.tool_order, vec!["image"]);
+        assert_eq!(s.tool_on.len(), 1, "Standardwerte werden nicht gespeichert");
         assert_eq!(s.accent >> 24, 0xFF);
         assert_eq!(Settings::parse(br#"{"ui_scale": 1}"#).unwrap().ui_scale, 75);
         assert_eq!(Settings::parse(br#"{"ui_scale": 103}"#).unwrap().ui_scale, 105);
-        assert_eq!(Settings::parse(br#"{"tools": []}"#).unwrap().tools.len(), DEFAULT_TOOLS.len());
         assert_eq!(Settings::parse(b"{}").unwrap(), Settings::default());
         assert!(Settings::parse(b"{kaputt").is_err());
     }
@@ -403,17 +374,6 @@ mod tests {
         assert_eq!(v, vec![4, 3, 1, 2]);
     }
 
-    #[test]
-    fn mindestens_ein_werkzeug() {
-        let mut l = edit_list(&["pen".to_string(), "eraser".to_string()]);
-        assert_eq!(l.len(), ALL_TOOLS.len());
-        assert!(toggle_visible(&mut l, 0));
-        assert_eq!(tools_from_edit(&l), vec!["eraser"]);
-        assert!(!toggle_visible(&mut l, 1), "letztes sichtbares bleibt");
-        assert!(toggle_visible(&mut l, 0));
-        assert_eq!(tools_from_edit(&l), vec!["pen", "eraser"]);
-    }
-
     /// Eigener Datenordner über `StubPlatform::with_base` (nicht `OWNDRAW_DATA` setzen: die Variable gilt
     /// prozessweit und würde parallel laufende Tests, z. B. `clip::tests`, in einen gelöschten Ordner umleiten).
     #[test]
@@ -424,7 +384,9 @@ mod tests {
         // fehlt: Vorgaben
         assert_eq!(Settings::load(&p), Settings::default());
         // Round-Trip
-        let mut s = Settings { theme: Theme::Dark, accent: ACCENTS[3].1, ui_scale: 130, toolbar_pos: Some(BarPos::Right), save_choice: SaveChoice::AlwaysDefault, default_dir: Some("/tmp/x".into()), xopp_autosave_direct: true, tools: vec!["eraser".into(), "pen".into()], ..Settings::default() };
+        let mut s = Settings { theme: Theme::Dark, accent: ACCENTS[3].1, ui_scale: 130, toolbar_pos: Some(BarPos::Right), save_choice: SaveChoice::AlwaysDefault, default_dir: Some("/tmp/x".into()), xopp_autosave_direct: true, tool_order: vec!["eraser".into(), "pen".into()], ..Settings::default() };
+        s.tool_on.insert("marker".into(), false);
+        s.keys.insert("undo".into(), vec!["Ctrl+U".into()]);
         s.extra.insert("w".into(), serde_json::json!(5.0));
         s.save(&p).unwrap();
         let neu = Settings::load(&StubPlatform::with_base(dir.clone()));

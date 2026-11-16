@@ -33,6 +33,11 @@ pub fn open_bug_report(_sh: &mut crate::app::Shared) {
     }
 }
 
+/// Öffnet die Download-Seite der Apps (`/download` am Server; nur sinnvoll, wenn [`bug_report_available`]).
+pub fn open_downloads(sh: &mut crate::app::Shared) {
+    sh.platform.open_url("/download");
+}
+
 /// Kürzt Text mit „…“ auf höchstens `max_w` Breite.
 pub fn elide(s: &str, size: f32, max_w: f32, ui: &egui::Ui) -> String {
     let font = egui::FontId::proportional(size);

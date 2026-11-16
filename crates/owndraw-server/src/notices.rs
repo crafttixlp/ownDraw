@@ -350,7 +350,7 @@ fn always_allowed(method: &Method, path: &str) -> bool {
 }
 
 /// Ist die Anfrage von einem angemeldeten Admin?
-async fn is_admin(s: &AppState, parts: &mut axum::http::request::Parts) -> bool {
+pub(crate) async fn is_admin(s: &AppState, parts: &mut axum::http::request::Parts) -> bool {
     use axum::extract::FromRequestParts;
     Auth::from_request_parts(parts, s).await.is_ok_and(|a| a.user.admin)
 }

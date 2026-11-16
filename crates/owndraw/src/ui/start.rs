@@ -85,6 +85,9 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     if super::bug_report_available() && style::plain_btn(ui, "Fehler melden", h).clicked() {
                         super::open_bug_report(sh);
                     }
+                    if super::bug_report_available() && style::plain_btn(ui, "Apps", h).on_hover_text("Android- und Linux-App herunterladen").clicked() {
+                        super::open_downloads(sh);
+                    }
                 });
             });
             // Browser: Konto bzw. Gastmodus-Hinweis (dezent)
@@ -387,6 +390,9 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     }
                     if super::bug_report_available() && style::outline_btn(ui, "Fehler melden", h).clicked() {
                         super::open_bug_report(sh);
+                    }
+                    if super::bug_report_available() && style::outline_btn(ui, "Apps", h).on_hover_text("Android- und Linux-App herunterladen").clicked() {
+                        super::open_downloads(sh);
                     }
                 });
             });

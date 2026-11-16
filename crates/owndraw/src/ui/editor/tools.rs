@@ -97,6 +97,10 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::std(Tool::Text, "text", "Text", Group::Extras, ic::TEXT, "Schreibt Text direkt auf das Blatt.").key("T"),
     ToolDef::std(Tool::Note, "note", "Haftnotiz", Group::Extras, ic::NOTE, "Farbiger Zettel mit Text, erreichbar über das Text-Werkzeug.").key("N").inside("text"),
     ToolDef::std(Tool::Image, "image", "Bild", Group::Extras, ic::IMAGE, "Fügt ein Bild aus einer Datei ein.").key("I"),
+    ToolDef::neu(Tool::Fill, "fill", "Füllen", Group::Zeichnen, ic::DARK, "Füllt eine geschlossene Form mit der aktuellen Farbe.").key("F"),
+    ToolDef::neu(Tool::Picker, "picker", "Pipette", Group::Extras, ic::FINGER, "Übernimmt die Farbe einer Stelle auf dem Blatt.").key("K"),
+    ToolDef::neu(Tool::Dim, "dim", "Maßlinie", Group::Formen, ic::LINE, "Linie mit Maßpfeilen und der Länge in der Mitte.").key("L"),
+    ToolDef::neu(Tool::Stamp, "stamp", "Stempel", Group::Extras, ic::MAGIC, "Setzt Haken, Kreuz, Stern, Fragezeichen oder Ausrufezeichen.").key("J"),
 ];
 
 /// Werkzeug nach Kennung.

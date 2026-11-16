@@ -4,6 +4,7 @@
 pub mod clip;
 pub mod drop;
 pub mod keys;
+mod glyphs;
 mod layers;
 #[cfg(target_arch = "wasm32")]
 pub mod live;
@@ -39,6 +40,10 @@ pub const COLORS: [(u32, &str); 8] = [
     (0xFF8B8D98, "Grau"),
 ];
 pub const WIDTHS: [f32; 4] = [1.6, 3.0, 5.5, 10.0];
+/// Board-Werkzeug der Antipp-Werkzeuge (Füllen, Pipette, Stempel): zeichnet nichts, der Editor wertet den Tipp aus.
+pub const TAP: i32 = 100;
+/// Stempelgrößen (klein, mittel, groß) in Punkt.
+pub const STAMP_SIZES: [(f32, &str); 3] = [(22.0, "Klein"), (40.0, "Mittel"), (68.0, "Groß")];
 /// Abstand schwebender Leisten zum Rand der Zeichenfläche.
 const M: f32 = 8.0;
 /// Innenabstand einer Leiste (Frame-Innenrand 4 + Rahmen 1).
@@ -58,6 +63,10 @@ pub enum Tool {
     Text,
     Note,
     Image,
+    Fill,
+    Picker,
+    Dim,
+    Stamp,
 }
 
 impl Tool {
@@ -76,7 +85,7 @@ impl Tool {
     }
     /// Hat das Werkzeug Optionen (Kontext-Popover bzw. Bottom-Sheet)?
     pub fn has_options(self) -> bool {
-        self != Tool::Image
+        !matches!(self, Tool::Image | Tool::Picker)
     }
 }
 
@@ -113,6 +122,20 @@ pub struct UiState {
     pub tools_vert: bool,
     /// Haftnotiz hat einen eigenen Knopf (Text ist ausgeschaltet).
     pub note_in_bar: bool,
+    /// Aktives Antipp-Werkzeug (gilt, solange `board.tool == TAP`).
+    pub tap: Option<Tool>,
+    /// Maßlinie als eigenes Werkzeug gewählt (Form-Werkzeug mit `DIM`).
+    pub dim_mode: bool,
+    /// Zuletzt benutzte Zeichenwerkzeuge (Ziel der Pipette).
+    pub last_draw: Option<Tool>,
+    /// Werkzeug vor der Pipette.
+    pub picker_back: Option<Tool>,
+    /// Beginn eines Tipps (Position), None wenn kein Tipp läuft oder er zur Geste wurde.
+    pub tap_down: Option<Pos2>,
+    /// Füllen-Werkzeug entfernt die Füllung statt zu füllen.
+    pub fill_remove: bool,
+    pub stamp_kind: i32,
+    pub stamp_size: usize,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).
@@ -190,7 +213,8 @@ impl Editor {
         if !WIDTHS.contains(&board.pen_w) {
             board.pen_w = 3.0;
         }
-        board.shape_kind = geti("shape", 0).clamp(0, 4) as i32;
+        board.shape_kind = Some(geti("shape", 0) as i32).filter(|k| (0..=4).contains(k) || (item::TRIANGLE..=item::DIM).contains(k)).unwrap_or(0);
+        board.pen_style = geti("penstyle", 0).clamp(0, item::PS_DOTTED as i64) as u8;
         board.arrow_style = geti("arrow", 0).clamp(0, owndraw_core::item::ARROW_STYLES.len() as i64 - 1) as i32;
         // Auf Touch-Geräten zeichnet der Finger standardmäßig (Schalter im Werkzeug-Popover).
         board.snap_cfg = sh.settings.snap.to_core();
@@ -451,11 +475,17 @@ impl Editor {
     // ---------------------------------------------------------------- Werkzeuge
 
     pub fn active_tool(&self) -> Tool {
+        if self.board.tool == TAP {
+            if let Some(t) = self.st.tap {
+                return t;
+            }
+        }
         match self.board.tool {
             board::PEN => Tool::Pen,
             board::MARKER => Tool::Marker,
             board::ERASER => Tool::Eraser,
             board::SELECT => Tool::Select,
+            board::SHAPE if self.st.dim_mode && self.board.shape_kind == item::DIM => Tool::Dim,
             board::SHAPE => Tool::Shape,
             board::NOTE if self.st.note_in_bar => Tool::Note,
             _ => Tool::Text,
@@ -464,7 +494,33 @@ impl Editor {
 
     /// Werkzeug wählen (Bild öffnet die Dateiauswahl).
     pub fn select_tool(&mut self, sh: &mut Shared, t: Tool) {
+        if t == Tool::Image {
+            self.pick_image(sh);
+            return;
+        }
+        self.set_tool_ui(t);
+    }
+
+    /// Wählt ein Werkzeug (ohne Bild, das die Dateiauswahl braucht).
+    fn set_tool_ui(&mut self, t: Tool) {
+        let cur = self.active_tool();
+        if matches!(cur, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Dim) {
+            self.st.last_draw = Some(cur);
+        }
+        if t == Tool::Picker && cur != Tool::Picker {
+            self.st.picker_back = Some(cur);
+        }
+        self.st.dim_mode = t == Tool::Dim;
         let bt = match t {
+            Tool::Fill | Tool::Picker | Tool::Stamp => {
+                self.st.tap = Some(t);
+                self.st.tap_down = None;
+                TAP
+            }
+            Tool::Dim => {
+                self.board.shape_kind = item::DIM;
+                board::SHAPE
+            }
             Tool::Pen => board::PEN,
             Tool::Marker => board::MARKER,
             Tool::Eraser => board::ERASER,
@@ -478,10 +534,7 @@ impl Editor {
                 }
             }
             Tool::Note => board::NOTE,
-            Tool::Image => {
-                self.pick_image(sh);
-                return;
-            }
+            Tool::Image => return,
         };
         if self.board.tool != bt {
             self.board.set_tool(bt);
@@ -672,7 +725,7 @@ impl Editor {
                 CursorIcon::Grab
             } else {
                 match self.board.tool {
-                    board::PEN | board::MARKER | board::SHAPE | board::ERASER => CursorIcon::Crosshair,
+                    board::PEN | board::MARKER | board::SHAPE | board::ERASER | TAP => CursorIcon::Crosshair,
                     board::TEXT | board::NOTE => CursorIcon::Text,
                     _ => CursorIcon::Default,
                 }
@@ -747,7 +800,7 @@ impl Editor {
     /// Werkzeug-Vorgaben (Modus, Breite, …) in den Einstellungen merken.
     fn sync_tool_prefs(&self, s: &mut Settings) {
         let b = &self.board;
-        let vals: [(&str, serde_json::Value); 7] = [
+        let vals: [(&str, serde_json::Value); 8] = [
             ("arrow", b.arrow_style.into()),
             ("recog", b.recog.into()),
             ("selmode", b.sel_mode.into()),
@@ -755,6 +808,7 @@ impl Editor {
             ("w", serde_json::json!(b.pen_w)),
             ("shape", b.shape_kind.into()),
             ("finger", b.finger_draw.into()),
+            ("penstyle", b.pen_style.into()),
         ];
         for (k, v) in vals {
             if s.extra.get(k) != Some(&v) {
@@ -798,7 +852,7 @@ impl Editor {
                 Event::PointerMoved(p) => {
                     let r = rel(p);
                     if self.drawing {
-                        self.board.on_touch(&Motion::single(Action::Move, r.x, r.y, 0.5, ToolType::Stylus));
+                        self.touch_in(&Motion::single(Action::Move, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if let Some((last, b)) = self.panning {
                         self.board.pan_by(p.x - last.x, p.y - last.y);
                         self.panning = Some((p, b));
@@ -812,14 +866,14 @@ impl Editor {
                         }
                         if button == PointerButton::Primary && !space {
                             self.drawing = true;
-                            self.board.on_touch(&Motion::single(Action::Down, r.x, r.y, 0.5, ToolType::Stylus));
+                            self.touch_in(&Motion::single(Action::Down, r.x, r.y, 0.5, ToolType::Stylus));
                         } else if matches!(button, PointerButton::Primary | PointerButton::Secondary | PointerButton::Middle) {
                             self.panning = Some((pos, button));
                             self.pan_start = Some(pos);
                         }
                     } else if self.drawing && button == PointerButton::Primary {
                         self.drawing = false;
-                        self.board.on_touch(&Motion::single(Action::Up, r.x, r.y, 0.5, ToolType::Stylus));
+                        self.touch_in(&Motion::single(Action::Up, r.x, r.y, 0.5, ToolType::Stylus));
                     } else if self.panning.map(|(_, b)| b == button).unwrap_or(false) {
                         self.panning = None;
                         // Mittlere Maustaste ohne Verschieben: Objekt darunter auswählen (erweitertes Menü)
@@ -867,12 +921,12 @@ impl Editor {
                 self.touches.retain(|t| t.0 != id);
                 self.touches.push((id, p));
                 let action = if self.touches.len() == 1 { Action::Down } else { Action::PointerDown(self.touches.len() - 1) };
-                self.board.on_touch(&Motion { action, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
+                self.touch_in(&Motion { action, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
             }
             TouchPhase::Move => {
                 if let Some(t) = self.touches.iter_mut().find(|t| t.0 == id) {
                     t.1 = p;
-                    self.board.on_touch(&Motion { action: Action::Move, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
+                    self.touch_in(&Motion { action: Action::Move, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
                 }
             }
             TouchPhase::End | TouchPhase::Cancel => {
@@ -887,9 +941,68 @@ impl Editor {
                 } else {
                     Action::PointerUp(i)
                 };
-                self.board.on_touch(&Motion { action, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
+                self.touch_in(&Motion { action, pointers: ptrs(&self.touches), history: Vec::new(), stylus_button: false });
                 self.touches.remove(i);
             }
+        }
+    }
+
+    /// Bewegung ans Board; bei Antipp-Werkzeugen wird zusätzlich der Tipp erkannt (ohne Ziehen, ohne zweiten Finger).
+    fn touch_in(&mut self, m: &Motion) {
+        if self.board.tool == TAP {
+            let p = m.pointers.first().map(|p| Pos2::new(p.x, p.y));
+            match (m.action, p) {
+                (Action::Down, Some(p)) => self.st.tap_down = Some(p),
+                (Action::Move, Some(p)) => {
+                    if self.st.tap_down.is_some_and(|d| d.distance(p) > 10.0) {
+                        self.st.tap_down = None;
+                    }
+                }
+                (Action::Up, Some(p)) => {
+                    if let Some(d) = self.st.tap_down.take() {
+                        if d.distance(p) <= 10.0 {
+                            self.board.on_touch(m);
+                            self.tap_at(p.x, p.y);
+                            return;
+                        }
+                    }
+                }
+                (Action::PointerDown(_) | Action::Cancel, _) => self.st.tap_down = None,
+                _ => {}
+            }
+        }
+        self.board.on_touch(m);
+    }
+
+    /// Antipp-Werkzeug ausführen: Punkt in Board-Bildschirmkoordinaten.
+    fn tap_at(&mut self, x: f32, y: f32) {
+        let Some(t) = self.st.tap else { return };
+        let (wx, wy) = self.board.screen_to_world(x, y);
+        let note = |b: &mut Board, s: &str| b.events.push(board::Event::Notice(s.to_string()));
+        match t {
+            Tool::Fill => {
+                let col = if self.st.fill_remove { None } else { Some(self.board.color) };
+                if self.board.fill_at(wx, wy, col).is_none() {
+                    note(&mut self.board, "Hier ist keine geschlossene Form");
+                }
+            }
+            Tool::Picker => match self.board.color_at(wx, wy) {
+                Some(c) => {
+                    let c = c | 0xFF000000;
+                    self.board.set_color(c);
+                    note(&mut self.board, &format!("Farbe #{:06X} übernommen", c & 0xFFFFFF));
+                    let back = self.st.picker_back.take().filter(|b| *b != Tool::Picker).or(self.st.last_draw).unwrap_or(Tool::Pen);
+                    self.set_tool_ui(back);
+                }
+                None => note(&mut self.board, "Hier ist keine Farbe"),
+            },
+            Tool::Stamp => {
+                let size = STAMP_SIZES[self.st.stamp_size.min(STAMP_SIZES.len() - 1)].0 * self.board.dp;
+                if self.board.stamp(self.st.stamp_kind, wx, wy, size).is_empty() {
+                    note(&mut self.board, "Hier kann nicht gestempelt werden (Ebene gesperrt)");
+                }
+            }
+            _ => {}
         }
     }
 

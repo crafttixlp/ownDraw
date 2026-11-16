@@ -103,6 +103,52 @@
           "covers": ["tool:Bild", "action:tool.image"]
         },
         {
+          "id": "tool-fuellen",
+          "title": "Füllen",
+          "text": "Tippe auf eine geschlossene Form (Rechteck, Ellipse, Dreieck, Stern, …), um sie mit der aktuellen Farbe zu füllen.",
+          "how": ["Unter „Modus“ wählst du „Füllung entfernen“: Ein Tipp auf eine gefüllte Form nimmt die Füllung wieder weg.", "Bei ausgewählten Formen setzt die Auswahlleiste die Füllfarbe (erster Punkt: keine Füllung)."],
+          "action": ["tool.fill"],
+          "covers": ["tool:Füllen", "action:tool.fill", "extra:fuellung-entfernen", "extra:auswahl-fuellfarbe"]
+        },
+        {
+          "id": "tool-pipette",
+          "title": "Pipette",
+          "text": "Tippe auf eine Stelle des Blatts: Ihre Farbe wird zur aktuellen Farbe von Stift, Marker und Form. Danach geht es zurück zum vorherigen Werkzeug.",
+          "how": ["Bei Bildern zählt der Farbwert des angetippten Pixels, bei gefüllten Formen die Füllfarbe, sonst die Linienfarbe."],
+          "action": ["tool.picker"],
+          "covers": ["tool:Pipette", "action:tool.picker"]
+        },
+        {
+          "id": "tool-masslinie",
+          "title": "Maßlinie",
+          "text": "Zieht eine Linie mit Maßpfeilen an beiden Enden; die Länge in Millimetern steht in der Mitte.",
+          "how": ["Das Werkzeug ist das Form-Werkzeug mit der Form „Maßlinie“, die du auch im Form-Popover wählen kannst."],
+          "action": ["tool.dim"],
+          "covers": ["tool:Maßlinie", "action:tool.dim", "extra:form-masslinie"]
+        },
+        {
+          "id": "tool-stempel",
+          "title": "Stempel",
+          "text": "Setzt mit einem Tipp einen Haken, ein Kreuz, einen Stern, ein Fragezeichen oder ein Ausrufezeichen in der aktuellen Farbe.",
+          "how": ["In den Optionen wählst du den Stempel, die Größe (klein, mittel, groß) und die Farbe.", "Ein Stempel ist eine Gruppe von Linien und lässt sich wie jedes Objekt auswählen und verschieben."],
+          "action": ["tool.stamp"],
+          "covers": ["tool:Stempel", "action:tool.stamp", "extra:stempel-optionen"]
+        },
+        {
+          "id": "tool-formen-neu",
+          "title": "Weitere Formen",
+          "text": "Das Form-Werkzeug zeichnet auch Dreieck, Raute, Stern, Sechseck, Sprechblase, Bogen und Maßlinie.",
+          "how": ["Option „Gefüllt“ füllt neue geschlossene Formen; darunter wählst du die Füllfarbe."],
+          "covers": ["extra:neue-formen", "extra:form-gefuellt"]
+        },
+        {
+          "id": "tool-stiftarten",
+          "title": "Stiftarten",
+          "text": "In den Stift-Optionen wählst du zwischen Normal, Füller (Breite folgt der Strichrichtung), Bleistift (rau), gestrichelt und gepunktet. OwnDraw merkt sich die Wahl.",
+          "how": ["Bei ausgewählten Strichen ändert die Auswahlleiste die Stiftart nachträglich."],
+          "covers": ["extra:stiftarten", "extra:auswahl-stiftart"]
+        },
+        {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",
@@ -459,8 +505,8 @@
         {
           "id": "keys-werkzeuge",
           "title": "Werkzeuge",
-          "text": "Stift, Marker, Radierer, Auswahl, Form, Text, Haftnotiz und Bild (nur eingeschaltete Werkzeuge).",
-          "action": ["tool.pen", "tool.marker", "tool.eraser", "tool.select", "tool.shape", "tool.text", "tool.note", "tool.image"],
+          "text": "Stift, Marker, Radierer, Auswahl, Form, Text, Haftnotiz, Bild, Füllen, Pipette, Maßlinie und Stempel (nur eingeschaltete Werkzeuge).",
+          "action": ["tool.pen", "tool.marker", "tool.eraser", "tool.select", "tool.shape", "tool.text", "tool.note", "tool.image", "tool.fill", "tool.picker", "tool.dim", "tool.stamp"],
           "covers": []
         },
         {

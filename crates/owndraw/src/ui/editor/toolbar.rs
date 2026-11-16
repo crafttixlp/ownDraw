@@ -362,7 +362,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
             1 => ic::ELLIPSE,
             2 => ic::LINE,
             3 => ic::ARROW,
-            _ => return None, // Maschinenbau-Pfeil: gezeichnetes Icon
+            _ => return None, // Maschinenbau-Pfeil und neue Formen: gezeichnetes Icon
         },
         Tool::Text => {
             if b.tool == board::NOTE {
@@ -373,6 +373,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         }
         Tool::Note => ic::NOTE,
         Tool::Image => ic::IMAGE,
+        Tool::Fill | Tool::Picker | Tool::Dim | Tool::Stamp => return None, // gezeichnetes Icon (glyphs.rs)
     })
 }
 
@@ -385,10 +386,10 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
     let isz = (size * 0.55).round();
     match tool_icon(ed, t) {
         Some(id) => sh.icons.paint(ui, rect, id, tint, false, isz),
-        None => style::paint_arrow_eng(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(isz + 4.0)), c(tint)),
+        None => super::glyphs::paint_tool(ui.painter(), rect, ed, t, isz, c(tint)),
     }
     // Farbpunkt als Hinweis auf die aktuelle Farbe
-    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note) {
+    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim) {
         let pos = rect.right_bottom() - Vec2::new(size * 0.22, size * 0.22);
         ui.painter().circle_filled(pos, 4.5, c(ed.board.color));
         ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.0, c(p.line)));
@@ -544,6 +545,17 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                             sel_colors(ui, ed, btn, vert, cur);
                             ui.add_space(6.0);
                         }
+                        // Füllfarbe (geschlossene Formen)
+                        if let Some(cur) = ed.board.sel_fill() {
+                            sel_fills(ui, ed, btn, vert, cur);
+                            ui.add_space(6.0);
+                        }
+                        // Stiftart der Striche
+                        let ps: Vec<u8> = ed.board.sel_items().iter().filter_map(|it| it.as_stroke().filter(|s| !s.hl).map(|s| s.ps)).collect();
+                        if !ps.is_empty() {
+                            sel_pen_styles(ui, ed, vert, if ps.iter().all(|x| *x == ps[0]) { Some(ps[0]) } else { None });
+                            ui.add_space(6.0);
+                        }
                     }
                     g
                 };
@@ -603,6 +615,60 @@ fn sel_colors(ui: &mut Ui, ed: &mut Editor, btn: f32, vert: bool, cur: Option<u3
     } else {
         for (col, name) in super::COLORS {
             dot(ui, col, name, Vec2::new(26.0, btn));
+        }
+    }
+}
+
+/// Füllfarbe der Auswahl; `cur` = gemeinsame Füllung (None = keine bzw. gemischt). Erster Punkt: „keine“.
+fn sel_fills(ui: &mut Ui, ed: &mut Editor, btn: f32, vert: bool, cur: Option<u32>) {
+    let p = style::pal();
+    let mut dot = |ui: &mut Ui, col: Option<u32>, size: Vec2| {
+        let (rr, resp) = ui.allocate_exact_size(size, Sense::click());
+        let pt = ui.painter();
+        match col {
+            Some(k) => {
+                pt.rect_filled(Rect::from_center_size(rr.center(), Vec2::splat(15.0)), 3.0, c(k));
+            }
+            None => {
+                let r = Rect::from_center_size(rr.center(), Vec2::splat(15.0));
+                pt.rect_stroke(r, 3.0, Stroke::new(1.2, c(p.dim)), egui::StrokeKind::Inside);
+                pt.line_segment([r.left_bottom(), r.right_top()], Stroke::new(1.2, c(p.danger)));
+            }
+        }
+        if cur == col {
+            pt.rect_stroke(Rect::from_center_size(rr.center(), Vec2::splat(21.0)), 5.0, Stroke::new(2.0, c(p.text)), egui::StrokeKind::Outside);
+        } else if resp.hovered() {
+            pt.rect_stroke(Rect::from_center_size(rr.center(), Vec2::splat(21.0)), 5.0, Stroke::new(1.5, c(p.line)), egui::StrokeKind::Outside);
+        }
+        let name = col.and_then(|k| super::COLORS.iter().find(|x| x.0 == k).map(|x| x.1)).unwrap_or("keine");
+        if resp.on_hover_text(format!("Füllung: {name}")).clicked() {
+            ed.board.set_sel_fill(col);
+        }
+    };
+    let all: Vec<Option<u32>> = std::iter::once(None).chain(super::COLORS.iter().map(|x| Some(x.0))).collect();
+    if vert {
+        let cell = (btn / 2.0).max(24.0);
+        for pair in all.chunks(2) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                for col in pair {
+                    dot(ui, *col, Vec2::splat(cell));
+                }
+            });
+        }
+    } else {
+        for col in all {
+            dot(ui, col, Vec2::new(26.0, btn));
+        }
+    }
+}
+
+/// Stiftart der ausgewählten Striche (`cur` = gemeinsame Art, None bei gemischter Auswahl).
+fn sel_pen_styles(ui: &mut Ui, ed: &mut Editor, vert: bool, cur: Option<u8>) {
+    let size = if vert { Vec2::new(40.0, 26.0) } else { Vec2::new(44.0, 30.0) };
+    for (ps, name) in super::glyphs::PEN_STYLES {
+        if super::glyphs::pen_style_btn(ui, ps, cur == Some(ps), size).on_hover_text(format!("Stiftart: {name}")).clicked() {
+            ed.board.set_sel_pen_style(ps);
         }
     }
 }
@@ -674,7 +740,7 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     let isz = (btn * 0.5).round();
                     match tool_icon(ed, t) {
                         Some(ico) => sh.icons.paint(ui, rect, ico, tint, false, isz),
-                        None => style::paint_arrow_eng(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(isz + 4.0)), c(tint)),
+                        None => super::glyphs::paint_tool(ui.painter(), rect, ed, t, isz, c(tint)),
                     }
                     // Auge oben rechts
                     let eye_r = Rect::from_center_size(rect.right_top() + Vec2::new(-btn * 0.24, btn * 0.3), Vec2::splat(13.0));

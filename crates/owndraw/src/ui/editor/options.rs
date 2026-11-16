@@ -88,6 +88,19 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             colors(ui, ed, sh);
             widths(ui, ed, sh, "Breite");
             recog(ui, ed, h);
+            if t == Tool::Pen {
+                style::caption(ui, "Stiftart");
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    for (ps, name) in super::glyphs::PEN_STYLES {
+                        if super::glyphs::pen_style_btn(ui, ps, ed.board.pen_style == ps, Vec2::new(sh.env.btn * 1.1, sh.env.btn)).on_hover_text(name).clicked() {
+                            ed.board.pen_style = ps;
+                        }
+                    }
+                });
+                let n = super::glyphs::PEN_STYLES.iter().find(|x| x.0 == ed.board.pen_style).map(|x| x.1).unwrap_or("");
+                ui.label(egui::RichText::new(n).size(12.0).color(c(style::pal().dim)));
+            }
             if ed.board.recog != 2 {
                 arrow_styles(ui, ed, sh, "Erkannte Pfeile werden zu");
             }
@@ -99,28 +112,33 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
                 }
             }
         }
-        Tool::Shape => {
-            style::caption(ui, "Form");
+        Tool::Shape | Tool::Dim => {
             let kinds = shape_kinds();
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::ZERO;
-                for (i, (icon, name)) in kinds.iter().enumerate() {
-                    let on = ed.board.shape_kind == i as i32;
-                    let size = sh.env.btn;
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-                    style::btn_bg(ui, rect, &resp, on);
-                    let tint = if on { style::pal().accent } else { style::pal().text };
-                    match icon {
-                        Some(id) => sh.icons.paint(ui, rect, *id, tint, false, (size * 0.55).round()),
-                        None => style::paint_arrow_eng(ui.painter(), egui::Rect::from_center_size(rect.center(), Vec2::splat(size * 0.55 + 4.0)), c(tint)),
+            if t == Tool::Shape {
+                style::caption(ui, "Form");
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+                    for (kind, icon, name) in kinds.iter() {
+                        let on = ed.board.shape_kind == *kind;
+                        let size = sh.env.btn;
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+                        style::btn_bg(ui, rect, &resp, on);
+                        let tint = if on { style::pal().accent } else { style::pal().text };
+                        match icon {
+                            Some(id) => sh.icons.paint(ui, rect, *id, tint, false, (size * 0.55).round()),
+                            None => match super::glyphs::of_shape(*kind) {
+                                Some(g) => super::glyphs::paint(ui.painter(), rect.center(), (size * 0.55).round(), g, c(tint)),
+                                None => style::paint_arrow_eng(ui.painter(), egui::Rect::from_center_size(rect.center(), Vec2::splat(size * 0.55 + 4.0)), c(tint)),
+                            },
+                        }
+                        if resp.on_hover_text(*name).clicked() {
+                            ed.board.shape_kind = *kind;
+                        }
                     }
-                    if resp.on_hover_text(*name).clicked() {
-                        ed.board.shape_kind = i as i32;
-                    }
-                }
-            });
-            let k = ed.board.shape_kind.clamp(0, 4) as usize;
-            let mut lbl = kinds[k].1.to_string();
+                });
+            }
+            let k = ed.board.shape_kind.max(0) as usize;
+            let mut lbl = kinds.iter().find(|x| x.0 == k as i32).map(|x| x.2).unwrap_or("").to_string();
             if k == 4 {
                 lbl.push_str(" (15°, gefüllt)");
             }
@@ -128,9 +146,65 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             if k == 3 {
                 arrow_styles(ui, ed, sh, "Pfeilstil");
             }
+            if k == item::DIM as usize {
+                ui.label(egui::RichText::new("Zieht eine Linie mit Endstrichen; die Länge steht in der Mitte.").size(12.0).color(c(style::pal().dim)));
+            }
             colors(ui, ed, sh);
             widths(ui, ed, sh, "Linienbreite");
+            // Füllung nur bei geschlossenen Formen
+            if !matches!(k, 2 | 3 | 4 | 16 | 17) {
+                ui.add_space(4.0);
+                let mut f = ed.board.shape_fill.is_some();
+                if ui.checkbox(&mut f, "Gefüllt").changed() {
+                    ed.board.shape_fill = if f { Some(ed.board.color) } else { None };
+                }
+                if let Some(cur) = ed.board.shape_fill {
+                    fill_colors(ui, sh, cur, &mut ed.board.shape_fill);
+                }
+            }
         }
+        Tool::Fill => {
+            style::caption(ui, "Modus");
+            ui.horizontal_wrapped(|ui| {
+                for (rm, l) in [(false, "Füllen"), (true, "Füllung entfernen")] {
+                    if style::chip(ui, l, ed.st.fill_remove == rm, h).clicked() {
+                        ed.st.fill_remove = rm;
+                    }
+                }
+            });
+            let hint = if ed.st.fill_remove { "Tippe auf eine gefüllte Form, um die Füllung zu entfernen." } else { "Tippe auf eine geschlossene Form, um sie zu füllen." };
+            ui.label(egui::RichText::new(hint).size(12.0).color(c(style::pal().dim)));
+            if !ed.st.fill_remove {
+                colors(ui, ed, sh);
+            }
+        }
+        Tool::Stamp => {
+            style::caption(ui, "Stempel");
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                for (k, name) in [(board::STAMP_CHECK, "Haken"), (board::STAMP_CROSS, "Kreuz"), (board::STAMP_STAR, "Stern"), (board::STAMP_QUESTION, "Fragezeichen"), (board::STAMP_EXCLAIM, "Ausrufezeichen")] {
+                    let on = ed.st.stamp_kind == k;
+                    let size = sh.env.btn;
+                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+                    style::btn_bg(ui, rect, &resp, on);
+                    let tint = if on { style::pal().accent } else { style::pal().text };
+                    super::glyphs::paint(ui.painter(), rect.center(), (size * 0.55).round(), super::glyphs::of_stamp(k), c(tint));
+                    if resp.on_hover_text(name).clicked() {
+                        ed.st.stamp_kind = k;
+                    }
+                }
+            });
+            style::caption(ui, "Größe");
+            ui.horizontal_wrapped(|ui| {
+                for (i, (_, l)) in super::STAMP_SIZES.iter().enumerate() {
+                    if style::chip(ui, l, ed.st.stamp_size == i, h).clicked() {
+                        ed.st.stamp_size = i;
+                    }
+                }
+            });
+            colors(ui, ed, sh);
+        }
+        Tool::Picker => {}
         Tool::Eraser => {
             style::caption(ui, "Modus");
             ui.horizontal_wrapped(|ui| {
@@ -177,9 +251,22 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
     }
 }
 
-/// Symbol (None = gezeichnet) und Name der Formen; Index = `Board::shape_kind`.
-fn shape_kinds() -> [(Option<i32>, &'static str); 5] {
-    [(Some(ic::RECT), "Rechteck"), (Some(ic::ELLIPSE), "Ellipse"), (Some(ic::LINE), "Linie"), (Some(ic::ARROW), "Pfeil"), (None, "Maschinenbau-Pfeil")]
+/// Wert von `Board::shape_kind`, Symbol (None = gezeichnet) und Name der Formen.
+fn shape_kinds() -> [(i32, Option<i32>, &'static str); 12] {
+    [
+        (0, Some(ic::RECT), "Rechteck"),
+        (1, Some(ic::ELLIPSE), "Ellipse"),
+        (2, Some(ic::LINE), "Linie"),
+        (3, Some(ic::ARROW), "Pfeil"),
+        (4, None, "Maschinenbau-Pfeil"),
+        (item::TRIANGLE, None, "Dreieck"),
+        (item::DIAMOND, None, "Raute"),
+        (item::STAR, None, "Stern"),
+        (item::HEXAGON, None, "Sechseck"),
+        (item::BUBBLE, None, "Sprechblase"),
+        (item::ARC, None, "Bogen"),
+        (item::DIM, None, "Maßlinie"),
+    ]
 }
 
 fn colors(ui: &mut Ui, ed: &mut Editor, sh: &Shared) {
@@ -204,6 +291,26 @@ fn colors(ui: &mut Ui, ed: &mut Editor, sh: &Shared) {
             if resp.on_hover_text(name).clicked() {
                 ed.board.set_color(col);
                 ed.board.invalidate();
+            }
+        }
+    });
+}
+
+/// Füllfarbe der Form (Farbpunkte).
+fn fill_colors(ui: &mut Ui, sh: &Shared, cur: u32, out: &mut Option<u32>) {
+    let p = style::pal();
+    let size = sh.env.btn.min(ui.available_width() / COLORS.len() as f32).max(28.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        for (col, name) in COLORS {
+            let (r, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+            let pt = ui.painter();
+            pt.rect_filled(egui::Rect::from_center_size(r.center(), Vec2::splat(16.0)), 3.0, c(col));
+            if cur == col {
+                pt.rect_stroke(egui::Rect::from_center_size(r.center(), Vec2::splat(22.0)), 5.0, Stroke::new(2.0, c(p.text)), egui::StrokeKind::Outside);
+            }
+            if resp.on_hover_text(format!("Füllung: {name}")).clicked() {
+                *out = Some(col);
             }
         }
     });

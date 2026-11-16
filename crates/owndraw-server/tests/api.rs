@@ -911,3 +911,32 @@ async fn wartungsmodus_endet_automatisch() {
     assert_eq!(app.get("/api/boards", Some(&user)).await.status, StatusCode::OK);
     assert_eq!(app.get("/api/maintenance", None).await.json()["active"], false);
 }
+
+#[tokio::test]
+async fn admin_statistik_konten_gaeste_boards() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    assert_eq!(app.get("/api/admin/stats", Some(&user)).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.get("/api/admin/stats", None).await.status, StatusCode::UNAUTHORIZED);
+    app.give_license(&admin, &user, json!(null), 10).await;
+    let id = app.upload(&user, "Eins", zip_bytes(10)).await.json()["id"].as_str().unwrap().to_string();
+    let id2 = app.upload(&user, "Zwei", zip_bytes(0)).await.json()["id"].as_str().unwrap().to_string();
+    let tok = app.post(&format!("/api/boards/{id}/invites"), Some(&user), json!({"role": "edit"})).await.json()["token"].as_str().unwrap().to_string();
+    let r = app.post(&format!("/api/invites/{tok}/join"), None, json!({"name": "Mila"})).await;
+    let guest = cookie_of(&r);
+    app.get("/api/me", Some(&guest)).await;
+    app.api(Method::DELETE, &format!("/api/boards/{id2}"), Some(&user), None).await;
+
+    let r = app.get("/api/admin/stats", Some(&admin)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let s = r.json();
+    assert_eq!(s["users"], json!({"account": 2, "guest": 1}));
+    assert_eq!(s["online"], json!({"account": 2, "guest": 1}));
+    assert_eq!(s["boards_created"]["account"], 1);
+    assert_eq!(s["boards_created"]["guest"], 1);
+    assert_eq!(s["boards_created"]["total_ever"], 2, "gelöschte Boards zählen mit");
+    assert_eq!(s["boards_active"]["list"], json!([]));
+    assert_eq!(s["stored"]["boards"], 1);
+    assert!(s["stored"]["bytes"].as_i64().unwrap() > 0);
+}

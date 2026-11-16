@@ -10,6 +10,7 @@ pub mod error;
 pub mod invites;
 pub mod notices;
 pub mod state;
+pub mod stats;
 pub mod update;
 
 use axum::extract::{Request, State};
@@ -126,6 +127,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/users/{id}", patch(admin::patch_user).delete(admin::delete_user))
         .route("/admin/licenses", get(admin::licenses).post(admin::create_licenses))
         .route("/admin/licenses/{code}", patch(admin::patch_license))
+        .route("/admin/stats", get(stats::get))
         .route("/notices", get(notices::public_list))
         .route("/maintenance", get(notices::public_state))
         .route("/admin/notices", get(notices::admin_list).post(notices::create))

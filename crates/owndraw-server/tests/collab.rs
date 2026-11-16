@@ -342,6 +342,16 @@ async fn gast_per_einladungslink_zeichnet_live_mit() {
     let o = recv_t(&mut wa, "ops").await;
     assert_eq!(o["ops"][0]["item"]["uid"], owndraw_core::item::uid_str(uid));
 
+    // Admin-Statistik: Board gerade bearbeitet von einem Konto und einem Gast
+    let (s, st, _) = srv.json(Method::GET, "/api/admin/stats", Some(&admin), Value::Null).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(st["boards_active"]["account"], 1);
+    assert_eq!(st["boards_active"]["guest"], 1);
+    let b = &st["boards_active"]["list"][0];
+    assert_eq!((b["id"].as_str(), b["accounts"].as_i64(), b["guests"].as_i64(), b["owner"].as_str()), (Some(id.as_str()), Some(1), Some(1), Some("Anna")));
+    assert!(st["online"]["guest"].as_i64().unwrap() >= 1);
+    assert_eq!(st["boards_created"]["guest"], 1);
+
     // Gastzugang beenden: Verbindung fliegt raus
     srv.json(Method::POST, "/api/auth/logout", Some(&g), json!({})).await;
     assert_eq!(recv_t(&mut wg, "error").await["code"], "removed");

@@ -216,6 +216,7 @@ impl FromRequestParts<AppState> for Auth {
             })
             .await?
             .ok_or_else(ApiError::unauthorized)?;
+        state.seen.touch(&user.id, user.guest);
         Ok(Auth { user, token_hash: th })
     }
 }

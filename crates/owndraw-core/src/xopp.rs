@@ -247,7 +247,7 @@ fn import_elem(e: &roxmltree::Node, xml: &str, ox: f32, oy: f32, layer: i32, doc
             let data = b64_decode(&node_text(e))?;
             let ext = image::guess_format(&data).ok().and_then(|f| f.extensions_str().first().copied())?;
             let file = doc.images.add(data, ext);
-            let mut it = Item::new(Kind::Img(crate::item::Img { x: l + ox, y: t + oy, w: r - l, h: b - t, ang: 0.0, file }));
+            let mut it = Item::new(Kind::Img(crate::item::Img { x: l + ox, y: t + oy, w: r - l, h: b - t, ang: 0.0, file, cr: None }));
             it.color = crate::item::INK;
             let mut v = it.json();
             v["ly"] = json!(layer);
@@ -553,10 +553,67 @@ fn emit_text(out: &mut String, text: &str, color: u32, size: f32, x: f32, y: f32
 
 fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
     let it = &o.it;
-    let xa = xattrs(o.raw);
+    let mut xa = xattrs(o.raw);
+    // Füllung: eigene gefüllte Fläche in der Füllfarbe unter dem Umriss (Xournal++ füllt nur in Strichfarbe)
+    if let (Some(fc), Some(ol)) = (it.fill, it.fill_outline()) {
+        let mut p: Vec<f32> = ol.chunks_exact(2).flat_map(|c| [c[0], c[1], 0.5]).collect();
+        p.extend_from_slice(&[ol[0], ol[1], 0.5]);
+        let mut f = it.clone();
+        f.color = fc | 0xFF00_0000;
+        f.width = 0.01;
+        emit_stroke(out, &f, &p, false, false, ox, oy, &[], Some((fc >> 24) as u8));
+    }
     match &it.kind {
-        Kind::Stroke(s) => emit_stroke(out, it, &s.p, s.hl, s.var, ox, oy, &xa, None),
-        Kind::Shape(_) => {
+        Kind::Stroke(s) => {
+            // Stiftarten: gestrichelt/gepunktet kennt Xournal++ als `style`, Füller/Bleistift werden normale Striche
+            match s.ps {
+                crate::item::PS_DASHED if !xa.iter().any(|(k, _)| *k == "style") => xa.push(("style", "dash")),
+                crate::item::PS_DOTTED if !xa.iter().any(|(k, _)| *k == "style") => xa.push(("style", "dot")),
+                _ => {}
+            }
+            emit_stroke(out, it, &s.p, s.hl, s.var, ox, oy, &xa, None)
+        }
+        Kind::Table(t) => {
+            // Linien als Striche, Zelltexte als Texte
+            let (w, h) = (t.w(), t.h());
+            let mut lines = Vec::new();
+            let mut y = t.y;
+            lines.push([t.x, y, t.x + w, y]);
+            for rh in &t.rh {
+                y += rh;
+                lines.push([t.x, y, t.x + w, y]);
+            }
+            let mut x = t.x;
+            lines.push([x, t.y, x, t.y + h]);
+            for cw in &t.cw {
+                x += cw;
+                lines.push([x, t.y, x, t.y + h]);
+            }
+            for l in lines {
+                emit_stroke(out, it, &[l[0], l[1], 0.5, l[2], l[3], 0.5], false, false, ox, oy, &[], None);
+            }
+            for r in 0..t.rows() {
+                for c in 0..t.cols() {
+                    let tx = t.cell(r, c);
+                    if !tx.is_empty() {
+                        let (cx, cy) = t.cell_origin(r, c);
+                        emit_text(out, tx, it.color, t.size, cx + t.pad() - ox, cy + t.pad() - oy, &xa);
+                    }
+                }
+            }
+        }
+        // Kommentare gehören nicht in den Export
+        Kind::Pin(_) => {}
+        Kind::Shape(g) => {
+            if g.kind == crate::item::DIM && g.q.len() >= 4 {
+                // Maßtext waagerecht über der Mitte (Xournal++-Texte lassen sich nicht drehen)
+                let q = &g.q;
+                let ts = crate::item::dim_text_size(it.width);
+                let txt = crate::item::dim_text(crate::geom::hypot(q[2] - q[0], q[3] - q[1]));
+                let (mx, my, _) = crate::item::dim_label(q, it.width);
+                let tw = crate::text::measure(&txt, ts);
+                emit_text(out, &txt, it.color, ts, mx - tw / 2.0 - ox, my - ts - oy, &[]);
+            }
             let parts = it.to_strokes();
             // Gefüllte Pfeilspitzen sind die letzten Teile; als gefülltes Dreieck schreiben.
             let heads = it.filled_heads();
@@ -613,7 +670,19 @@ fn emit_item(o: &Obj, ox: f32, oy: f32, doc: &Document, out: &mut String) {
                 }
             }
             let Some(bytes) = doc.images.files.get(&m.file) else { return };
-            let png = if bytes.starts_with(b"\x89PNG") {
+            let png = if let Some(cr) = m.cr {
+                // Zuschnitt: nur den sichtbaren Teil als PNG schreiben
+                let Ok(im) = image::load_from_memory(bytes) else { return };
+                let (w, h) = (im.width() as f32, im.height() as f32);
+                let (x0, y0) = ((cr[0] * w).floor() as u32, (cr[1] * h).floor() as u32);
+                let (x1, y1) = (((cr[2] * w).ceil() as u32).min(im.width()), ((cr[3] * h).ceil() as u32).min(im.height()));
+                let im = im.crop_imm(x0, y0, x1.saturating_sub(x0).max(1), y1.saturating_sub(y0).max(1));
+                let mut v = Vec::new();
+                if im.write_to(&mut Cursor::new(&mut v), image::ImageFormat::Png).is_err() {
+                    return;
+                }
+                v
+            } else if bytes.starts_with(b"\x89PNG") {
                 bytes.clone()
             } else {
                 let Ok(im) = image::load_from_memory(bytes) else { return };
@@ -749,6 +818,29 @@ mod tests {
         }
         assert_eq!(b64_encode(b"Man"), "TWFu");
         assert_eq!(b64_decode("TW\nFu").unwrap(), b"Man");
+    }
+
+    #[test]
+    fn neue_objekte_im_export() {
+        let mut doc = Document::new("t", BoardMode::Infinite);
+        doc.board["items"] = json!([
+            {"t":"g","c":-16777216,"w":2,"k":11,"h":false,"q":[0,0,100,0,50,80],"fc":-65536,"ly":1},
+            {"t":"s","c":-16777216,"w":2,"h":false,"v":false,"sh":false,"p":[0,100,0.5,50,120,0.5,100,100,0.5],"ps":3,"ly":1},
+            {"t":"g","c":-16777216,"w":2,"k":17,"h":false,"q":[0,200,72,200],"ly":1},
+            {"t":"tb","c":-16777216,"w":1,"x":0,"y":300,"cw":[50,50],"rh":[20,20],"cl":["A","","","D"],"s":12,"ly":1},
+            {"t":"pin","c":-16777216,"w":1,"x":10,"y":10,"au":"Ana","tm":0,"tx":"GEHEIM","re":[],"ly":1}
+        ]);
+        let gz = export_xopp(&doc, XoppExport::default()).unwrap();
+        let mut xml = String::new();
+        flate2::read::GzDecoder::new(&gz[..]).read_to_string(&mut xml).unwrap();
+        assert!(xml.contains("color=\"#ff0000ff\" width=\"0.01\" fill=\"255\""), "Füllung");
+        assert!(xml.contains("style=\"dash\""), "gestrichelt");
+        assert!(xml.contains(">25,4 mm</text>"), "Maßtext");
+        assert!(xml.contains(">A</text>") && xml.contains(">D</text>"), "Tabellentexte");
+        assert!(!xml.contains("GEHEIM"), "Kommentare nicht exportiert");
+        // Tabelle: 3 + 3 Linien
+        let strokes = xml.matches("<stroke").count();
+        assert!(strokes >= 2 + 1 + 5 + 6, "{strokes}");
     }
 
     #[test]

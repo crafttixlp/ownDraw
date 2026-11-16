@@ -96,6 +96,8 @@ fn objekte(d: &Document) -> Vec<Obj> {
                     o.attrs = v.get("xraw").cloned().unwrap_or(Value::Null);
                 }
                 Kind::Shape(_) => o.art = "form",
+                Kind::Table(_) => o.art = "tabelle",
+                Kind::Pin(_) => o.art = "kommentar",
             }
             o
         })

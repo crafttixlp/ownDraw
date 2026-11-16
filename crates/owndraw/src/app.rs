@@ -314,10 +314,12 @@ impl App {
         self.enter_editor(ctx, ed);
     }
 
-    fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool) {
-        // Browser mit gültiger Lizenz: neue Boards am Server anlegen (öffnet sich, sobald der Server antwortet)
+    /// Legt ein neues Board an; `server` = im Browser mit Lizenz am Server statt im Browser-Speicher.
+    fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool, server: bool) {
+        let _ = server; // nur im Browser genutzt
+        // Browser mit gültiger Lizenz und Speicherort Server: am Server anlegen (öffnet sich, sobald der Server antwortet)
         #[cfg(target_arch = "wasm32")]
-        if crate::platform::web::api::licensed() {
+        if server && crate::platform::web::api::licensed() {
             let doc = session::new_document(&params);
             match session::serialize(&doc) {
                 Ok(b) => crate::platform::web::api::create_board(&params.name, b),
@@ -339,11 +341,39 @@ impl App {
         }
     }
 
+    /// Browser: Ergebnisse von „Auf den Server verschieben“ / „In diesem Browser speichern“ übernehmen.
+    /// Ein Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher liegt.
+    #[cfg(target_arch = "wasm32")]
+    fn web_moves(&mut self) {
+        use crate::platform::web::api;
+        let (moved, to_local) = api::with(|n| (std::mem::take(&mut n.moved), std::mem::take(&mut n.to_local)));
+        for f in moved {
+            self.recent.remove(&f);
+            self.start.forget(&f);
+        }
+        for t in to_local {
+            let fname = format!("{}.owndraw", safe_file_name(&t.name));
+            let stored = self.sh.platform.create_in(&self.default_dir(), &fname, FileKind::Owndraw).and_then(|f| self.sh.platform.write_atomic(&f, &t.bytes).map(|_| f));
+            match stored {
+                Ok(f) => {
+                    let pages = session::read_summary(&*self.sh.platform, &f).map(|s| s.1).unwrap_or(false);
+                    self.recent.add(RecentEntry { file: f, name: t.name.clone(), modified_ms: owndraw_core::store::now_ms(), pages });
+                    match t.delete_id {
+                        Some(id) => api::delete_moved(&id, &t.name),
+                        None => self.sh.toast_for(&format!("Kopie von „{}“ in diesem Browser gespeichert", t.name), 4.0),
+                    }
+                }
+                Err(e) => self.sh.toast_for(&format!("„{}“ konnte nicht im Browser gespeichert werden und bleibt auf dem Server: {e}", t.name), 6.0),
+            }
+        }
+    }
+
     /// Startbildschirm: Bild abgelegt → neues unendliches Board mit dem Bild.
     fn new_with_image(&mut self, ctx: &egui::Context, bytes: &[u8]) {
         let params = NewParams { name: "Bild".into(), pages: false, ..NewParams::default() };
         let before = self.editor.as_ref().map(|e| e.doc.meta.id.clone());
-        self.create(ctx, params, false);
+        let server = crate::ui::server_store_available() && self.sh.settings.new_on_server;
+        self.create(ctx, params, false, server);
         if let Some(e) = self.editor.as_mut().filter(|e| Some(&e.doc.meta.id) != before.as_ref()) {
             if let Err(m) = e.import_image_bytes(bytes) {
                 self.sh.toast(&m);
@@ -423,7 +453,10 @@ impl App {
                         self.title(ctx);
                     }
                 }
-                Req::NewDialog => self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask && !crate::platform::WEB)),
+                Req::NewDialog => {
+                    let server = crate::ui::server_store_available().then_some(self.sh.settings.new_on_server);
+                    self.sh.dialog = Some(Dialog::new_doc(self.sh.settings.save_choice == SaveChoice::Ask && !crate::platform::WEB, server));
+                }
                 Req::OpenFile(f) => self.open_ref(ctx, f),
                 Req::RemoveRecent(f) => {
                     self.recent.remove(&f);
@@ -444,7 +477,7 @@ impl App {
     fn handle_dialog(&mut self, ctx: &egui::Context) {
         let Some(out) = dialogs::show(ctx, &mut self.sh) else { return };
         match out {
-            Outcome::Create(p, custom) => self.create(ctx, p, custom),
+            Outcome::Create(p, custom, server) => self.create(ctx, p, custom, server),
             Outcome::Rename(what, text) => {
                 let now = self.sh.now;
                 if let Some(e) = self.editor.as_mut() {
@@ -542,6 +575,7 @@ impl App {
             for f in open {
                 self.open_ref(&ctx, f);
             }
+            self.web_moves();
         }
         for ev in self.sh.platform.poll() {
             match ev {

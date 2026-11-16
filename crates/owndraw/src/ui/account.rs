@@ -15,6 +15,18 @@ enum Dlg {
     Delete { id: String, name: String },
     /// Gastzugang beenden (Bestätigung).
     LeaveGuest,
+    /// Browser-Board auf den Server verschieben (Bestätigung, Größe in Bytes).
+    ToServer { file: crate::platform::FileRef, name: String, size: i64 },
+    /// Server-Board in den Browser holen; `owner` = verschieben (am Server löschen), sonst nur Kopie.
+    ToLocal { id: String, name: String, owner: bool },
+}
+
+/// Kartenmenü eines Browser-Boards: „Auf den Server verschieben“ (Bestätigungsdialog öffnen).
+pub fn ask_to_server(sh: &mut Shared, st: &mut AccountUi, file: &crate::platform::FileRef, name: &str) {
+    match sh.platform.read(file) {
+        Ok(b) => st.dlg = Some(Dlg::ToServer { file: file.clone(), name: name.to_string(), size: b.len() as i64 }),
+        Err(e) => sh.toast_for(&format!("Board nicht lesbar: {e}"), 4.0),
+    }
 }
 
 #[derive(Default)]
@@ -58,7 +70,8 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
             let line = match &me.license {
                 Some(l) if l.active => {
                     let until = l.expires_at.map(|e| format!("gültig bis {}", date(e))).unwrap_or_else(|| "unbefristet gültig".into());
-                    format!("Lizenz {until}. {} von {} MB Speicher belegt. Neue Boards werden auf dem Server gespeichert.", mb(l.used_mb), mb(l.quota_mb))
+                    let wo = if sh.settings.new_on_server { "auf dem Server" } else { "in diesem Browser" };
+                    format!("Lizenz {until}. {} von {} MB Speicher belegt. Neue Boards werden standardmäßig {wo} gespeichert. Beim Erstellen und im Kartenmenü kannst du den Speicherort wählen.", mb(l.used_mb), mb(l.quota_mb))
                 }
                 Some(l) => format!(
                     "Lizenz abgelaufen{}. Deine Boards auf dem Server sind nur noch lesbar. Löse einen neuen Code ein, um wieder zu speichern.",
@@ -101,12 +114,12 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
     }
 }
 
-/// Abschnitt „Am Server“ (nur angemeldet, mit Lizenz oder geteilten Boards).
-pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
-    let (me, list, loaded, opening) = api::with(|n| (n.me.clone(), n.boards.clone(), n.boards_loaded, n.opening));
-    let Some(me) = me else { return };
+/// Abschnitt „Am Server“ (nur angemeldet, mit Lizenz oder geteilten Boards). Liefert, ob er angezeigt wurde.
+pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) -> bool {
+    let (me, list, loaded, opening) = api::with(|n| (n.me.clone(), n.boards.clone(), n.boards_loaded, n.opening || n.moving));
+    let Some(me) = me else { return false };
     if !me.licensed() && list.is_empty() {
-        return;
+        return false;
     }
     let p = style::pal();
     let compact = sh.env.ff == FormFactor::Compact;
@@ -120,11 +133,11 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
     ui.add_space(8.0);
     if !loaded {
         ui.spinner();
-        return;
+        return true;
     }
     if list.is_empty() {
-        ui.label(egui::RichText::new("Noch keine Boards auf dem Server. Erstelle mit „Neu“ eins. Es wird automatisch gespeichert.").color(c(p.dim)));
-        return;
+        ui.label(egui::RichText::new("Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins aus dem Browser (Kartenmenü „…“).").color(c(p.dim)));
+        return true;
     }
     let gap = if compact { 12.0 } else { 18.0 };
     let avail = ui.available_width();
@@ -138,6 +151,7 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
             tile(ui, sh, st, b, tw, th);
         }
     });
+    true
 }
 
 fn role_text(b: &BoardInfo) -> String {
@@ -184,16 +198,28 @@ fn tile(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi, b: &BoardInfo, t
     let owner = b.role == "owner";
     let menu = |ui: &mut egui::Ui, st: &mut AccountUi, ic: &mut style::Icons| {
         use owndraw_core::icons;
-        let mut items = vec![style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false }];
-        if owner {
-            items.push(style::MenuItem { icon: icons::TEXT, label: "Umbenennen", danger: false });
-            items.push(style::MenuItem { icon: icons::TRASH, label: "Löschen", danger: true });
+        #[derive(Clone, Copy)]
+        enum A {
+            Open,
+            Rename,
+            Local,
+            Delete,
         }
-        match style::card_menu(ui, ic, &items) {
-            Some(0) => api::open_board(&b.id),
-            Some(1) => st.dlg = Some(Dlg::Rename { id: b.id.clone(), name: b.name.clone() }),
-            Some(2) => st.dlg = Some(Dlg::Delete { id: b.id.clone(), name: b.name.clone() }),
-            _ => {}
+        let mut acts = vec![(A::Open, style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false })];
+        if owner {
+            acts.push((A::Rename, style::MenuItem { icon: icons::TEXT, label: "Umbenennen", danger: false }));
+            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: "In Browser verschieben", danger: false }));
+            acts.push((A::Delete, style::MenuItem { icon: icons::TRASH, label: "Löschen", danger: true }));
+        } else {
+            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: "Kopie im Browser", danger: false }));
+        }
+        let items: Vec<style::MenuItem> = acts.iter().map(|a| style::MenuItem { icon: a.1.icon, label: a.1.label, danger: a.1.danger }).collect();
+        match style::card_menu(ui, ic, &items).map(|i| acts[i].0) {
+            Some(A::Open) => api::open_board(&b.id),
+            Some(A::Rename) => st.dlg = Some(Dlg::Rename { id: b.id.clone(), name: b.name.clone() }),
+            Some(A::Local) => st.dlg = Some(Dlg::ToLocal { id: b.id.clone(), name: b.name.clone(), owner }),
+            Some(A::Delete) => st.dlg = Some(Dlg::Delete { id: b.id.clone(), name: b.name.clone() }),
+            None => {}
         }
     };
     resp.context_menu(|ui| menu(ui, st, &mut sh.icons));
@@ -315,6 +341,53 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if style::danger_btn(ui, "Gastzugang beenden", h).clicked() {
                         api::logout();
+                        close = true;
+                    }
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
+                });
+            }
+            Dlg::ToServer { file, name, size } => {
+                ui.label(egui::RichText::new("Auf den Server verschieben?").heading().strong());
+                let free = api::free_bytes();
+                let fits = free.is_some_and(|f| *size <= f);
+                ui.label(format!("„{name}“ wird auf den Server hochgeladen und danach aus diesem Browser entfernt. Erst wenn der Server das Board gespeichert hat, wird es hier entfernt. So gehen keine Daten verloren."));
+                ui.add_space(4.0);
+                let used = format!("Größe: {} · Frei auf dem Server: {}", super::mb_text(*size), free.map(super::mb_text).unwrap_or_else(|| "–".into()));
+                ui.label(egui::RichText::new(used).size(12.5).color(c(p.dim)));
+                ui.label(egui::RichText::new("Auf dem Server ist das Board auf allen Geräten verfügbar und du kannst es teilen und live gemeinsam bearbeiten.").size(12.5).color(c(p.dim)));
+                if !fits {
+                    ui.add_space(4.0);
+                    let msg = if free.is_none() { "Für Boards auf dem Server brauchst du eine gültige Lizenz.".to_string() } else { "Nicht genug Speicherplatz auf dem Server. Lösche Boards auf dem Server oder lass dieses Board im Browser.".to_string() };
+                    ui.add(egui::Label::new(egui::RichText::new(msg).size(12.5).color(c(p.danger_text))).wrap());
+                }
+                ui.add_space(10.0);
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_enabled_ui(fits, |ui| {
+                        if style::primary_btn(ui, "Verschieben", h).clicked() {
+                            match sh.platform.read(file) {
+                                Ok(b) => api::move_to_server(name, b, file.clone()),
+                                Err(e) => sh.toast_for(&format!("Board nicht lesbar: {e}"), 4.0),
+                            }
+                            close = true;
+                        }
+                    });
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
+                });
+            }
+            Dlg::ToLocal { id, name, owner, .. } => {
+                if *owner {
+                    ui.label(egui::RichText::new("In diesem Browser speichern?").heading().strong());
+                    ui.label(format!("„{name}“ wird in diesem Browser gespeichert und danach vom Server gelöscht. Erst wenn es hier gespeichert ist, wird es am Server gelöscht."));
+                    ui.add_space(4.0);
+                    ui.add(egui::Label::new(egui::RichText::new("Danach ist es nur noch in diesem Browser. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server: Wer das Board mit dir geteilt bekommen hat, verliert den Zugriff. Einladungslinks werden ungültig.").size(12.5).color(c(p.dim))).wrap());
+                } else {
+                    ui.label(egui::RichText::new("Kopie im Browser speichern?").heading().strong());
+                    ui.label(format!("Eine Kopie von „{name}“ wird in diesem Browser gespeichert. Das Board auf dem Server bleibt unverändert. Änderungen an der Kopie sieht niemand sonst."));
+                }
+                ui.add_space(10.0);
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if style::primary_btn(ui, if *owner { "Verschieben" } else { "Kopie speichern" }, h).clicked() {
+                        api::fetch_to_local(id, name, *owner);
                         close = true;
                     }
                     close |= style::outline_btn(ui, "Abbrechen", h).clicked();

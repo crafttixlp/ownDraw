@@ -68,6 +68,21 @@ CREATE TABLE IF NOT EXISTS notices (
     created INTEGER NOT NULL,
     updated INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS bug_reports (
+    id TEXT PRIMARY KEY,
+    created INTEGER NOT NULL,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    sender TEXT NOT NULL,
+    guest INTEGER NOT NULL DEFAULT 0,
+    text TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT '',
+    page TEXT NOT NULL DEFAULT '',
+    screen TEXT NOT NULL DEFAULT '',
+    images TEXT NOT NULL DEFAULT '[]',
+    size INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open'
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -90,7 +105,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if !has_guest {
         conn.execute_batch("ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;")?;
     }
-    // 4.12: Zwei-Faktor-Anmeldung für Admins (`totp.rs`).
+    // 4.15: Zwei-Faktor-Anmeldung für Admins (`totp.rs`).
     let has_totp = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='totp_secret'")?.exists([])?;
     if !has_totp {
         conn.execute_batch(

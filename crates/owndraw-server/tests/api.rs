@@ -1024,3 +1024,137 @@ async fn admin_nur_mit_zwei_faktor() {
     assert_eq!(app.get("/api/admin/users", Some(&c4)).await.code(), "mfa_required");
     assert_eq!(app.post("/api/auth/2fa/setup", Some(&c4), json!({})).await.status, StatusCode::OK);
 }
+
+// ---------- Fehlerberichte ----------
+
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\n-test-png";
+const WEBP: &[u8] = b"RIFF\x10\0\0\0WEBPVP8 test";
+
+/// Multipart-Body: Textfelder + Dateien `image`.
+fn multipart(fields: &[(&str, &str)], images: &[&[u8]]) -> (String, Vec<u8>) {
+    let bd = "----owndrawtest";
+    let mut b = Vec::new();
+    for (k, v) in fields {
+        b.extend(format!("--{bd}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+    }
+    for (i, img) in images.iter().enumerate() {
+        b.extend(format!("--{bd}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"s{i}.png\"\r\nContent-Type: image/png\r\n\r\n").as_bytes());
+        b.extend(*img);
+        b.extend(b"\r\n");
+    }
+    b.extend(format!("--{bd}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={bd}"), b)
+}
+
+impl App {
+    async fn bug(&self, cookie: Option<&str>, fields: &[(&str, &str)], images: &[&[u8]], ip: &str) -> Resp {
+        let (ct, body) = multipart(fields, images);
+        self.send(Method::POST, "/api/bugreports", cookie, &[("content-type", &ct), ("x-forwarded-for", ip)], Body::from(body), true).await
+    }
+}
+
+#[tokio::test]
+async fn fehlerbericht_gast_bilder_und_admin() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+
+    // Gast ohne Konto mit zwei Bildern und technischen Angaben
+    let r = app.bug(None, &[("text", "Stift malt nicht <script>"), ("version", "4.10.0"), ("user_agent", "Testbrowser"), ("screen", "800×600 @1"), ("page", "/")], &[PNG, WEBP], "1.1.1.1").await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let id = r.json()["id"].as_str().unwrap().to_string();
+    assert!(app.state.cfg.data.join("bugreports").join(&id).join("0.png").exists());
+    assert!(app.state.cfg.data.join("bugreports").join(&id).join("1.webp").exists());
+    // Angemeldet, ohne Bild
+    assert_eq!(app.bug(Some(&user), &[("text", "Nur Text")], &[], "1.1.1.2").await.status, StatusCode::OK);
+
+    // Ungültig: leerer Text, falscher Bildtyp (am Inhalt erkannt), zu viele Bilder, ohne CSRF-Header
+    assert_eq!(app.bug(None, &[("text", "  ")], &[], "1.1.1.3").await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(app.bug(None, &[("text", "x")], &[b"<svg onload=alert(1)>"], "1.1.1.3").await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(app.bug(None, &[("text", "x")], &[PNG; 6], "1.1.1.3").await.status, StatusCode::BAD_REQUEST);
+    let (ct, body) = multipart(&[("text", "x")], &[]);
+    assert_eq!(app.send(Method::POST, "/api/bugreports", None, &[("content-type", &ct)], Body::from(body), false).await.status, StatusCode::FORBIDDEN);
+
+    // Nur Admins sehen die Liste
+    assert_eq!(app.get("/api/admin/bugreports", Some(&user)).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.get("/api/admin/bugreports", None).await.status, StatusCode::UNAUTHORIZED);
+    let list = app.get("/api/admin/bugreports", Some(&admin)).await.json();
+    assert_eq!(list.as_array().unwrap().len(), 2);
+    let g = list.as_array().unwrap().iter().find(|b| b["id"] == id.as_str()).unwrap();
+    assert_eq!((g["sender"].as_str(), g["guest"].clone(), g["status"].as_str()), (Some("Ohne Konto"), json!(true), Some("open")));
+    assert_eq!(g["text"], "Stift malt nicht <script>");
+    assert_eq!(g["version"], "4.10.0");
+    assert_eq!(g["images"].as_array().unwrap().len(), 2);
+    let u = list.as_array().unwrap().iter().find(|b| b["id"] != id.as_str()).unwrap();
+    assert!(u["sender"].as_str().unwrap().contains("u@example.org"));
+    assert_eq!(u["guest"], false);
+
+    // Screenshot: richtiger Typ, nosniff, sandbox; nur für Admins
+    let img = app.get(&format!("/api/admin/bugreports/{id}/images/1"), Some(&admin)).await;
+    assert_eq!(img.status, StatusCode::OK);
+    assert_eq!(img.bytes, WEBP);
+    assert_eq!(img.headers[header::CONTENT_TYPE], "image/webp");
+    assert_eq!(img.headers["x-content-type-options"], "nosniff");
+    assert!(img.headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap().contains("sandbox"));
+    assert_eq!(app.get(&format!("/api/admin/bugreports/{id}/images/1"), Some(&user)).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.get(&format!("/api/admin/bugreports/{id}/images/7"), Some(&admin)).await.status, StatusCode::NOT_FOUND);
+
+    // Status ändern, löschen (samt Ordner)
+    let r = app.patch(&format!("/api/admin/bugreports/{id}"), Some(&admin), json!({"status": "done"})).await;
+    assert_eq!(r.json()["status"], "done");
+    assert_eq!(app.patch(&format!("/api/admin/bugreports/{id}"), Some(&admin), json!({"status": "weg"})).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(app.api(Method::DELETE, &format!("/api/admin/bugreports/{id}"), Some(&admin), None).await.status, StatusCode::OK);
+    assert!(!app.state.cfg.data.join("bugreports").join(&id).exists());
+    assert_eq!(app.get("/api/admin/bugreports", Some(&admin)).await.json().as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn fehlerbericht_limits_und_wartung() {
+    let app = App::new();
+    let admin = app.admin().await;
+    // Bild über 5 MB
+    let big = [PNG, &vec![0u8; 5 * 1024 * 1024]].concat();
+    let r = app.bug(None, &[("text", "groß")], &[&big], "2.2.2.1").await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
+    // Rate-Limit je Adresse
+    for _ in 0..4 {
+        assert_eq!(app.bug(None, &[("text", "x")], &[], "2.2.2.2").await.status, StatusCode::OK);
+    }
+    assert_eq!(app.bug(None, &[("text", "x")], &[], "2.2.2.2").await.status, StatusCode::OK);
+    assert_eq!(app.bug(None, &[("text", "x")], &[], "2.2.2.2").await.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(app.bug(None, &[("text", "x")], &[], "2.2.2.3").await.status, StatusCode::OK);
+    // Wartungsmodus: Nicht-Admins 503, Admins dürfen
+    app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true}))).await;
+    let r = app.bug(None, &[("text", "x")], &[], "2.2.2.4").await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::SERVICE_UNAVAILABLE, "maintenance"));
+    assert_eq!(app.bug(Some(&admin), &[("text", "x")], &[], "2.2.2.4").await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn admin_statistik_konten_gaeste_boards() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    assert_eq!(app.get("/api/admin/stats", Some(&user)).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.get("/api/admin/stats", None).await.status, StatusCode::UNAUTHORIZED);
+    app.give_license(&admin, &user, json!(null), 10).await;
+    let id = app.upload(&user, "Eins", zip_bytes(10)).await.json()["id"].as_str().unwrap().to_string();
+    let id2 = app.upload(&user, "Zwei", zip_bytes(0)).await.json()["id"].as_str().unwrap().to_string();
+    let tok = app.post(&format!("/api/boards/{id}/invites"), Some(&user), json!({"role": "edit"})).await.json()["token"].as_str().unwrap().to_string();
+    let r = app.post(&format!("/api/invites/{tok}/join"), None, json!({"name": "Mila"})).await;
+    let guest = cookie_of(&r);
+    app.get("/api/me", Some(&guest)).await;
+    app.api(Method::DELETE, &format!("/api/boards/{id2}"), Some(&user), None).await;
+
+    let r = app.get("/api/admin/stats", Some(&admin)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let s = r.json();
+    assert_eq!(s["users"], json!({"account": 2, "guest": 1}));
+    assert_eq!(s["online"], json!({"account": 2, "guest": 1}));
+    assert_eq!(s["boards_created"]["account"], 1);
+    assert_eq!(s["boards_created"]["guest"], 1);
+    assert_eq!(s["boards_created"]["total_ever"], 2, "gelöschte Boards zählen mit");
+    assert_eq!(s["boards_active"]["list"], json!([]));
+    assert_eq!(s["stored"]["boards"], 1);
+    assert!(s["stored"]["bytes"].as_i64().unwrap() > 0);
+}

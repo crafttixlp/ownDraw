@@ -21,7 +21,7 @@ hmac = "0.12.1"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 sha1 = "0.10.7"
 owndraw-core = { path = "../owndraw-core" }
-axum = { version = "0.8.9", features = ["ws"] }
+axum = { version = "0.8.9", features = ["ws", "multipart"] }
 flate2 = "1.1.11"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 getrandom = "0.4.3"

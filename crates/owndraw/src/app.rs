@@ -163,7 +163,7 @@ impl App {
 
     /// Server-Boards (Browser, `srv:<id>`) stehen in der Liste „Am Server“, nicht unter „Zuletzt geöffnet“.
     fn in_recent(f: &FileRef) -> bool {
-        !matches!(f, FileRef::Uri(u) if crate::platform::WEB && u.starts_with("srv:"))
+        !matches!(f, FileRef::Uri(u) if u.starts_with("srv:"))
     }
 
     fn recent_entry(f: FileRef, e: &Editor) -> RecentEntry {
@@ -209,7 +209,7 @@ impl App {
         if let Some(mut e) = self.editor.take() {
             e.flush(&mut self.sh);
             // Browser: zwischengespeicherte Bytes eines Server-Boards freigeben (beim Öffnen neu geladen)
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(not(target_os = "android"))]
             if let Some(FileRef::Uri(u)) = e.file().filter(|f| crate::net::srv_id(f).is_some()) {
                 crate::net::with(|n| n.files.remove(u));
             }
@@ -218,8 +218,8 @@ impl App {
                 self.start.forget(&f);
             }
         }
-        // Browser: Liste der Server-Boards und Speicherplatz auffrischen
-        #[cfg(target_arch = "wasm32")]
+        // Liste der Server-Boards und Speicherplatz auffrischen
+        #[cfg(not(target_os = "android"))]
         {
             crate::net::refresh_boards();
             crate::net::refresh_me();
@@ -318,7 +318,7 @@ impl App {
     fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool, server: bool) {
         let _ = server; // nur im Browser genutzt
         // Browser mit gültiger Lizenz und Speicherort Server: am Server anlegen (öffnet sich, sobald der Server antwortet)
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         if server && crate::net::licensed() {
             let doc = session::new_document(&params);
             match session::serialize(&doc) {
@@ -343,9 +343,9 @@ impl App {
 
     /// Browser: Ergebnisse von „Auf den Server verschieben“ / „In diesem Browser speichern“ übernehmen.
     /// Ein Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher liegt.
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(target_os = "android"))]
     fn web_moves(&mut self) {
-        use crate::net;
+        use crate::net as api;
         let (moved, to_local) = api::with(|n| (std::mem::take(&mut n.moved), std::mem::take(&mut n.to_local)));
         for f in moved {
             self.recent.remove(&f);
@@ -360,10 +360,10 @@ impl App {
                     self.recent.add(RecentEntry { file: f, name: t.name.clone(), modified_ms: owndraw_core::store::now_ms(), pages });
                     match t.delete_id {
                         Some(id) => api::delete_moved(&id, &t.name),
-                        None => self.sh.toast_for(&format!("Kopie von „{}“ in diesem Browser gespeichert", t.name), 4.0),
+                        None => self.sh.toast_for(&format!("Kopie von „{}“ {} gespeichert", t.name, crate::ui::local_in()), 4.0),
                     }
                 }
-                Err(e) => self.sh.toast_for(&format!("„{}“ konnte nicht im Browser gespeichert werden und bleibt auf dem Server: {e}", t.name), 6.0),
+                Err(e) => self.sh.toast_for(&format!("„{}“ konnte nicht {} gespeichert werden und bleibt auf dem Server: {e}", t.name, crate::ui::local_in()), 6.0),
             }
         }
     }
@@ -482,7 +482,7 @@ impl App {
                 let now = self.sh.now;
                 if let Some(e) = self.editor.as_mut() {
                     // Browser: Server-Board auch in der Liste umbenennen (nur Besitzer)
-                    #[cfg(target_arch = "wasm32")]
+                    #[cfg(not(target_os = "android"))]
                     if let (crate::ui::dialogs::RenameWhat::Doc, Some(id)) = (&what, e.file().and_then(crate::net::srv_id)) {
                         if crate::net::board(id).is_some_and(|b| b.role == "owner") {
                             crate::net::rename_board(id, &text);
@@ -566,8 +566,9 @@ impl App {
         if let Some(d) = self.demo.take() {
             crate::demo::setup(self, &ctx, &d);
         }
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         {
+            crate::net::pump();
             let (open, notes) = crate::net::with(|n| (std::mem::take(&mut n.open), std::mem::take(&mut n.notices)));
             for m in notes {
                 self.sh.toast_for(&m, 4.0);

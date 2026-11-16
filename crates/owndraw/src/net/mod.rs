@@ -11,6 +11,9 @@
 //! - Antworten kommen asynchron; sie landen in [`Net`] (thread-lokal) und lösen ein Neuzeichnen aus.
 //! - [`Socket`]: WebSocket für die Live-Zusammenarbeit (`/api/collab/{id}`), siehe `ui/editor/live.rs`.
 
+// Die Antwort-Typen bilden das Server-API vollständig ab; nicht jede Plattform nutzt jedes Feld.
+#![allow(dead_code)]
+
 use crate::platform::FileRef;
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -23,7 +26,8 @@ mod tr;
 #[path = "native.rs"]
 mod tr;
 #[cfg(not(target_arch = "wasm32"))]
-pub use tr::{base_url, pump, set_base_url};
+pub use tr::{base_url, set_base_url, set_config_dir};
+pub use tr::pump;
 
 /// Präfix der Verweise auf Server-Boards.
 pub const SRV: &str = "srv:";
@@ -222,6 +226,7 @@ pub struct ToLocal {
 }
 
 thread_local! {
+    static STARTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CTX: RefCell<Option<egui::Context>> = const { RefCell::new(None) };
     static NET: RefCell<Net> = RefCell::new(Net {
         server: Server::Unknown,
@@ -263,12 +268,41 @@ fn repaint() {
     });
 }
 
-/// Beim Start: Kontext merken, Anmeldung prüfen.
+/// Beim Start: Kontext merken, Anmeldung prüfen. Desktop: vorher [`set_config_dir`] und [`set_base_url`].
 pub fn init(ctx: &egui::Context) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
+    STARTED.with(|s| s.set(true));
     if let Some(token) = tr::init(ctx) {
         invite_info(&token);
     }
+    refresh_me();
+}
+
+/// Server-Anbindung gestartet? (Am Desktop nicht bei Screenshot-Demos ohne `OWNDRAW_SERVER`.)
+pub fn started() -> bool {
+    STARTED.with(|s| s.get())
+}
+
+/// Desktop: anderen Server verwenden (meldet ab, lädt den Status neu).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn change_server(url: &str) {
+    set_base_url(url);
+    with(|n| {
+        n.server = Server::Unknown;
+        n.me = None;
+        n.boards.clear();
+        n.boards_loaded = false;
+        n.invite = None;
+        n.form_error = None;
+    });
+    if started() {
+        refresh_me();
+    }
+}
+
+/// Server erneut versuchen (nach „nicht erreichbar“).
+pub fn retry() {
+    with(|n| n.server = Server::Unknown);
     refresh_me();
 }
 
@@ -406,6 +440,8 @@ pub fn register(email: &str, password: &str, name: &str) {
 
 pub fn logout() {
     request("POST", "/api/auth/logout".into(), Some(Body::Json(json!({}))), vec![], |_| {
+        #[cfg(not(target_arch = "wasm32"))]
+        tr::forget_session();
         with(|n| {
             n.me = None;
             n.boards.clear();
@@ -536,9 +572,9 @@ fn upload(name: &str, bytes: Vec<u8>, local: Option<FileRef>) {
                 n.opening = false;
                 n.moving = false;
             });
-            let what = if moving { "Board konnte nicht auf den Server verschoben werden. Es bleibt in diesem Browser" } else { "Board konnte nicht auf dem Server erstellt werden" };
+            let what = if moving { if cfg!(target_arch = "wasm32") { "Board konnte nicht auf den Server verschoben werden. Es bleibt in diesem Browser" } else { "Board konnte nicht auf den Server verschoben werden. Es bleibt auf diesem Computer" } } else { "Board konnte nicht auf dem Server erstellt werden" };
             notice(match other {
-                Ok(r) if r.status == 507 => format!("{what}: {} Lösche Boards auf dem Server oder speichere dieses Board im Browser.", r.message()),
+                Ok(r) if r.status == 507 => format!("{what}: {} Lösche Boards auf dem Server oder speichere dieses Board {}.", r.message(), crate::ui::local_in()),
                 Ok(r) => format!("{what}: {}", r.message()),
                 Err(e) => format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}"),
             });
@@ -666,7 +702,7 @@ fn delete_with(id: &str, moved: Option<String>) {
     let id2 = id.to_string();
     request("DELETE", format!("/api/boards/{id}"), None, vec![], move |r| {
         let fail = |m: String| match &moved {
-            Some(name) => notice(format!("„{name}“ ist jetzt in diesem Browser gespeichert, konnte am Server aber nicht gelöscht werden: {m}")),
+            Some(name) => notice(format!("„{name}“ ist jetzt {} gespeichert, konnte am Server aber nicht gelöscht werden: {m}", crate::ui::local_in())),
             None => notice(m),
         };
         match r {
@@ -676,7 +712,7 @@ fn delete_with(id: &str, moved: Option<String>) {
                     n.files.remove(&format!("{SRV}{id2}"));
                 });
                 notice(match &moved {
-                    Some(name) => format!("„{name}“ liegt jetzt in diesem Browser."),
+                    Some(name) => format!("„{name}“ liegt jetzt {}.", crate::ui::local_in()),
                     None => "Board gelöscht".into(),
                 });
                 refresh_me();

@@ -97,7 +97,7 @@ impl Editor {
 
     /// Darf das Board geändert werden (Live: Rolle „Nur ansehen“)?
     pub(super) fn x_can_write(&self) -> bool {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         {
             if let Some(l) = self.live.as_ref().filter(|l| l.is_live()) {
                 return l.can_write();
@@ -113,7 +113,7 @@ impl Editor {
 
     /// Name für Kommentare: angemeldetes Konto, sonst „Ich“.
     pub(super) fn x_author(&self) -> String {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         if let Some(me) = crate::net::with(|n| n.me.clone()) {
             let n = if me.name.trim().is_empty() { me.email } else { me.name };
             if !n.trim().is_empty() {

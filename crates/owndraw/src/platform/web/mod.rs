@@ -13,7 +13,7 @@
 //!
 //! - Server-Boards: `FileRef::Uri("srv:<id>")` (Inhalt vorab geladen, Speichern per PUT), siehe [`api`].
 
-pub use crate::net as api;
+pub(crate) use crate::net as api;
 /// Darstellung ohne WebGL (CPU-Rasterizer, 2D-Canvas).
 pub mod soft;
 

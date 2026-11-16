@@ -1,4 +1,4 @@
-//! Live-Zusammenarbeit im Editor (nur Browser, Server-Boards `srv:<id>`). Protokoll: `docs/web-api.md`.
+//! Live-Zusammenarbeit im Editor (Web-App und Desktop, Server-Boards `srv:<id>`). Protokoll: `docs/web-api.md`.
 //!
 //! - Verbindung `GET /api/collab/{id}` (WebSocket), automatische Wiederverbindung mit wachsender Wartezeit.
 //!   Solange keine Verbindung besteht, speichert der Autosave wie gewohnt per PUT.
@@ -12,7 +12,7 @@
 
 use super::{toolbar, Editor, Lay, M};
 use crate::app::Shared;
-use crate::net::{self, SockEv, Socket};
+use crate::net::{self as api, SockEv, Socket};
 use crate::session;
 use crate::style::{self, c};
 use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};

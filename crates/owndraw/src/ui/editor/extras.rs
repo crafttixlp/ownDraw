@@ -99,7 +99,7 @@ fn guided(b: &Board) -> bool {
 impl Extras {
     /// Laser-Abschnitte zum Senden (höchstens alle 40 ms; ein fortgesetzter Abschnitt beginnt mit dem letzten
     /// gesendeten Punkt, damit die Spur beim Empfänger zusammenhängt).
-    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     pub fn take_laser_out(&mut self, now: f64) -> Vec<Vec<(f32, f32)>> {
         if self.out_cur.len() > self.out_sent && now - self.out_at >= 0.04 {
             let last = *self.out_cur.last().unwrap_or(&(0.0, 0.0));
@@ -111,7 +111,7 @@ impl Extras {
     }
 
     /// Laser eines anderen Teilnehmers.
-    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     pub fn laser_in(&mut self, peer: u64, color: u32, pts: &[(f32, f32)], now: f64) {
         let i = match self.remote.iter().position(|r| r.0 == peer) {
             Some(i) => i,
@@ -343,11 +343,11 @@ impl Editor {
 
     /// Laser-Punkte werden live gesendet.
     fn laser_live(&self) -> bool {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         {
             self.live.as_ref().is_some_and(|l| l.is_live())
         }
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(target_os = "android")]
         {
             false
         }

@@ -14,8 +14,8 @@ use std::collections::HashMap;
 pub struct StartState {
     thumbs: HashMap<String, Option<TextureHandle>>,
     /// Konto und Boards am Server (nur Browser).
-    #[cfg(target_arch = "wasm32")]
-    account: super::account::AccountUi,
+    #[cfg(not(target_os = "android"))]
+    pub account: super::account::AccountUi,
     /// Suchtext (modernes Design).
     query: String,
     /// Filter: 0 = alle, 1 = Seiten, 2 = Unendlich.
@@ -97,7 +97,7 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                 });
             });
             // Browser: Konto bzw. Gastmodus-Hinweis (dezent)
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(not(target_os = "android"))]
             {
                 ui.add_space(10.0);
                 super::account::header(ui, sh, &mut st.account);
@@ -113,7 +113,7 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
                 }
             });
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(not(target_os = "android"))]
             {
                 super::account::boards(ui, sh, &mut st.account);
                 ui.spacing_mut().item_spacing = egui::style::Spacing::default().item_spacing;
@@ -223,7 +223,7 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
             }
         });
     });
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(target_os = "android"))]
     super::account::dialogs(&ctx, sh, &mut st.account);
 }
 
@@ -561,8 +561,8 @@ fn board_card(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, e: &crate
     if resp.clicked() {
         sh.reqs.push(Req::OpenFile(e.file.clone()));
     }
-    // Browser mit Lizenz: Browser-Board auf den Server verschieben
-    let to_server = !missing && crate::ui::server_store_available() && matches!(&e.file, crate::platform::FileRef::Uri(u) if u.starts_with("mem:"));
+    // Mit Lizenz: lokales Board (Browser-Speicher bzw. Datei am Desktop) auf den Server verschieben
+    let to_server = !missing && crate::ui::server_store_available() && (matches!(&e.file, crate::platform::FileRef::Uri(u) if u.starts_with("mem:")) || (!crate::platform::WEB && matches!(&e.file, crate::platform::FileRef::Path(_))));
     let act = std::cell::Cell::new(None::<u8>);
     let menu = |ui: &mut egui::Ui, sh: &mut Shared| {
         use owndraw_core::icons;
@@ -592,7 +592,7 @@ fn board_card(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, e: &crate
     match act.get() {
         Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
         Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         Some(2) => super::account::ask_to_server(sh, &mut st.account, &e.file, &e.name),
         _ => {}
     }
@@ -646,12 +646,12 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 });
             });
             ui.add_space(if compact { sp::L } else { sp::XL });
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(not(target_os = "android"))]
             {
                 super::account::header(ui, sh, &mut st.account);
                 ui.add_space(if compact { sp::L } else { sp::XL });
             }
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(target_os = "android")]
             if st.demo_banner {
                 banner(
                     ui,
@@ -726,14 +726,14 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     });
                 });
             }
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(not(target_os = "android"))]
             {
                 let server_section = super::account::boards(ui, sh, &mut st.account);
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
                 // Neben „Auf dem Server“ die Browser-Boards klar benennen
                 if server_section && n > 0 {
                     ui.add_space(sp::XL);
-                    ui.label(egui::RichText::new("In diesem Browser").size(fs::SECTION + 3.0).strong());
+                    ui.label(egui::RichText::new(super::wd("In diesem Browser", "Auf diesem Computer")).size(fs::SECTION + 3.0).strong());
                     ui.label(style::hint("Nur auf diesem Gerät gespeichert. Teilen geht erst nach „Auf Server verschieben“ im Kartenmenü."));
                 }
             }
@@ -822,6 +822,6 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
             }
         });
     });
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(target_os = "android"))]
     super::account::dialogs(&ctx, sh, &mut st.account);
 }

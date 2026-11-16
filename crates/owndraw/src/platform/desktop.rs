@@ -248,9 +248,21 @@ impl Platform for DesktopPlatform {
     }
 
     fn read(&self, f: &FileRef) -> io::Result<Vec<u8>> {
+        // Server-Board (`srv:<id>`): Inhalt wurde beim Öffnen geladen (crate::net)
+        if let Some(id) = crate::net::srv_id(f) {
+            let key = format!("{}{id}", crate::net::SRV);
+            return crate::net::with(|n| n.files.get(&key).cloned()).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Das Board ist noch nicht vom Server geladen"));
+        }
         std::fs::read(path_of(f)?)
     }
     fn write_atomic(&self, f: &FileRef, data: &[u8]) -> io::Result<()> {
+        if let Some(id) = crate::net::srv_id(f) {
+            // live verbunden: der Server speichert selbst; sonst Autosave per PUT (Ergebnis kommt asynchron)
+            if !crate::net::with(|n| n.live.contains(id)) {
+                crate::net::put_board(id, data.to_vec());
+            }
+            return Ok(());
+        }
         write_atomic_path(path_of(f)?, data)
     }
     fn create_in(&self, dir: &FileRef, name: &str, kind: FileKind) -> io::Result<FileRef> {
@@ -259,6 +271,9 @@ impl Platform for DesktopPlatform {
         Ok(FileRef::Path(d.join(unique_name(d, name, kind))))
     }
     fn exists(&self, f: &FileRef) -> bool {
+        if crate::net::srv_id(f).is_some() {
+            return true;
+        }
         path_of(f).map(|p| p.exists()).unwrap_or(false)
     }
 

@@ -141,3 +141,6 @@ impl Drop for Socket {
         let _ = self.ws.close();
     }
 }
+
+/// Im Browser laufen die Rückrufe direkt (spawn_local); nichts abzuholen.
+pub fn pump() {}

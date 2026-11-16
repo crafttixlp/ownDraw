@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io;
 
+/// Vorgabe für [`Settings::server_url`].
+pub const DEFAULT_SERVER: &str = "https://owndraw.thepepelex.at";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Theme {
     #[default]
@@ -180,8 +183,10 @@ pub struct Settings {
     pub default_dir: Option<String>,
     /// Xournal++: Autosave direkt ins .xopp statt .owndraw daneben.
     pub xopp_autosave_direct: bool,
-    /// Browser mit Lizenz: neue Boards standardmäßig auf dem Server (true) oder nur im Browser anlegen.
+    /// Mit Lizenz (Web-App, Desktop): neue Boards standardmäßig auf dem Server (true) oder nur im Browser anlegen.
     pub new_on_server: bool,
+    /// Desktop: Adresse des OwnDraw-Servers für Konto, Server-Boards und Live-Zusammenarbeit.
+    pub server_url: String,
     pub update_mode: UpdateMode,
     /// Beim Start nach Updates suchen (nur Hinweis, installiert nie). Standard: aus.
     pub update_check_on_start: bool,
@@ -228,6 +233,7 @@ impl Default for Settings {
             default_dir: None,
             xopp_autosave_direct: false,
             new_on_server: true,
+            server_url: DEFAULT_SERVER.into(),
             update_mode: UpdateMode::Package,
             update_check_on_start: false,
             update_skip: None,

@@ -6,6 +6,7 @@ pub mod dialogs;
 pub mod editor;
 pub mod settings;
 pub mod start;
+pub mod tutorial;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod update;
 

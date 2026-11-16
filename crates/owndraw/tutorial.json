@@ -1,0 +1,513 @@
+{
+  "_hinweis": "Zentrale Quelle der Anleitung (Startseite → Anleitung, Editor-Menü → Anleitung & Tipps, F1, /tutorial). Jedes neue Editor-Feature MUSS hier eingetragen werden. Feld covers: Kennungen, die der Test tutorial_deckt_editor_ab mit dem Code abgleicht (tool:, key:, menu:, setting:); extra: für Funktionen ohne prüfbares Gegenstück. Siehe CONTRIBUTING.md.",
+  "categories": [
+    {
+      "id": "start",
+      "title": "Erste Schritte",
+      "intro": "So findest du dich im Editor zurecht.",
+      "entries": [
+        {
+          "id": "start-board",
+          "title": "Neues Board anlegen",
+          "text": "Auf der Startseite legst du mit „Neues Board“ ein Board an. Wähle „Unendliches Board“ für eine freie, beliebig große Fläche oder „Seiten“ für feste Seiten wie auf Papier.",
+          "how": ["Seitenformat: A4, A5 oder Letter, jeweils hoch oder quer.", "Seitenhintergrund: Blanko, Liniert, Kariert oder Punktiert.", "Am PC und auf Android kannst du den Speicherort selbst wählen."],
+          "covers": ["extra:neu"]
+        },
+        {
+          "id": "start-aufbau",
+          "title": "Aufbau des Editors",
+          "text": "Oben links stehen Zurück, der Name des Boards und der Speicherstatus. Oben rechts liegen Rückgängig, Wiederholen, die Zoomanzeige und das Menü „⋯“. Die Werkzeugleiste sitzt je nach Bildschirm oben (PC), links (Tablet) oder unten (Handy).",
+          "how": ["Der farbige Punkt neben dem Namen zeigt den Speicherstatus: grün gespeichert, gelb wird gespeichert, rot Fehler.", "Ein Klick auf den Namen benennt das Board um."],
+          "covers": ["extra:aufbau"]
+        },
+        {
+          "id": "start-speichern",
+          "title": "Speichern",
+          "text": "OwnDraw speichert automatisch, du musst nichts tun. Mit Strg+S speicherst du sofort. In der Web-App ohne Server-Board lädt Strg+S das Board als .owndraw-Datei herunter.",
+          "keys": ["Strg+S"],
+          "covers": ["key:S", "extra:autosave"]
+        },
+        {
+          "id": "start-anleitung",
+          "title": "Diese Anleitung öffnen",
+          "text": "Die Anleitung erreichst du jederzeit: auf der Startseite über „Anleitung“, im Editor über „⋯“ → „Anleitung & Tipps“ oder mit F1. In der Web-App führt auch die Adresse /tutorial direkt hierher.",
+          "keys": ["F1"],
+          "covers": ["key:F1", "menu:Anleitung & Tipps"]
+        },
+        {
+          "id": "start-schliessen",
+          "title": "Board schließen",
+          "text": "„⋯“ → „Schließen“ oder der Zurück-Knopf oben links speichert das Board und kehrt zur Startseite zurück.",
+          "covers": ["menu:Schließen"]
+        }
+      ]
+    },
+    {
+      "id": "werkzeuge",
+      "title": "Werkzeuge",
+      "intro": "Tippe ein Werkzeug an, um es zu wählen. Ein zweiter Tipp auf das aktive Werkzeug öffnet seine Optionen (am Handy als Leiste von unten).",
+      "entries": [
+        {
+          "id": "tool-stift",
+          "title": "Stift",
+          "text": "Zeichnet freie Linien. Mit einem druckempfindlichen Stift wird die Linie je nach Druck dicker oder dünner.",
+          "how": ["Optionen: 8 Farben, 4 Breiten, Formerkennung und Pfeilstil.", "„Mit dem Finger zeichnen“ (Touch): Ist es aus, verschiebt ein Finger die Ansicht und nur der Stift zeichnet."],
+          "keys": ["P"],
+          "covers": ["tool:Stift", "key:P"]
+        },
+        {
+          "id": "tool-marker",
+          "title": "Marker",
+          "text": "Breiter, halbdurchsichtiger Textmarker zum Hervorheben. Er hat dieselben Optionen wie der Stift.",
+          "keys": ["M"],
+          "covers": ["tool:Marker", "key:M"]
+        },
+        {
+          "id": "tool-radierer",
+          "title": "Radierer",
+          "text": "Entfernt Gezeichnetes. Unter „Modus“ wählst du zwischen zwei Arten.",
+          "how": ["„Ganze Objekte“: Alles, was du überstreichst, wird komplett gelöscht.", "„Nur überstrichene Stellen“: radiert nur dort, wo du entlangfährst. Die Größe ist einstellbar.", "Die Radierseite oder die Seitentaste eines Stifts radiert immer, egal welches Werkzeug aktiv ist."],
+          "keys": ["E"],
+          "covers": ["tool:Radierer", "key:E"]
+        },
+        {
+          "id": "tool-auswahl",
+          "title": "Auswahl",
+          "text": "Wählt Objekte aus, um sie zu verschieben, zu drehen, zu skalieren oder zu bearbeiten. Ein Tipp auf ein Objekt wählt es aus. Ziehen auf freier Fläche zieht ein Lasso oder ein Rechteck auf.",
+          "how": ["Modus „Lasso“ oder „Rechteck“ in den Optionen.", "Mit der mittleren Maustaste wählst du ein Objekt aus jedem Werkzeug heraus aus (auch innerhalb leerer Formen). Danach geht es zurück zum vorigen Werkzeug."],
+          "keys": ["S"],
+          "covers": ["tool:Auswahl"]
+        },
+        {
+          "id": "tool-form",
+          "title": "Form",
+          "text": "Zeichnet saubere Formen durch Ziehen von Ecke zu Ecke: Rechteck, Ellipse, Linie, Pfeil und Maschinenbau-Pfeil (15°, gefüllte Spitze).",
+          "how": ["Farbe, Linienbreite und beim Pfeil der Pfeilstil sind einstellbar.", "Das Symbol in der Leiste zeigt die gewählte Form."],
+          "keys": ["R"],
+          "covers": ["tool:Form", "key:R"]
+        },
+        {
+          "id": "tool-text",
+          "title": "Text und Haftnotiz",
+          "text": "Tippe auf eine freie Stelle und schreibe direkt auf dem Blatt. Unter „Art“ wählst du „Text“ (freier Text) oder „Haftnotiz“ (farbiger Zettel).",
+          "how": ["T wählt Text, N wählt Haftnotiz.", "Ein Tipp auf vorhandenen Text wählt ihn aus, ein zweiter Tipp bearbeitet ihn."],
+          "keys": ["T", "N"],
+          "covers": ["tool:Text", "key:T", "key:N"]
+        },
+        {
+          "id": "tool-bild",
+          "title": "Bild",
+          "text": "Fügt ein Bild ein (PNG, JPG, WebP, GIF, BMP). Große Bilder werden auf höchstens 2048 Pixel verkleinert.",
+          "how": ["Bilder lassen sich auch per Drag & Drop oder aus der Zwischenablage einfügen."],
+          "keys": ["I"],
+          "covers": ["tool:Bild", "key:I"]
+        },
+        {
+          "id": "tool-farbe",
+          "title": "Farben und Breiten",
+          "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",
+          "covers": ["extra:farben"]
+        }
+      ]
+    },
+    {
+      "id": "formen",
+      "title": "Formerkennung und Pfeile",
+      "intro": "Freihand gezeichnete Formen werden auf Wunsch zu sauberen Formen.",
+      "entries": [
+        {
+          "id": "form-erkennung",
+          "title": "Formerkennung",
+          "text": "OwnDraw erkennt Linie, Pfeil, Doppelpfeil, Kreis und Ellipse, Dreieck, Viereck, Fünfeck, Sechseck, Stern und Herz.",
+          "how": ["„Halten“: Bleib am Ende des Strichs kurz stehen (etwa eine halbe Sekunde), dann wird die Form geglättet.", "„Immer“: Erkennung beim Loslassen.", "„Aus“: Der Strich bleibt, wie er ist."],
+          "covers": ["extra:erkennung"]
+        },
+        {
+          "id": "form-pfeilstil",
+          "title": "Pfeilstile",
+          "text": "Für erkannte und gezeichnete Pfeile: Wie gezeichnet (Auto), offene Spitze, gefüllte Spitze, Maschinenbau 15°, Doppelpfeil, Doppelpfeil gefüllt und gestrichelt.",
+          "covers": ["extra:pfeilstil"]
+        }
+      ]
+    },
+    {
+      "id": "auswahl",
+      "title": "Auswahl bearbeiten",
+      "intro": "Ist etwas ausgewählt, erscheint die Auswahlleiste.",
+      "entries": [
+        {
+          "id": "sel-griffe",
+          "title": "Verschieben, skalieren, drehen",
+          "text": "Ziehe innerhalb des Rahmens, um zu verschieben. Eckgriffe skalieren proportional, Kantengriffe nur Breite oder Höhe. Der Griff über dem Rahmen dreht.",
+          "how": ["Bei einer einzelnen Linie oder einem Pfeil ziehst du stattdessen direkt die beiden Enden.", "Beim Drehen und Ziehen von Pfeilenden rastet der Winkel ein (siehe Einrasten)."],
+          "covers": ["extra:griffe"]
+        },
+        {
+          "id": "sel-leiste",
+          "title": "Auswahlleiste",
+          "text": "Kopieren, Ausschneiden, Einfügen, Duplizieren, um 90° drehen, ganz nach vorne oder hinten, Text bearbeiten und Löschen. Dazu Farbpunkte für die Auswahl sowie Regler für Dicke (Striche, Formen) oder Schriftgröße (Text).",
+          "keys": ["Strg+D", "Entf", "Rücktaste"],
+          "covers": ["key:D", "key:Delete", "key:Backspace"]
+        },
+        {
+          "id": "sel-clip",
+          "title": "Kopieren und Einfügen",
+          "text": "Kopierte Objekte landen als Bild und als OwnDraw-Objekte in der Zwischenablage. So kannst du sie in andere Programme als Bild oder in ein anderes Board als bearbeitbare Objekte einfügen. Auch Bilder und Text aus anderen Programmen lassen sich einfügen.",
+          "how": ["Strg+V fügt an der Mausposition ein, der Knopf in der Mitte der Ansicht.", "Rechtsklick oder langes Tippen auf die Fläche öffnet ein Menü mit Kopieren, Ausschneiden und Einfügen."],
+          "keys": ["Strg+C", "Strg+X", "Strg+V"],
+          "covers": ["key:C", "key:X", "key:V"]
+        }
+      ]
+    },
+    {
+      "id": "text",
+      "title": "Text schreiben",
+      "entries": [
+        {
+          "id": "text-eingabe",
+          "title": "Eingabe direkt auf dem Blatt",
+          "text": "Der Text erscheint dort, wo du getippt hast. Enter beginnt eine neue Zeile. Leerst du einen Text vollständig, wird er gelöscht.",
+          "how": ["Fertig: Strg+Enter, Esc oder ein Klick daneben."],
+          "keys": ["Enter", "Strg+Enter", "Esc"],
+          "covers": ["key:Enter", "key:Escape"]
+        }
+      ]
+    },
+    {
+      "id": "ansicht",
+      "title": "Zoom und Ansicht",
+      "entries": [
+        {
+          "id": "view-zoom",
+          "title": "Zoomen",
+          "text": "Strg+Mausrad zoomt um den Mauszeiger, am Trackpad und am Touchscreen zoomst du mit zwei Fingern. Die Prozentanzeige oben rechts zeigt den Zoom, ein Klick darauf zeigt alles.",
+          "keys": ["+", "=", "−", "Strg+Mausrad"],
+          "covers": ["key:Plus", "key:Equals", "key:Minus"]
+        },
+        {
+          "id": "view-pan",
+          "title": "Verschieben",
+          "text": "Mausrad verschiebt die Ansicht. Außerdem: Leertaste gedrückt halten und ziehen, mit der mittleren oder rechten Maustaste ziehen oder mit zwei Fingern wischen. Ohne „Mit dem Finger zeichnen“ verschiebt auch ein Finger.",
+          "keys": ["Leertaste + Ziehen"],
+          "covers": ["key:Space"]
+        },
+        {
+          "id": "view-fit",
+          "title": "Alles zeigen",
+          "text": "Passt die Ansicht so an, dass alles zu sehen ist. Im Seitenmodus wird die Seitenbreite eingepasst.",
+          "how": ["„⋯“ → „Alles zeigen“, Taste 0 oder Klick auf die Zoomanzeige."],
+          "keys": ["0"],
+          "covers": ["key:Num0", "menu:Alles zeigen"]
+        },
+        {
+          "id": "view-hintergrund",
+          "title": "Hintergrund",
+          "text": "Unendliches Board: Punkte, Raster, Linien oder Leer. Im Seitenmodus wählst du für jede Seite Blanko, Liniert, Kariert oder Punktiert, die Wahl gilt auch für neue Seiten.",
+          "how": ["„⋯“ → Hintergrund."],
+          "covers": ["extra:hintergrund"]
+        },
+        {
+          "id": "view-dunkel",
+          "title": "Board hell oder dunkel",
+          "text": "„⋯“ → „Board: dunkel“ bzw. „Board: hell“ wechselt die Farbe des Boards selbst. Das wird mit dem Board gespeichert und ist unabhängig vom Farbschema der App.",
+          "covers": ["menu:Board: hell", "menu:Board: dunkel"]
+        }
+      ]
+    },
+    {
+      "id": "seiten",
+      "title": "Seiten",
+      "intro": "Nur bei Boards mit Seiten.",
+      "entries": [
+        {
+          "id": "pages-leiste",
+          "title": "Seitenleiste",
+          "text": "Zeigt alle Seiten mit Vorschau. Am PC ist sie links angedockt und lässt sich mit „‹“ einklappen. Dann erscheint die kleine Leiste „‹ Seite n / m › +“, ein Tipp auf den Text öffnet die Liste wieder.",
+          "how": ["„⋯“ → „Seiten“ bzw. „Seiten ausblenden“."],
+          "covers": ["menu:Seiten", "menu:Seiten ausblenden"]
+        },
+        {
+          "id": "pages-ordnen",
+          "title": "Seiten hinzufügen, ordnen, löschen",
+          "text": "„+ Seite“ fügt nach der aktuellen Seite ein. Ziehen an der Vorschau ändert die Reihenfolge, die Pfeile verschieben um eine Stelle. Der Papierkorb löscht nach Rückfrage. „Gehe zu“ springt zu einer Seitennummer. Alles lässt sich rückgängig machen.",
+          "covers": ["extra:seiten"]
+        }
+      ]
+    },
+    {
+      "id": "ebenen",
+      "title": "Ebenen",
+      "entries": [
+        {
+          "id": "layers-panel",
+          "title": "Ebenen-Leiste",
+          "text": "Jede Ebene lässt sich ein- und ausblenden (Auge) und sperren (Schloss). Ein Klick auf den Namen macht sie aktiv, ein Doppelklick benennt sie um. Neues landet immer in der aktiven Ebene.",
+          "how": ["„⋯“ → „Ebenen“ bzw. „Ebenen ausblenden“.", "Über „⋯“ oder Rechtsklick an der Ebene: Umbenennen, Animation & Deckkraft, als PNG exportieren, nach vorne/hinten, löschen.", "Unten: „+ Ebene“, „Vorlage“ (7 fertige animierte Ebenen) und „Bild“."],
+          "covers": ["menu:Ebenen", "menu:Ebenen ausblenden"]
+        },
+        {
+          "id": "layers-anim",
+          "title": "Animation und Deckkraft",
+          "text": "Für den Website-Export kann jede Ebene animiert werden: Parallax, seitwärts treiben, schweben, einblenden, von unten einfahren, Farbverlauf wandern oder Partikel steigen auf. Dazu Tempo, Hover-Effekt und Deckkraft.",
+          "covers": ["extra:animation"]
+        }
+      ]
+    },
+    {
+      "id": "leisten",
+      "title": "Leisten anpassen",
+      "entries": [
+        {
+          "id": "bars-ziehen",
+          "title": "Leisten verschieben und andocken",
+          "text": "Jede Leiste hat einen Griff (sechs Punkte). Zieh daran, um sie zu verschieben. Lässt du sie nahe am Rand los, dockt sie dort an, seitlich senkrecht, oben und unten waagerecht. Ein Doppelklick auf den Griff setzt sie zurück.",
+          "how": ["Positionen werden je Bildschirmgröße (Handy, Tablet, PC) gemerkt.", "Einstellungen → Werkzeugleisten → „Positionen zurücksetzen“."],
+          "covers": ["setting:Positionen"]
+        },
+        {
+          "id": "bars-werkzeuge",
+          "title": "Werkzeuge bearbeiten",
+          "text": "Einstellungen → „Werkzeuge bearbeiten …“: Reihenfolge per Ziehen ändern und Werkzeuge über das Auge ein- oder ausblenden. „Standard“ setzt zurück, „Fertig“ oder Esc beendet.",
+          "covers": ["setting:Werkzeuge"]
+        },
+        {
+          "id": "bars-pos",
+          "title": "Feste Position und Ecken",
+          "text": "In den Einstellungen legst du die Werkzeugleiste und die Optionsleiste auf Automatisch, Oben, Unten, Links oder Rechts fest. „Ecken der Leisten“ stellt die Abrundung ein (0 px eckig bis 40 px ganz rund).",
+          "covers": ["setting:Werkzeugleiste", "setting:Optionsleiste", "setting:Ecken der Leisten"]
+        }
+      ]
+    },
+    {
+      "id": "einrasten",
+      "title": "Einrasten",
+      "intro": "Einstellungen → Einrasten. Hilft bei geraden Linien und genauen Winkeln.",
+      "entries": [
+        {
+          "id": "snap-linien",
+          "title": "Linien und Pfeile einrasten",
+          "text": "Erkannte Linien und Pfeile werden auf das Winkelraster gedreht (5°, 15°, 30°, 45° oder 90°). Der Fangbereich legt fest, ab welcher Abweichung nicht mehr eingerastet wird. 0° schaltet es aus.",
+          "covers": ["setting:Formerkennung", "setting:Winkelraster", "setting:Fangbereich"]
+        },
+        {
+          "id": "snap-formen",
+          "title": "Formen gerade ausrichten",
+          "text": "Fast gerade Rechtecke und Vielecke werden waagerecht ausgerichtet.",
+          "covers": ["setting:Formen ausrichten"]
+        },
+        {
+          "id": "snap-griffe",
+          "title": "Griffe einrasten",
+          "text": "Beim Ziehen von Pfeilenden und beim Drehen einer Auswahl rastet der Winkel ein, mit eigenem Winkelraster und Fangbereich.",
+          "covers": ["setting:Griffe"]
+        },
+        {
+          "id": "snap-taste",
+          "title": "Taste gegen das Einrasten",
+          "text": "Solange du die Taste gedrückt hältst, gilt das Gegenteil der Einstellung: Ist Einrasten an, zeichnest du frei, ist es aus, rastet es ein. Wählbar sind Umschalt (Vorgabe), Alt, Strg oder Keine.",
+          "keys": ["Umschalt halten"],
+          "only": "Nur mit Tastatur",
+          "covers": ["setting:Taste"]
+        }
+      ]
+    },
+    {
+      "id": "verlauf",
+      "title": "Rückgängig und Wiederholen",
+      "entries": [
+        {
+          "id": "undo",
+          "title": "Rückgängig und Wiederholen",
+          "text": "Die Pfeile oben rechts machen Schritte rückgängig oder wiederholen sie. Das gilt auch für Seiten- und Ebenenänderungen.",
+          "keys": ["Strg+Z", "Strg+Y", "Strg+Umschalt+Z"],
+          "covers": ["key:Z", "key:Y"]
+        }
+      ]
+    },
+    {
+      "id": "datei",
+      "title": "Export und Datei",
+      "intro": "Alles im Menü „⋯“ (Strg+E).",
+      "entries": [
+        {
+          "id": "menu-oeffnen",
+          "title": "Menü per Tastatur",
+          "text": "Strg+E öffnet das Menü „⋯“. Esc schließt Menüs und Optionen.",
+          "keys": ["Strg+E", "Esc"],
+          "covers": ["key:E"]
+        },
+        {
+          "id": "export-bild",
+          "title": "Als PNG oder PDF exportieren",
+          "text": "„Als PNG-Bild …“ speichert den Inhalt als Bild, „Als PDF …“ als PDF (bei Seiten-Boards eine PDF-Seite pro Seite). „Aktive Ebene als PNG …“ exportiert nur die aktive Ebene.",
+          "covers": ["menu:Als PNG-Bild …", "menu:Als PDF …", "menu:Aktive Ebene als PNG …"]
+        },
+        {
+          "id": "export-website",
+          "title": "Ebenen und Website",
+          "text": "„Ebenen und Website (ZIP) …“ exportiert alle Ebenen als PNG plus eine animierte Webseite. „Website-Vorschau“ öffnet diese Seite direkt im Browser.",
+          "only": "Vorschau nicht in der Web-App",
+          "covers": ["menu:Ebenen und Website (ZIP) …", "menu:Website-Vorschau"]
+        },
+        {
+          "id": "datei-kopie",
+          "title": "Kopie, Download und Xournal++",
+          "text": "„Kopie speichern unter …“ (PC, Android) bzw. „Herunterladen (.owndraw)“ (Web-App) sichert das Board als Datei. „Xournal++ exportieren …“ schreibt eine .xopp-Datei mit Seiten und Ebenen. .xopp-Dateien lassen sich auch öffnen.",
+          "covers": ["menu:Kopie speichern unter …", "menu:Herunterladen (.owndraw)", "menu:Xournal++ exportieren …"]
+        },
+        {
+          "id": "datei-umbenennen",
+          "title": "Umbenennen",
+          "text": "„⋯“ → „Umbenennen …“ oder ein Klick auf den Namen oben links.",
+          "covers": ["menu:Umbenennen …"]
+        },
+        {
+          "id": "datei-drop",
+          "title": "Drag & Drop",
+          "text": "Zieh Bilder ins Board, um sie an dieser Stelle einzufügen. .owndraw- und .xopp-Dateien werden geöffnet. Ein Bild auf der Startseite ergibt ein neues Board.",
+          "covers": ["extra:drop"]
+        },
+        {
+          "id": "datei-weiteres",
+          "title": "Einstellungen, Fehler melden, Apps",
+          "text": "Aus dem Menü erreichst du die Einstellungen. In der Web-App mit Server meldest du dort Fehler (mit Screenshots) und lädst die Android- und Linux-App herunter.",
+          "covers": ["menu:Einstellungen", "menu:Fehler melden …", "menu:Apps herunterladen"]
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "title": "Live-Zusammenarbeit",
+      "intro": "In der Web-App mit Konto und Lizenz.",
+      "entries": [
+        {
+          "id": "live-server",
+          "title": "Auf dem Server speichern",
+          "text": "Mit Lizenz landen neue Boards direkt auf dem Server. Ein Board aus dem Browser lädst du über „⋯“ → „Auf dem Server speichern“ hoch.",
+          "only": "Web-App mit Lizenz",
+          "covers": ["menu:Auf dem Server speichern"]
+        },
+        {
+          "id": "live-teilen",
+          "title": "Teilen und einladen",
+          "text": "„⋯“ → „Teilen …“ oder der Knopf in der Live-Leiste. Lade per E-Mail ein (Konto nötig, keine Lizenz) oder erstelle einen Einladungslink, der auch ohne Konto funktioniert. Rolle: „Darf bearbeiten“ oder „Nur ansehen“. Links können nach Stunden oder Tagen ablaufen.",
+          "only": "Web-App, Besitzer mit Lizenz",
+          "covers": ["menu:Teilen …"]
+        },
+        {
+          "id": "live-leiste",
+          "title": "Live-Leiste",
+          "text": "Zeigt, ob du verbunden bist, und wer gerade mitarbeitet. Die Cursor der anderen siehst du auf dem Board, ihre Änderungen erscheinen sofort.",
+          "only": "Web-App",
+          "covers": ["extra:live"]
+        }
+      ]
+    },
+    {
+      "id": "eingabe",
+      "title": "Maus, Stift und Touch",
+      "entries": [
+        {
+          "id": "input-maus",
+          "title": "Maus",
+          "text": "Links zeichnen bzw. das Werkzeug benutzen. Mittlere oder rechte Taste ziehen verschiebt. Rechtsklick ohne Bewegung öffnet das Kontextmenü, Mittelklick wählt ein Objekt aus.",
+          "covers": ["extra:maus"]
+        },
+        {
+          "id": "input-stift",
+          "title": "Stift",
+          "text": "Ein Stift zeichnet immer, auch wenn Fingerzeichnen aus ist. Die Hand darf aufliegen: Während der Stift zeichnet, werden Finger ignoriert. Radierseite und Seitentaste radieren.",
+          "covers": ["extra:stift"]
+        },
+        {
+          "id": "input-touch",
+          "title": "Touch",
+          "text": "Zwei Finger zoomen und verschieben. Langes Tippen öffnet das Einfügen-Menü. Am Handy erscheinen Optionen, Ebenen und Seiten bildschirmfüllend.",
+          "covers": ["extra:touch"]
+        }
+      ]
+    },
+    {
+      "id": "kuerzel",
+      "title": "Tastenkürzel",
+      "intro": "Alle Kürzel auf einen Blick. Am Mac gilt Cmd statt Strg.",
+      "entries": [
+        {
+          "id": "keys-werkzeuge",
+          "title": "Werkzeuge",
+          "text": "P Stift · M Marker · E Radierer · S Auswahl · R Form · T Text · N Haftnotiz · I Bild",
+          "keys": ["P", "M", "E", "S", "R", "T", "N", "I"],
+          "covers": []
+        },
+        {
+          "id": "keys-bearbeiten",
+          "title": "Bearbeiten",
+          "text": "Strg+Z rückgängig · Strg+Y oder Strg+Umschalt+Z wiederholen · Strg+C/X/V kopieren, ausschneiden, einfügen · Strg+D duplizieren · Entf löschen · Strg+S speichern",
+          "keys": ["Strg+Z", "Strg+Y", "Strg+C", "Strg+X", "Strg+V", "Strg+D", "Entf", "Strg+S"],
+          "covers": []
+        },
+        {
+          "id": "keys-ansicht",
+          "title": "Ansicht und Menüs",
+          "text": "0 alles zeigen · + / − zoomen · Leertaste halten zum Verschieben · Strg+E Menü · Esc schließen · F1 Anleitung",
+          "keys": ["0", "+", "−", "Leertaste", "Strg+E", "Esc", "F1"],
+          "covers": []
+        }
+      ]
+    },
+    {
+      "id": "tipps",
+      "title": "Tipps & Tricks",
+      "entries": [
+        {
+          "id": "tipp-gerade",
+          "title": "Perfekt gerade Linie",
+          "text": "Zeichne eine Linie und bleib am Ende kurz stehen. Sie wird gerade und rastet im 45°-Raster ein. Mit gedrückter Umschalttaste bleibt sie frei.",
+          "covers": []
+        },
+        {
+          "id": "tipp-schnellwahl",
+          "title": "Schnell auswählen ohne Werkzeugwechsel",
+          "text": "Mittelklick auf ein Objekt wählt es aus. Nach dem Abwählen bist du wieder beim vorigen Werkzeug.",
+          "covers": []
+        },
+        {
+          "id": "tipp-kopie",
+          "title": "Mehrfach einfügen",
+          "text": "Fügst du mehrmals hintereinander ein, versetzt OwnDraw jede Kopie leicht. So liegen sie nicht übereinander.",
+          "covers": []
+        },
+        {
+          "id": "tipp-ebene",
+          "title": "Hintergrund sperren",
+          "text": "Leg Vorlagen oder Bilder in eine eigene Ebene und sperre sie mit dem Schloss. Dann verschiebst oder radierst du sie nicht aus Versehen.",
+          "covers": []
+        },
+        {
+          "id": "tipp-handballen",
+          "title": "Mit Stift auf dem Tablet",
+          "text": "Schalte „Mit dem Finger zeichnen“ aus. Dann zeichnet nur der Stift, mit dem Finger verschiebst du die Ansicht.",
+          "covers": []
+        },
+        {
+          "id": "tipp-leisten",
+          "title": "Mehr Platz zum Zeichnen",
+          "text": "Docke die Werkzeugleiste seitlich an. Sie wird dann senkrecht und schmal. Werkzeuge, die du nie brauchst, blendest du unter „Werkzeuge bearbeiten …“ aus.",
+          "covers": []
+        },
+        {
+          "id": "tipp-sichern",
+          "title": "Boards im Browser sichern",
+          "text": "Ohne Server liegen Boards nur in diesem Browser. Lade wichtige Boards regelmäßig mit Strg+S herunter.",
+          "covers": []
+        },
+        {
+          "id": "tipp-alles",
+          "title": "Verloren auf dem Board?",
+          "text": "Drück 0 oder klick auf die Prozentanzeige, dann siehst du wieder alles.",
+          "covers": []
+        }
+      ]
+    }
+  ]
+}

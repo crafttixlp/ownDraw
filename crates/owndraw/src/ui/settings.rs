@@ -8,10 +8,10 @@
 use crate::layout::{Env, FormFactor};
 use crate::platform::{FileRef, Platform};
 use crate::settings::{BarPos, SaveChoice, Settings, Theme, ACCENTS};
-use crate::style::{self, c, Icons};
+use crate::style::{self, c, sp, Icons};
 use crate::ui::editor::keys::{self, Chord, Kind};
 use crate::ui::editor::tools::{self, Group};
-use egui::{Color32, CornerRadius, Event, Id, Key, Margin, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, CornerRadius, Event, Id, Key, Sense, Stroke, Ui, Vec2};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsAction {
@@ -41,6 +41,16 @@ enum Page {
 
 fn page_id() -> Id {
     Id::unique("settings-page")
+}
+
+/// Öffnet die Einstellungen beim nächsten Anzeigen auf der Seite „Tastenkürzel“.
+pub fn open_keys_page(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(page_id(), Page::Keys));
+}
+
+/// Öffnet die Einstellungen beim nächsten Anzeigen auf der Seite „Werkzeuge“.
+pub fn open_tools_page(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(page_id(), Page::Tools));
 }
 
 /// Zeile: Beschriftung (mit optionaler Erklärung) und Bedienelement.
@@ -121,9 +131,16 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
     let side = if compact { 16 } else { 32 };
     let mut page: Page = ui.data(|d| d.get_temp(page_id())).unwrap_or_default();
 
-    egui::Frame::new().inner_margin(egui::Margin { left: side, right: side, top: 12, bottom: 0 }).show(ui, |ui| {
+    // Kopfzeile bündig mit der Inhaltsspalte: Zurück-Knopf + Titel (+ Unterseite als Pfad)
+    let full = ui.available_width();
+    let col_w = (full - 2.0 * side as f32).clamp(100.0, MAX_W);
+    let pad = ((full - col_w) / 2.0).max(0.0);
+    egui::Frame::new().inner_margin(egui::Margin { left: 0, right: 0, top: 12, bottom: 4 }).show(ui, |ui| {
         ui.horizontal(|ui| {
-            if style::plain_btn(ui, "‹ Zurück", env.btn).clicked() {
+            ui.add_space((pad - env.btn - sp::S).max(side as f32 * 0.5));
+            let p = style::pal();
+            let tip = if page == Page::Main { "Zurück" } else { "Zurück zu den Einstellungen" };
+            if style::icon_btn(ui, icons, owndraw_core::icons::BACK, p.text, false, false, env.btn, tip).clicked() {
                 if page == Page::Main {
                     act = SettingsAction::Back;
                 } else {
@@ -131,12 +148,20 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
                     ui.data_mut(|d| d.remove::<KeyEdit>(key_edit_id()));
                 }
             }
+            ui.add_space(sp::XS);
+            if page != Page::Main && !compact {
+                if ui.add(egui::Label::new(egui::RichText::new("Einstellungen").size(style::fs::TITLE).color(c(p.dim))).sense(Sense::click())).on_hover_text("Zurück zu den Einstellungen").clicked() {
+                    page = Page::Main;
+                    ui.data_mut(|d| d.remove::<KeyEdit>(key_edit_id()));
+                }
+                ui.label(egui::RichText::new("›").size(style::fs::TITLE).color(c(p.dim)));
+            }
             let title = match page {
                 Page::Main => "Einstellungen",
                 Page::Tools => "Werkzeuge",
                 Page::Keys => "Tastenkürzel",
             };
-            ui.label(egui::RichText::new(title).size(22.0).strong());
+            ui.label(style::title(title));
         });
     });
 
@@ -149,7 +174,7 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
             ui.vertical(|ui| {
                 ui.set_width(w);
                 match page {
-                    Page::Main => content(ui, &env, settings, platform, &mut act, &mut page),
+                    Page::Main => content(ui, &env, settings, platform, icons, &mut act, &mut page),
                     Page::Tools => tools_page(ui, &env, settings, icons, &mut act),
                     Page::Keys => keys_page(ui, &env, settings),
                 }
@@ -165,9 +190,26 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
     act
 }
 
-fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform, act: &mut SettingsAction, page: &mut Page) {
+fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform, icons: &mut Icons, act: &mut SettingsAction, page: &mut Page) {
     let p = style::pal();
     let btn = env.btn;
+
+    // ---- Schnellzugriff auf die Unterseiten (gut auffindbar statt tief in den Abschnitten)
+    ui.add_space(sp::S);
+    style::card().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let n_on = tools::TOOLS.iter().filter(|d| tools::enabled(settings, d.id)).count();
+        let n_new = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id)).count();
+        let sub = if n_new > 0 { format!("{n_on} von {} eingeschaltet · {n_new} neue verfügbar", tools::TOOLS.len()) } else { format!("{n_on} von {} eingeschaltet", tools::TOOLS.len()) };
+        if nav_row(ui, icons, owndraw_core::icons::SLIDERS, "Werkzeuge", &sub, n_new > 0, btn) {
+            *page = Page::Tools;
+        }
+        style::separator(ui);
+        if nav_row(ui, icons, owndraw_core::icons::GEAR, "Tastenkürzel", "Jede Aktion frei belegen, auch mehrere Kürzel", false, btn) {
+            *page = Page::Keys;
+        }
+    });
 
     // ---- Darstellung
     section(ui, "Darstellung", |ui| {
@@ -435,15 +477,25 @@ fn icon_step(ui: &mut Ui, label: &str, h: f32) -> egui::Response {
 // ---------------------------------------------------------------- Seite „Werkzeuge“
 
 /// Hinweis-Plakette (z. B. „Neu“).
-fn badge(ui: &mut Ui, text: &str) {
+/// Navigationszeile zu einer Unterseite: Symbol, Titel, Untertitel, „Neu“-Punkt, Pfeil.
+fn nav_row(ui: &mut Ui, icons: &mut Icons, icon: i32, title: &str, sub: &str, dot: bool, btn: f32) -> bool {
     let p = style::pal();
-    egui::Frame::new()
-        .fill(c(p.accent_soft))
-        .corner_radius(CornerRadius::same(if style::modern() { 6 } else { 255 }))
-        .inner_margin(Margin::symmetric(7, 1))
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(text).size(11.5).strong().color(c(p.accent)));
-        });
+    let w = ui.available_width();
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(w, (btn + 18.0).max(56.0)), Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(r.expand2(Vec2::new(6.0, 0.0)), CornerRadius::same(8), c(p.hover));
+    }
+    let ic_c = egui::pos2(r.left() + 18.0, r.center().y);
+    ui.painter().circle_filled(ic_c, 18.0, c(p.accent_soft));
+    icons.paint(ui, egui::Rect::from_center_size(ic_c, Vec2::splat(36.0)), icon, p.accent, false, 20.0);
+    ui.painter().text(egui::pos2(r.left() + 50.0, r.center().y - 9.0), egui::Align2::LEFT_CENTER, title, egui::FontId::proportional(style::fs::BODY + 0.5), c(p.text));
+    ui.painter().text(egui::pos2(r.left() + 50.0, r.center().y + 10.0), egui::Align2::LEFT_CENTER, sub, egui::FontId::proportional(style::fs::SMALL), c(p.dim));
+    if dot {
+        let tw = ui.painter().layout_no_wrap(title.to_string(), egui::FontId::proportional(style::fs::BODY + 0.5), c(p.text)).size().x;
+        ui.painter().circle_filled(egui::pos2(r.left() + 50.0 + tw + 8.0, r.center().y - 9.0), 4.0, c(p.accent));
+    }
+    ui.painter().text(egui::pos2(r.right() - 8.0, r.center().y), egui::Align2::RIGHT_CENTER, "›", egui::FontId::proportional(22.0), c(p.dim));
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 
 /// Ein/Aus-Schalter; liefert true bei Klick.
@@ -463,8 +515,20 @@ fn switch(ui: &mut Ui, on: bool, enabled: bool, tip: &str) -> bool {
 fn tools_page(ui: &mut Ui, env: &Env, settings: &mut Settings, icons: &mut Icons, act: &mut SettingsAction) {
     let p = style::pal();
     let btn = env.btn;
-    ui.add_space(8.0);
-    ui.add(egui::Label::new(egui::RichText::new("Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln. Bereits gezeichnete Objekte bleiben bearbeitbar. Mindestens ein Werkzeug bleibt eingeschaltet.").color(c(p.dim))).wrap());
+    ui.add_space(sp::S);
+    let n_new_off = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id)).count();
+    style::info_card(ui, |ui| {
+        ui.label(egui::RichText::new("So passt du die Werkzeugleiste an").strong());
+        ui.add(egui::Label::new(style::hint("Neue Werkzeuge sind anfangs ausgeschaltet, damit die Leiste übersichtlich bleibt. Schalte hier ein, was du brauchst – oder im Editor über den Knopf „+“ am Ende der Werkzeugleiste. Ausgeschaltete Werkzeuge verschwinden aus Leiste und Tastenkürzeln; schon gezeichnete Objekte bleiben bearbeitbar.")).wrap());
+        if n_new_off > 0 {
+            ui.add_space(sp::XS);
+            if style::accent_btn(ui, &format!("Alle {n_new_off} neuen Werkzeuge einschalten"), btn.min(36.0)).clicked() {
+                for d in tools::TOOLS.iter().filter(|d| d.new) {
+                    tools::set_enabled(settings, d.id, true);
+                }
+            }
+        }
+    });
     let n_on = tools::TOOLS.iter().filter(|d| tools::enabled(settings, d.id)).count();
     for g in Group::ALL {
         let list: Vec<&tools::ToolDef> = tools::TOOLS.iter().filter(|d| d.group == g).collect();
@@ -472,54 +536,65 @@ fn tools_page(ui: &mut Ui, env: &Env, settings: &mut Settings, icons: &mut Icons
             continue;
         }
         section(ui, g.label(), |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
             for (i, d) in list.iter().enumerate() {
                 if i > 0 {
-                    ui.separator();
+                    style::separator(ui);
                 }
                 let on = tools::enabled(settings, d.id);
                 let last = on && n_on <= 1;
-                ui.horizontal(|ui| {
-                    let (r, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
-                    ui.painter().circle_filled(r.center(), 18.0, c(if on { p.accent_soft } else { p.hover }));
-                    icons.paint(ui, r, d.icon, if on { p.accent } else { p.dim }, false, 20.0);
-                    let text_w = (ui.available_width() - 60.0).max(80.0);
-                    ui.allocate_ui_with_layout(Vec2::new(text_w, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
-                        ui.set_width(text_w);
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(egui::RichText::new(d.name).strong());
-                            if d.new {
-                                badge(ui, "Neu");
-                            }
-                            let k = keys::labels(settings, &keys::tool_action(d.id));
-                            if !k.is_empty() {
-                                ui.label(egui::RichText::new(k.join(" · ")).monospace().size(12.0).color(c(p.dim)));
-                            }
-                        });
-                        let mut desc = d.desc.to_string();
-                        if let Some(par) = d.parent.and_then(tools::def) {
-                            if !tools::enabled(settings, par.id) {
-                                desc.push_str(&format!(" Da „{}“ aus ist, bekommt sie einen eigenen Knopf.", par.name));
-                            }
-                        }
-                        ui.add(egui::Label::new(egui::RichText::new(desc).size(12.5).color(c(p.dim))).wrap());
-                    });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let tip = if last { "Mindestens ein Werkzeug bleibt eingeschaltet" } else if on { "Ausschalten" } else { "Einschalten" };
-                        if switch(ui, on, !last, tip) {
-                            tools::set_enabled(settings, d.id, !on);
-                        }
-                    });
-                });
+                let w = ui.available_width();
+                let mut desc = d.desc.to_string();
+                if let Some(par) = d.parent.and_then(tools::def) {
+                    if !tools::enabled(settings, par.id) {
+                        desc.push_str(&format!(" Da „{}“ aus ist, bekommt sie einen eigenen Knopf.", par.name));
+                    }
+                }
+                let desc_g = ui.painter().layout(desc, egui::FontId::proportional(style::fs::SMALL), c(p.dim), (w - 120.0).max(80.0));
+                let h = (desc_g.size().y + 36.0).max(env.btn + 12.0);
+                let (r, resp) = ui.allocate_exact_size(Vec2::new(w, h), if last { Sense::hover() } else { Sense::click() });
+                if resp.hovered() && !last {
+                    ui.painter().rect_filled(r.expand2(Vec2::new(6.0, 0.0)), CornerRadius::same(8), c(p.hover));
+                }
+                // Symbol mittig zur Textspalte
+                let ic_c = egui::pos2(r.left() + 18.0, r.center().y);
+                ui.painter().circle_filled(ic_c, 18.0, c(if on { p.accent_soft } else { p.hover }));
+                icons.paint(ui, egui::Rect::from_center_size(ic_c, Vec2::splat(36.0)), d.icon, if on { p.accent } else { p.dim }, false, 20.0);
+                let x = r.left() + 50.0;
+                let top = r.center().y - (desc_g.size().y + 22.0) / 2.0;
+                let name_g = ui.painter().layout_no_wrap(d.name.to_string(), egui::FontId::proportional(style::fs::BODY), c(p.text));
+                let mut bx = x + name_g.size().x + 8.0;
+                ui.painter().galley(egui::pos2(x, top), name_g, c(p.text));
+                if d.new {
+                    let g = ui.painter().layout_no_wrap("Neu".into(), egui::FontId::proportional(style::fs::CAPTION), c(p.accent));
+                    let br = egui::Rect::from_min_size(egui::pos2(bx, top + 1.0), g.size() + Vec2::new(12.0, 4.0));
+                    ui.painter().rect_filled(br, CornerRadius::same(255), c(p.accent_soft));
+                    ui.painter().galley(br.min + Vec2::new(6.0, 2.0), g, c(p.accent));
+                    bx = br.right() + 8.0;
+                }
+                let k = keys::labels(settings, &keys::tool_action(d.id));
+                if !k.is_empty() {
+                    ui.painter().text(egui::pos2(bx, top + 9.0), egui::Align2::LEFT_CENTER, k.join(" · "), egui::FontId::monospace(11.5), c(p.dim));
+                }
+                ui.painter().galley(egui::pos2(x, top + 22.0), desc_g, c(p.dim));
+                // Schalter rechts, mittig
+                let sw = egui::Rect::from_center_size(egui::pos2(r.right() - 22.0, r.center().y), Vec2::new(44.0, 26.0));
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(sw));
+                let tip = if last { "Mindestens ein Werkzeug bleibt eingeschaltet" } else if on { "Ausschalten" } else { "Einschalten" };
+                let sw_click = switch(&mut child, on, !last, tip);
+                if (sw_click || resp.clicked()) && !last {
+                    tools::set_enabled(settings, d.id, !on);
+                }
             }
         });
     }
-    ui.add_space(14.0);
+    ui.add_space(sp::L);
     ui.horizontal_wrapped(|ui| {
         if style::accent_btn(ui, "Leiste anordnen …", btn).clicked() {
             *act = SettingsAction::EditTools;
         }
         let default = settings.tool_on.is_empty() && settings.tool_order.is_empty();
-        if ui.add_enabled(!default, egui::Button::new("Standard").min_size(egui::vec2(0.0, btn))).clicked() {
+        if ui.add_enabled(!default, egui::Button::new("Auf Standard zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
             tools::reset(settings);
         }
     });

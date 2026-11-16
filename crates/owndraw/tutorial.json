@@ -16,8 +16,8 @@
         {
           "id": "start-aufbau",
           "title": "Aufbau des Editors",
-          "text": "Oben links stehen Zurück, der Name des Boards und der Speicherstatus. Oben rechts liegen Rückgängig, Wiederholen, die Zoomanzeige und das Menü „⋯“. Die Werkzeugleiste sitzt je nach Bildschirm oben (PC), links (Tablet) oder unten (Handy).",
-          "how": ["Der farbige Punkt neben dem Namen zeigt den Speicherstatus: grün gespeichert, gelb wird gespeichert, rot Fehler.", "Ein Klick auf den Namen benennt das Board um."],
+          "text": "Oben links stehen Zurück, der Name des Boards und der Speicherstatus. Oben rechts liegen Rückgängig, Wiederholen, die Zoomanzeige und das Menü „…“. Die Werkzeugleiste sitzt je nach Bildschirm oben (PC), links (Tablet) oder unten (Handy).",
+          "how": ["Der farbige Punkt neben dem Namen zeigt den Speicherstatus: grün gespeichert, gelb wird gespeichert, rot Fehler.", "Ein Klick auf den Namen benennt das Board um.", "Der kleine Farbpunkt am gewählten Werkzeug zeigt die aktuelle Farbe.", "Das Menü „…“ ist in Ansicht, Hintergrund, Export, Datei sowie Einstellungen & Hilfe gegliedert."],
           "covers": ["extra:aufbau"]
         },
         {
@@ -30,14 +30,14 @@
         {
           "id": "start-anleitung",
           "title": "Diese Anleitung öffnen",
-          "text": "Die Anleitung erreichst du jederzeit: auf der Startseite über „Anleitung“, im Editor über „⋯“ → „Anleitung & Tipps“ oder mit F1. In der Web-App führt auch die Adresse /tutorial direkt hierher.",
+          "text": "Die Anleitung erreichst du jederzeit: auf der Startseite über „Anleitung“, im Editor über „…“ → „Anleitung & Tipps“ oder mit F1. In der Web-App führt auch die Adresse /tutorial direkt hierher.",
           "action": ["help"],
           "covers": ["action:help", "menu:Anleitung & Tipps"]
         },
         {
           "id": "start-schliessen",
           "title": "Board schließen",
-          "text": "„⋯“ → „Schließen“ oder der Zurück-Knopf oben links speichert das Board und kehrt zur Startseite zurück.",
+          "text": "„…“ → „Schließen“ oder der Zurück-Knopf oben links speichert das Board und kehrt zur Startseite zurück.",
           "covers": ["menu:Schließen"]
         }
       ]
@@ -323,7 +323,7 @@
           "id": "view-fit",
           "title": "Alles zeigen",
           "text": "Passt die Ansicht so an, dass alles zu sehen ist. Im Seitenmodus wird die Seitenbreite eingepasst.",
-          "how": ["„⋯“ → „Alles zeigen“, Taste 0 oder Klick auf die Zoomanzeige."],
+          "how": ["„…“ → „Alles zeigen“, Taste 0 oder Klick auf die Zoomanzeige."],
           "action": ["fit"],
           "covers": ["action:fit", "menu:Alles zeigen"]
         },
@@ -331,13 +331,13 @@
           "id": "view-hintergrund",
           "title": "Hintergrund",
           "text": "Unendliches Board: Punkte, Raster, Linien oder Leer. Im Seitenmodus wählst du für jede Seite Blanko, Liniert, Kariert oder Punktiert, die Wahl gilt auch für neue Seiten.",
-          "how": ["„⋯“ → Hintergrund."],
+          "how": ["„…“ → Hintergrund."],
           "covers": ["extra:hintergrund"]
         },
         {
           "id": "view-dunkel",
           "title": "Board hell oder dunkel",
-          "text": "„⋯“ → „Board: dunkel“ bzw. „Board: hell“ wechselt die Farbe des Boards selbst. Das wird mit dem Board gespeichert und ist unabhängig vom Farbschema der App.",
+          "text": "„…“ → „Board: dunkel“ bzw. „Board: hell“ wechselt die Farbe des Boards selbst. Das wird mit dem Board gespeichert und ist unabhängig vom Farbschema der App.",
           "covers": ["menu:Board: hell", "menu:Board: dunkel"]
         }
       ]
@@ -351,7 +351,7 @@
           "id": "pages-leiste",
           "title": "Seitenleiste",
           "text": "Zeigt alle Seiten mit Vorschau. Am PC ist sie links angedockt und lässt sich mit „‹“ einklappen. Dann erscheint die kleine Leiste „‹ Seite n / m › +“, ein Tipp auf den Text öffnet die Liste wieder.",
-          "how": ["„⋯“ → „Seiten“ bzw. „Seiten ausblenden“."],
+          "how": ["„…“ → „Seiten“ bzw. „Seiten ausblenden“."],
           "covers": ["menu:Seiten", "menu:Seiten ausblenden"]
         },
         {
@@ -370,7 +370,7 @@
           "id": "layers-panel",
           "title": "Ebenen-Leiste",
           "text": "Jede Ebene lässt sich ein- und ausblenden (Auge) und sperren (Schloss). Ein Klick auf den Namen macht sie aktiv, ein Doppelklick benennt sie um. Neues landet immer in der aktiven Ebene.",
-          "how": ["„⋯“ → „Ebenen“ bzw. „Ebenen ausblenden“.", "Über „⋯“ oder Rechtsklick an der Ebene: Umbenennen, Animation & Deckkraft, als PNG exportieren, nach vorne/hinten, löschen.", "Unten: „+ Ebene“, „Vorlage“ (7 fertige animierte Ebenen) und „Bild“."],
+          "how": ["„…“ → „Ebenen“ bzw. „Ebenen ausblenden“.", "Über „…“ oder Rechtsklick an der Ebene: Umbenennen, Animation & Deckkraft, als PNG exportieren, nach vorne/hinten, löschen.", "Unten: „+ Ebene“, „Vorlage“ (7 fertige animierte Ebenen) und „Bild“."],
           "covers": ["menu:Ebenen", "menu:Ebenen ausblenden"]
         },
         {
@@ -401,9 +401,16 @@
         {
           "id": "einst-werkzeuge",
           "title": "Werkzeuge ein- und ausschalten",
-          "text": "Einstellungen → „Werkzeuge …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
-          "how": ["Mindestens ein Werkzeug bleibt eingeschaltet.", "Ist „Text“ aus, bekommt die Haftnotiz einen eigenen Knopf.", "„Standard“ schaltet alles auf die Vorgabe zurück."],
-          "covers": ["setting:Werkzeuge", "extra:werkzeuge-seite"]
+          "text": "Einstellungen → „Werkzeuge“ (ganz oben) oder Menü „…“ → „Werkzeuge anpassen …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
+          "how": ["Antippen der ganzen Zeile schaltet das Werkzeug ein oder aus.", "„Alle neuen Werkzeuge einschalten“ holt alle neuen auf einmal in die Leiste.", "Mindestens ein Werkzeug bleibt eingeschaltet.", "Ist „Text“ aus, bekommt die Haftnotiz einen eigenen Knopf.", "„Auf Standard zurücksetzen“ schaltet alles auf die Vorgabe zurück."],
+          "covers": ["setting:Werkzeuge", "extra:werkzeuge-seite", "menu:Werkzeuge anpassen …"]
+        },
+        {
+          "id": "weitere-werkzeuge",
+          "title": "Weitere Werkzeuge mit „+“ hinzufügen",
+          "text": "Am Ende der Werkzeugleiste sitzt der Knopf „+“, solange Werkzeuge ausgeschaltet sind. Er öffnet die Liste „Weitere Werkzeuge“ mit Beschreibung und Tastenkürzel. Ein Tipp auf ein Werkzeug fügt es zur Leiste hinzu und wählt es gleich aus.",
+          "how": ["Ein Punkt am „+“ zeigt neue Werkzeuge, die du noch nicht angesehen hast.", "„Leiste anordnen …“ ändert die Reihenfolge, „Einstellungen …“ öffnet die Werkzeug-Seite.", "Esc oder ein Klick auf das Blatt schließt die Liste."],
+          "covers": ["extra:weitere-werkzeuge"]
         },
         {
           "id": "einst-kuerzel",
@@ -469,12 +476,12 @@
     {
       "id": "datei",
       "title": "Export und Datei",
-      "intro": "Alles im Menü „⋯“ (Strg+E).",
+      "intro": "Alles im Menü „…“ (Strg+E).",
       "entries": [
         {
           "id": "menu-oeffnen",
           "title": "Menü per Tastatur",
-          "text": "Strg+E öffnet das Menü „⋯“. Esc schließt Menüs und Optionen.",
+          "text": "Strg+E öffnet das Menü „…“. Esc schließt Menüs und Optionen.",
           "action": ["menu", "cancel"],
           "covers": ["action:menu", "action:cancel"]
         },
@@ -500,7 +507,7 @@
         {
           "id": "datei-umbenennen",
           "title": "Umbenennen",
-          "text": "„⋯“ → „Umbenennen …“ oder ein Klick auf den Namen oben links.",
+          "text": "„…“ → „Umbenennen …“ oder ein Klick auf den Namen oben links.",
           "covers": ["menu:Umbenennen …"]
         },
         {
@@ -525,7 +532,7 @@
         {
           "id": "live-server",
           "title": "Auf dem Server speichern",
-          "text": "Ein Board aus dem Browser lädst du im Editor über „⋯“ → „Auf dem Server speichern“ als Kopie hoch.",
+          "text": "Ein Board aus dem Browser lädst du im Editor über „…“ → „Auf dem Server speichern“ als Kopie hoch.",
           "only": "Web-App mit Lizenz",
           "covers": ["menu:Auf dem Server speichern"]
         },
@@ -540,7 +547,7 @@
         {
           "id": "live-teilen",
           "title": "Teilen und einladen",
-          "text": "„⋯“ → „Teilen …“ oder der Knopf in der Live-Leiste. Lade per E-Mail ein (Konto nötig, keine Lizenz) oder erstelle einen Einladungslink, der auch ohne Konto funktioniert. Rolle: „Darf bearbeiten“ oder „Nur ansehen“. Links können nach Stunden oder Tagen ablaufen.",
+          "text": "„…“ → „Teilen …“ oder der Knopf in der Live-Leiste. Lade per E-Mail ein (Konto nötig, keine Lizenz) oder erstelle einen Einladungslink, der auch ohne Konto funktioniert. Rolle: „Darf bearbeiten“ oder „Nur ansehen“. Links können nach Stunden oder Tagen ablaufen.",
           "only": "Web-App, Besitzer mit Lizenz",
           "covers": ["menu:Teilen …"]
         },

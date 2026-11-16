@@ -9,75 +9,117 @@
 <title>OwnDraw</title>
 <link rel="icon" type="image/png" href="owndraw.png">
 <style>
-  :root { --bg: #f6f6f8; --card: #ffffff; --line: #e2e2e8; --text: #17171c; --muted: #6b6b78; --accent: #5b5bf0; --on-accent: #ffffff; --warn: #d4870f; --danger: #d93f3f; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #111114; --card: #18181c; --line: #2a2a31; --text: #ececf1; --muted: #9a9aa8; --accent: #7c7cff; --on-accent: #111116; --warn: #e0a23a; --danger: #ff8484; } }
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; color: var(--text); }
-  /* Canvas über die ganze Seite; eframe übernimmt Größe und Pixeldichte */
-  #owndraw-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
-  #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 16px; overflow: auto; box-sizing: border-box; background: var(--bg); }
-  #lade img { width: 48px; height: 48px; border-radius: 12px; }
-  #lade .ring { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: dreh 0.9s linear infinite; }
-  #lade.fehler { justify-content: flex-start; padding-top: max(16px, 8vh); }
-  #lade.fehler .ring { display: none; }
-  #lade.fehler #text { color: var(--danger); max-width: 36em; font-weight: 600; font-size: 1.1rem; }
-  #hilfe { display: none; width: 100%; max-width: 36em; box-sizing: border-box; text-align: left; line-height: 1.5; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; }
-  #lade.fehler #hilfe { display: block; }
-  #hilfe p { margin: 0 0 10px; }
-  #hilfe p:last-of-type { margin-bottom: 0; }
-  #hilfe ol { padding-left: 1.3em; margin: 8px 0 10px; }
-  #hilfe details { margin-top: 12px; color: var(--muted); font-size: 13px; }
-  #hilfe summary { cursor: pointer; }
-  #hilfe code { font-size: 12px; word-break: break-word; }
-  #lade.fehler > small { display: none; }
-  #lade small { color: var(--muted); }
-  @keyframes dreh { to { transform: rotate(360deg); } }
-  noscript { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-  /* Mitteilungen vom Server (/api/notices) und Hinweis für Admins im Wartungsmodus */
-  #mitteilung { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0,0,0,.45); }
-  #mitteilung .karte { background: var(--card); color: var(--text); border: 1px solid var(--line); max-width: 30em; width: 100%; max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; border-radius: 12px; padding: 20px 22px; box-shadow: 0 8px 28px rgba(0,0,0,.18); }
-  #mitteilung .karte.warnung::before { content: "Wichtig"; display: inline-block; margin-bottom: 10px; padding: 2px 10px; border: 1px solid var(--warn); border-radius: 999px; color: var(--warn); font-size: 12px; font-weight: 600; }
-  #mitteilung h2 { margin: 0 0 8px; font-size: 1.1rem; }
-  #mitteilung p { margin: 0 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
-  #mitteilung .fuss { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  #mitteilung small { color: var(--muted); }
-  #mitteilung button { font: inherit; font-weight: 600; padding: 0 18px; border-radius: 8px; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; height: 38px; }
-  /* Mitteilung mit angehängtem Board: breite Karte, Board schreibgeschützt in der Mitte (zoomen/verschieben) */
-  #mitteilung .karte.mit-board { max-width: min(1100px, 100%); display: flex; flex-direction: column; overflow: hidden; }
-  #mitteilung .karte.mit-board p { max-height: 22vh; overflow: auto; flex: 0 0 auto; }
-  #mitteilung .board { position: relative; flex: 1 1 auto; height: min(70vh, 900px); min-height: 180px; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
-  #mitteilung .board.zieht { cursor: grabbing; }
-  #mitteilung .board img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; -webkit-user-drag: none; pointer-events: none; }
-  #mitteilung .board .info { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; padding: 16px; text-align: center; }
-  #mitteilung .zoom { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; padding: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
-  #mitteilung .zoom button { height: 30px; min-width: 30px; padding: 0 8px; border-radius: 7px; background: transparent; color: var(--text); font-weight: 600; }
-  @media (max-width: 520px) { #mitteilung .zoom { right: 6px; bottom: 6px; padding: 2px; gap: 2px; } #mitteilung .zoom button { height: 26px; min-width: 26px; padding: 0 6px; font-size: 13px; } }
-  #mitteilung .zoom button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
-  #wartung-admin { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 40; background: var(--card); color: var(--warn); border: 1px solid var(--warn); font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; pointer-events: none; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* Fehler melden (nur mit Server, geöffnet aus der App über window.owndrawFehlerMelden) */
-  #fehlerbericht { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0,0,0,.45); }
-  #fehlerbericht .karte { background: var(--card); color: var(--text); border: 1px solid var(--line); max-width: 34em; width: 100%; max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; border-radius: 12px; padding: 20px 22px; box-shadow: 0 8px 28px rgba(0,0,0,.18); }
-  #fehlerbericht h2 { margin: 0 0 4px; font-size: 1.1rem; }
-  #fehlerbericht .sub { margin: 0 0 14px; color: var(--muted); font-size: 14px; line-height: 1.45; }
-  #fehlerbericht label.feld { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin: 12px 0 6px; }
-  #fehlerbericht textarea { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical; font: inherit; font-size: 15px; line-height: 1.45; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
-  #fehlerbericht textarea:focus-visible, #fehlerbericht button:focus-visible, #fehlerbericht input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  #fehlerbericht .zone { border: 1px dashed var(--line); border-radius: 10px; padding: 12px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.45; }
-  #fehlerbericht .zone.drueber { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-  #fehlerbericht .bilder { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  #fehlerbericht .bilder:empty { display: none; }
-  #fehlerbericht .bild { position: relative; width: 84px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
-  #fehlerbericht .bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  #fehlerbericht .bild button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 14px; line-height: 22px; cursor: pointer; }
-  #fehlerbericht .tech { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 14px; }
-  #fehlerbericht .tech input { margin-top: 3px; accent-color: var(--accent); }
-  #fehlerbericht .tech small { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-  #fehlerbericht .meldung { margin-top: 12px; font-size: 14px; }
-  #fehlerbericht .meldung.err { color: var(--danger); }
-  #fehlerbericht .fuss { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-  #fehlerbericht button { font: inherit; font-weight: 600; padding: 0 16px; border-radius: 8px; height: 38px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--text); }
-  #fehlerbericht button.haupt { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-  #fehlerbericht button.link { border: 0; padding: 0; height: auto; color: var(--accent); background: none; font-weight: 600; }
-  #fehlerbericht button:disabled { opacity: .55; cursor: default; }
+/* === OwnDraw Design-Tokens (in allen Oberflächen identisch) === */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f8; --surface: #ffffff; --surface-2: #eeeef2; --line: #e2e2e8; --text: #17171c; --muted: #6b6b78;
+  --accent: #5b5bf0; --on-accent: #ffffff; --accent-soft: #ebebfe;
+  --danger: #d93f3f; --ok: #1f9d5a; --warn: #b8730b;
+  --hover: rgba(0,0,0,.05); --overlay: rgba(10,10,16,.45);
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --r-sm: 8px; --r: 12px; --r-lg: 16px;
+  --shadow-1: 0 1px 2px rgba(20,20,40,.06); --shadow-2: 0 8px 28px rgba(20,20,40,.14);
+  --fs-xs: .75rem; --fs-sm: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 1.625rem;
+  --font: system-ui, -apple-system, "Segoe UI", Ubuntu, Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --tap: 40px;
+  --focus: 2px solid var(--accent);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111114; --surface: #18181c; --surface-2: #0c0c0f; --line: #2a2a31; --text: #ececf1; --muted: #9a9aa8;
+    --accent: #7c7cff; --on-accent: #111116; --accent-soft: #23233a;
+    --danger: #ff8484; --ok: #3ccb7f; --warn: #e0a23a;
+    --hover: rgba(255,255,255,.06); --overlay: rgba(0,0,0,.6);
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 8px 28px rgba(0,0,0,.5);
+  }
+}
+@media (pointer: coarse) { :root { --tap: 44px; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: var(--font); color: var(--text); -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: var(--focus); outline-offset: 2px; }
+/* Canvas über die ganze Seite; eframe übernimmt Größe und Pixeldichte */
+#owndraw-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+/* Ladebildschirm und Fehlerseite */
+#lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s3); text-align: center; padding: var(--s4); overflow: auto; background: var(--bg); }
+#lade img { width: 56px; height: 56px; border-radius: var(--r); }
+#lade .ring { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: dreh 0.9s linear infinite; }
+#lade #text { font-size: var(--fs-md); color: var(--muted); }
+#lade.fehler { justify-content: flex-start; padding-top: max(var(--s4), 8vh); }
+#lade.fehler .ring { display: none; }
+#lade.fehler #text { color: var(--danger); max-width: 36em; font-weight: 600; font-size: var(--fs-lg); line-height: 1.3; }
+#hilfe { display: none; width: 100%; max-width: 36em; text-align: left; line-height: 1.5; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4) var(--s5); box-shadow: var(--shadow-1); }
+#lade.fehler #hilfe { display: block; }
+#hilfe p { margin: 0 0 var(--s3); }
+#hilfe p:last-of-type { margin-bottom: 0; }
+#hilfe ol { padding-left: 1.3em; margin: var(--s2) 0 var(--s3); }
+#hilfe li { margin-bottom: var(--s2); }
+#hilfe details { margin-top: var(--s3); color: var(--muted); font-size: var(--fs-sm); }
+#hilfe summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; }
+#hilfe code { font: var(--fs-xs) var(--mono); word-break: break-word; }
+#lade.fehler > small { display: none; }
+#lade small { color: var(--muted); font-size: var(--fs-xs); }
+@keyframes dreh { to { transform: rotate(360deg); } }
+noscript { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--s4); text-align: center; background: var(--bg); }
+/* Gemeinsame Knöpfe der Dialoge */
+#mitteilung button, #fehlerbericht button { font: inherit; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--s4); border-radius: var(--r-sm); min-height: var(--tap); cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--text); transition: background .15s; }
+#mitteilung button:hover, #fehlerbericht button:hover { background: var(--hover); }
+#mitteilung > .karte > .fuss > button, #fehlerbericht button.haupt { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+#mitteilung > .karte > .fuss > button:hover, #fehlerbericht button.haupt:hover { background: var(--accent); filter: brightness(1.08); }
+/* Mitteilungen vom Server (/api/notices) und Hinweis für Admins im Wartungsmodus */
+#mitteilung, #fehlerbericht { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: var(--s4); background: var(--overlay); }
+#fehlerbericht { z-index: 60; }
+#mitteilung .karte, #fehlerbericht .karte { background: var(--surface); color: var(--text); border: 1px solid var(--line); width: 100%; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; border-radius: var(--r-lg); padding: var(--s5); box-shadow: var(--shadow-2); }
+#mitteilung .karte { max-width: 30em; }
+#fehlerbericht .karte { max-width: 34em; }
+#mitteilung .karte.warnung::before { content: "Wichtig"; display: inline-block; margin-bottom: var(--s3); padding: 2px var(--s3); border-radius: 999px; background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); font-size: var(--fs-xs); font-weight: 600; }
+#mitteilung h2 { margin: 0 0 var(--s2); font-size: var(--fs-lg); line-height: 1.3; letter-spacing: -.01em; }
+#mitteilung p { margin: 0 0 var(--s4); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+#mitteilung .fuss { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+#mitteilung small { color: var(--muted); font-size: var(--fs-sm); }
+#mitteilung .fuss button { min-width: 96px; }
+/* Mitteilung mit angehängtem Board: breite Karte, Board schreibgeschützt in der Mitte (zoomen/verschieben) */
+#mitteilung .karte.mit-board { max-width: min(1100px, 100%); display: flex; flex-direction: column; overflow: hidden; }
+#mitteilung .karte.mit-board p { max-height: 22vh; overflow: auto; flex: 0 0 auto; }
+#mitteilung .board { position: relative; flex: 1 1 auto; height: min(70vh, 900px); min-height: 180px; margin: 0 0 var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
+#mitteilung .board.zieht { cursor: grabbing; }
+#mitteilung .board img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; -webkit-user-drag: none; pointer-events: none; }
+#mitteilung .board .info { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: var(--fs-sm); padding: var(--s4); text-align: center; }
+#mitteilung .zoom { position: absolute; right: var(--s2); bottom: var(--s2); display: flex; gap: var(--s1); padding: var(--s1); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-2); }
+#mitteilung .zoom button { min-height: 36px; min-width: 36px; padding: 0 var(--s2); border: 0; background: transparent; font-size: var(--fs-sm); }
+@media (pointer: coarse) { #mitteilung .zoom button { min-height: var(--tap); min-width: var(--tap); } }
+#wartung-admin { position: fixed; left: 50%; top: var(--s2); transform: translateX(-50%); z-index: 40; background: var(--surface); color: var(--warn); border: 1px solid var(--warn); font-size: var(--fs-sm); font-weight: 600; padding: var(--s1) var(--s3); border-radius: 999px; pointer-events: none; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-1); }
+/* Fehler melden (nur mit Server, geöffnet aus der App über window.owndrawFehlerMelden) */
+#fehlerbericht h2 { margin: 0 0 var(--s1); font-size: var(--fs-lg); line-height: 1.3; letter-spacing: -.01em; }
+#fehlerbericht .sub { margin: 0 0 var(--s3); color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+#fehlerbericht label.feld { display: block; font-size: var(--fs-sm); font-weight: 500; color: var(--muted); margin: var(--s3) 0 6px; }
+#fehlerbericht textarea { width: 100%; min-height: 120px; resize: vertical; font: inherit; line-height: 1.45; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px var(--s3); }
+#fehlerbericht textarea:hover { border-color: var(--muted); }
+#fehlerbericht textarea:focus-visible, #fehlerbericht input:focus-visible { outline: var(--focus); outline-offset: 1px; border-color: var(--accent); }
+#fehlerbericht .zone { border: 1px dashed var(--line); border-radius: var(--r); padding: var(--s4) var(--s3); text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+#fehlerbericht .zone.drueber { border-color: var(--accent); background: var(--accent-soft); }
+#fehlerbericht .bilder { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+#fehlerbericht .bilder:empty { display: none; }
+#fehlerbericht .bild { position: relative; width: 84px; height: 64px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+#fehlerbericht .bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#fehlerbericht .bild button { position: absolute; top: 3px; right: 3px; width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; font-size: 16px; line-height: 1; }
+#fehlerbericht .bild button:hover { background: rgba(0,0,0,.85); }
+#fehlerbericht .tech { display: flex; gap: var(--s2); align-items: flex-start; margin-top: var(--s3); font-size: var(--fs-sm); min-height: var(--tap); cursor: pointer; }
+#fehlerbericht .tech input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; accent-color: var(--accent); }
+#fehlerbericht .tech small { display: block; color: var(--muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+#fehlerbericht .meldung { margin-top: var(--s3); font-size: var(--fs-sm); }
+#fehlerbericht .meldung.err { color: var(--danger); }
+#fehlerbericht .fuss { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s4); }
+#fehlerbericht button.link { border: 0; padding: 0; min-height: var(--tap); color: var(--accent); background: none; font-weight: 600; }
+#fehlerbericht button.link:hover { background: none; text-decoration: underline; }
+#fehlerbericht button:disabled { opacity: .55; cursor: default; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: 8s !important; } }
+@media (max-width: 520px) {
+  #mitteilung, #fehlerbericht { align-items: flex-end; padding: var(--s2); }
+  #mitteilung .karte, #fehlerbericht .karte { padding: var(--s4); max-height: calc(100dvh - 16px); }
+  #fehlerbericht .fuss button { flex: 1 1 auto; }
+  #hilfe { padding: var(--s4); }
+}
 </style>
 </head>
 <body>
@@ -89,8 +131,8 @@
   <small>Version __OWNDRAW_VERSION__</small>
   <div id="hilfe">
     <div id="hilfe-grafik">
-      <p>Dein Browser stellt keine Grafik für Webseiten bereit (WebGL und Canvas). Meist ist die
-      <b>Hardwarebeschleunigung</b> ausgeschaltet. So aktivierst du sie:</p>
+      <p>Dein Browser kann keine Grafik für Webseiten anzeigen (WebGL und Canvas). Meist ist die
+      <b>Hardwarebeschleunigung</b> ausgeschaltet. So schaltest du sie ein:</p>
       <ol>
         <li><b>Chrome / Edge:</b> Einstellungen → System → „Grafikbeschleunigung verwenden, wenn verfügbar“
           aktivieren und den Browser neu starten.</li>
@@ -102,10 +144,10 @@
     </div>
     <p id="hilfe-allg">Lade die Seite neu. Hilft das nicht, nutze einen aktuellen Browser (Chrome, Edge,
       Firefox oder Safari) mit aktiviertem JavaScript.</p>
-    <details><summary>Technische Details</summary><code id="detail"></code></details>
+    <details><summary>Technische Details (für den Support)</summary><code id="detail"></code></details>
   </div>
 </div>
-<noscript>OwnDraw benötigt JavaScript und WebAssembly.</noscript>
+<noscript>OwnDraw braucht JavaScript und WebAssembly. Bitte schalte JavaScript in deinem Browser ein.</noscript>
 <script>
   // Mittlere Maustaste: Unter Linux fügt der Browser bei Mittelklick die markierte Auswahl ein
   // (Primary Selection) und löst dabei ein `paste`-Ereignis aus. OwnDraw würde daraus einen
@@ -302,7 +344,7 @@
       huelle.setAttribute("role", "dialog"); huelle.setAttribute("aria-modal", "true"); huelle.setAttribute("aria-labelledby", "fb-titel");
       huelle.append(el("div", { class: "karte" },
         el("h2", { id: "fb-titel" }, "Fehler melden"),
-        el("p", { class: "sub" }, "Deine Meldung geht direkt an die Betreiber dieses Servers."),
+        el("p", { class: "sub" }, "Danke für deine Hilfe! Die Meldung geht direkt an die Betreiber dieses Servers."),
         el("label", { class: "feld", htmlFor: "fb-text" }, "Beschreibung"), text,
         el("label", { class: "feld" }, "Screenshots (optional)"), zone, liste, wahl,
         el("label", { class: "tech", htmlFor: "fb-technik" }, technik, el("span", {}, "Technische Angaben mitsenden", el("small", {}, "OwnDraw " + VERSION + " · " + screen + " · " + tech))),

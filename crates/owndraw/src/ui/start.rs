@@ -270,8 +270,8 @@ pub fn banner(ui: &mut egui::Ui, compact: bool, title: &str, body: &str, buttons
     egui::Frame::new()
         .fill(c(p.card))
         .stroke(Stroke::new(1.0, c(p.line)))
-        .corner_radius(CornerRadius::same(14))
-        .inner_margin(egui::Margin::symmetric(if compact { 14 } else { 18 }, 14))
+        .corner_radius(CornerRadius::same(if style::modern() { 12 } else { 14 }))
+        .inner_margin(egui::Margin::symmetric(if compact { 14 } else { 18 }, 12))
         .show(ui, |ui| {
             let w = ui.available_width();
             ui.set_width(w);
@@ -292,8 +292,11 @@ pub fn banner(ui: &mut egui::Ui, compact: bool, title: &str, body: &str, buttons
                     let tw = ui.available_width();
                     ui.vertical(|ui| texts(ui, tw));
                 });
-                ui.add_space(10.0);
-                ui.horizontal_wrapped(|ui| buttons(ui));
+                ui.add_space(style::sp::S);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    buttons(ui)
+                });
                 return;
             }
             // Breite der Knöpfe aus dem letzten Frame (beim ersten Mal geschätzt)
@@ -334,33 +337,147 @@ fn brand_mark(ui: &mut egui::Ui, s: f32) {
     }
 }
 
-/// Leerzustand ohne Boards: großes Symbol, kurzer Text, beide Aktionen.
+/// Stil eines Knopfes mit Icon.
+#[derive(Clone, Copy, PartialEq)]
+pub enum BtnKind {
+    /// Gefüllt in Akzentfarbe (Hauptaktion).
+    Primary,
+    /// Mit Rahmen (Nebenaktion).
+    Outline,
+    /// Ohne Rahmen, nur beim Überfahren sichtbar (Kopfzeile).
+    Ghost,
+}
+
+/// Breite eines Knopfes mit Icon und Text (für mittiges Setzen).
+fn icon_label_width(ui: &egui::Ui, label: &str) -> f32 {
+    let g = ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(style::fs::BODY), egui::Color32::WHITE);
+    icon_label_w(g.size().x, label.is_empty())
+}
+
+fn icon_label_w(text_w: f32, icon_only: bool) -> f32 {
+    (if icon_only { 0.0 } else { text_w + style::sp::S }) + 18.0 + 2.0 * style::sp::M
+}
+
+/// Knopf mit Icon links und Text (ohne Text: quadratischer Icon-Knopf der Höhe `h`, Beschriftung als Tooltip).
+pub fn icon_label_btn(ui: &mut egui::Ui, icons: &mut style::Icons, icon: i32, label: &str, tip: &str, kind: BtnKind, h: f32) -> egui::Response {
+    let p = style::pal();
+    let g = ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(style::fs::BODY), egui::Color32::WHITE);
+    let w = if label.is_empty() { h } else { icon_label_w(g.size().x, false) };
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
+    let down = resp.is_pointer_button_down_on();
+    let rad = CornerRadius::same(style::btn_r());
+    let pt = ui.painter();
+    let (fg, icon_col) = match kind {
+        BtnKind::Primary => (p.on_accent, p.on_accent),
+        BtnKind::Outline => (p.text, p.dim),
+        BtnKind::Ghost => (p.text, p.dim),
+    };
+    match kind {
+        BtnKind::Primary => {
+            pt.rect_filled(r, rad, c(p.accent));
+            if down {
+                pt.rect_filled(r, rad, egui::Color32::from_black_alpha(40));
+            } else if resp.hovered() {
+                pt.rect_filled(r, rad, egui::Color32::from_white_alpha(36));
+            }
+        }
+        BtnKind::Outline => {
+            pt.rect_filled(r, rad, c(p.card));
+            if down {
+                pt.rect_filled(r, rad, c(p.press));
+            } else if resp.hovered() {
+                pt.rect_filled(r, rad, c(p.hover));
+            }
+            pt.rect_stroke(r, rad, Stroke::new(1.0, c(p.line)), egui::StrokeKind::Inside);
+        }
+        BtnKind::Ghost => {
+            if down {
+                pt.rect_filled(r, rad, c(p.press));
+            } else if resp.hovered() {
+                pt.rect_filled(r, rad, c(p.hover));
+            }
+        }
+    }
+    if resp.has_focus() {
+        pt.rect_stroke(r, rad, Stroke::new(2.0, c(p.accent)), egui::StrokeKind::Outside);
+    }
+    let ic_c = if label.is_empty() { r.center() } else { Pos2::new(r.left() + style::sp::M + 9.0, r.center().y) };
+    icons.paint(ui, Rect::from_center_size(ic_c, Vec2::splat(24.0)), icon, if kind == BtnKind::Primary { icon_col } else if resp.hovered() { p.text } else { icon_col }, false, 18.0);
+    if !label.is_empty() {
+        let g = ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(style::fs::BODY), c(fg));
+        let pos = Pos2::new(r.left() + style::sp::M + 18.0 + style::sp::S, r.center().y - g.size().y / 2.0);
+        ui.painter().galley(pos, g, c(fg));
+    }
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, if label.is_empty() { tip } else { label }));
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    if !tip.is_empty() {
+        resp.on_hover_text(tip)
+    } else {
+        resp
+    }
+}
+
+/// Suchfeld mit Lupe links und „Leeren“-Knopf rechts.
+fn search_field(ui: &mut egui::Ui, icons: &mut style::Icons, text: &mut String, hint: &str, width: f32, h: f32) -> egui::Response {
+    let p = style::pal();
+    let te = egui::TextEdit::singleline(text)
+        .hint_text(hint)
+        .desired_width(width)
+        .min_size(Vec2::new(width, h))
+        .align(egui::Align2::LEFT_CENTER)
+        .margin(egui::Margin { left: 36, right: 36, top: 4, bottom: 4 });
+    let resp = ui.add(te);
+    let r = resp.rect;
+    let rad = CornerRadius::same(style::btn_r());
+    ui.painter().rect_stroke(r, rad, Stroke::new(if resp.has_focus() { 1.5 } else { 1.0 }, c(if resp.has_focus() { p.accent } else { p.line })), egui::StrokeKind::Inside);
+    icons.paint(ui, Rect::from_center_size(Pos2::new(r.left() + 18.0, r.center().y), Vec2::splat(24.0)), owndraw_core::icons::SEARCH, p.dim, false, 18.0);
+    if !text.is_empty() {
+        let xr = Rect::from_center_size(Pos2::new(r.right() - 18.0, r.center().y), Vec2::splat(28.0));
+        let xresp = ui.interact(xr, resp.id.with("clear"), Sense::click()).on_hover_text("Suche leeren");
+        if xresp.hovered() {
+            ui.painter().rect_filled(xr, CornerRadius::same(6), c(p.hover));
+        }
+        icons.paint(ui, xr, owndraw_core::icons::CLOSE, p.dim, false, 14.0);
+        if xresp.clicked() {
+            text.clear();
+            resp.request_focus();
+        }
+    }
+    resp
+}
+
+/// Leerzustand ohne Boards: Symbol, kurzer freundlicher Text, beide Aktionen mittig.
 fn empty_state(ui: &mut egui::Ui, sh: &mut Shared, h: f32) {
+    use style::{fs, sp};
     let p = style::pal();
     egui::Frame::new()
         .fill(c(p.card))
         .stroke(Stroke::new(1.0, c(p.line)))
-        .corner_radius(CornerRadius::same(16))
-        .inner_margin(egui::Margin::symmetric(24, 40))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(sp::XL as i8, sp::XXL as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.vertical_centered(|ui| {
                 let (r, _) = ui.allocate_exact_size(Vec2::splat(72.0), Sense::hover());
                 ui.painter().circle_filled(r.center(), 36.0, c(p.accent_soft));
-                sh.icons.paint(ui, r, owndraw_core::icons::PEN, p.accent, false, 34.0);
-                ui.add_space(14.0);
-                ui.label(egui::RichText::new("Noch keine Boards").size(20.0).strong());
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("Lege ein neues Board an oder öffne eine .owndraw- oder Xournal++-Datei.").color(c(p.dim)));
-                ui.add_space(18.0);
-                // Knöpfe mittig: Breite schätzen und links auffüllen
-                let bw = 132.0 + 8.0 + 110.0;
+                sh.icons.paint(ui, r, owndraw_core::icons::PEN, p.accent, false, 32.0);
+                ui.add_space(sp::L);
+                ui.label(egui::RichText::new("Hier ist noch Platz").size(20.0).strong().color(c(p.text)));
+                ui.add_space(sp::XS);
+                ui.add(egui::Label::new(egui::RichText::new("Lege dein erstes Board an – oder öffne eine .owndraw- oder Xournal++-Datei.").size(fs::BODY).color(c(p.dim))).wrap());
+                ui.add_space(sp::XL);
+                let (a, b) = ("Neues Board", "Öffnen …");
+                let bw = icon_label_width(ui, a) + sp::S + icon_label_width(ui, b);
+                let one_row = bw <= ui.available_width();
                 ui.horizontal(|ui| {
-                    ui.add_space(((ui.available_width() - bw) / 2.0).max(0.0));
-                    if ui.add_sized([132.0, h], egui::Button::new(egui::RichText::new("Neues Board").color(c(p.on_accent)).strong()).fill(c(p.accent)).corner_radius(CornerRadius::same(8))).clicked() {
+                    ui.spacing_mut().item_spacing.x = sp::S;
+                    if one_row {
+                        ui.add_space(((ui.available_width() - bw) / 2.0).max(0.0));
+                    }
+                    if icon_label_btn(ui, &mut sh.icons, owndraw_core::icons::PLUS, a, "", BtnKind::Primary, h).clicked() {
                         sh.reqs.push(Req::NewDialog);
                     }
-                    if ui.add_sized([110.0, h], egui::Button::new("Öffnen …").fill(c(p.card)).stroke(Stroke::new(1.0, c(p.line))).corner_radius(CornerRadius::same(8))).clicked() {
+                    if icon_label_btn(ui, &mut sh.icons, owndraw_core::icons::FOLDER, b, "", BtnKind::Outline, h).clicked() {
                         sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
                     }
                 });
@@ -368,51 +485,171 @@ fn empty_state(ui: &mut egui::Ui, sh: &mut Shared, h: f32) {
         });
 }
 
-/// Startseite im modernen Design: Kopf mit Marke, Hinweis, Titel „Boards“ mit Suche und Aktionen, Filter, Kartenraster.
-/// Der Inhalt ist auf `MAX_W` begrenzt und mittig gesetzt.
+/// Vorschaufläche einer Karte: vertiefter Hintergrund, Blatt mit Schatten, Bild oder Platzhalter.
+fn paint_thumb(ui: &mut egui::Ui, area: Rect, tex: Option<&TextureHandle>, pages: bool, corners: CornerRadius, inset: f32) {
+    let p = style::pal();
+    ui.painter().rect_filled(area, corners, c(p.sunken));
+    let paper = area.shrink(inset);
+    let rr = CornerRadius::same(6);
+    ui.painter().add(egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: egui::Color32::from_black_alpha(if p.dark { 120 } else { 30 }) }.as_shape(paper, rr));
+    match tex {
+        Some(t) => {
+            let ts = t.size_vec2();
+            let k = (paper.width() / ts.x).max(paper.height() / ts.y);
+            let (uw, vh) = (paper.width() / (ts.x * k), paper.height() / (ts.y * k));
+            let uv = Rect::from_min_max(Pos2::new((1.0 - uw) / 2.0, (1.0 - vh) / 2.0), Pos2::new((1.0 + uw) / 2.0, (1.0 + vh) / 2.0));
+            egui::Image::new(t).uv(uv).corner_radius(rr).paint_at(ui, paper);
+        }
+        None => {
+            let pt = ui.painter();
+            pt.rect_filled(paper, rr, c(0xFFFBFBF8));
+            if pages {
+                // liniertes Blatt andeuten
+                let mut y = paper.top() + 18.0;
+                while y < paper.bottom() - 8.0 {
+                    pt.line_segment([Pos2::new(paper.left() + 10.0, y), Pos2::new(paper.right() - 10.0, y)], Stroke::new(1.0, c(0xFFE3E4EA)));
+                    y += 12.0;
+                }
+            } else {
+                pt.text(paper.center(), Align2::CENTER_CENTER, "∞", egui::FontId::proportional(30.0), c(0xFFB8B9C0));
+            }
+        }
+    }
+}
+
+/// Eine Board-Karte. `row`: schmale Listenzeile (Handy) statt Kachel mit großer Vorschau.
+fn board_card(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, e: &crate::recent::RecentEntry, missing: bool, size: Vec2, row: bool, ph: f32) {
+    use style::{fs, sp};
+    let p = style::pal();
+    let tex = st.thumbs.get(&e.file.to_key()).cloned().flatten();
+    let (r, resp) = ui.allocate_exact_size(size, Sense::click());
+    let hov = resp.hovered() && !missing;
+    let rad = CornerRadius::same(12);
+    let touch = sh.env.touch;
+    let pt = ui.painter();
+    // weicher Schatten, beim Überfahren etwas stärker
+    let sh_a = if p.dark { if hov { 110 } else { 70 } } else if hov { 28 } else { 14 };
+    pt.add(egui::Shadow { offset: [0, if hov { 6 } else { 3 }], blur: if hov { 18 } else { 10 }, spread: 0, color: egui::Color32::from_black_alpha(sh_a) }.as_shape(r, rad));
+    pt.rect_filled(r, rad, c(p.card));
+    let (name_x, name_y, sub_y, max_w, mr) = if row {
+        let area = Rect::from_min_size(r.min + Vec2::splat(sp::S), Vec2::new(104.0, r.height() - 2.0 * sp::S));
+        paint_thumb(ui, area, tex.as_ref(), e.pages, CornerRadius::same(8), 8.0);
+        let mr = Rect::from_center_size(Pos2::new(r.right() - 26.0, r.center().y), Vec2::splat(44.0));
+        let x = area.right() + sp::M;
+        (x, r.center().y - 10.0, r.center().y + 11.0, mr.left() - x, mr)
+    } else {
+        let img_r = Rect::from_min_size(r.min, Vec2::new(size.x, ph));
+        let inset = (size.x * 0.07).clamp(10.0, 18.0);
+        paint_thumb(ui, img_r, tex.as_ref(), e.pages, CornerRadius { nw: 12, ne: 12, sw: 0, se: 0 }, inset);
+        ui.painter().line_segment([img_r.left_bottom(), img_r.right_bottom()], Stroke::new(1.0, c(p.line)));
+        let fy = r.top() + ph + (size.y - ph) / 2.0;
+        let mr = Rect::from_center_size(Pos2::new(r.right() - 26.0, fy), Vec2::splat(if touch { 44.0 } else { 36.0 }));
+        (r.left() + sp::L, fy - 10.0, fy + 11.0, mr.left() - r.left() - sp::L, mr)
+    };
+    let name = elide(&e.name, fs::BODY, max_w, ui);
+    let kind = if e.pages { "Seiten" } else { "Unendlich" };
+    let sub = if missing { "Datei nicht gefunden".to_string() } else { format!("{kind} · {}", fmt_rel(e.modified_ms)) };
+    let sub = elide(&sub, fs::SMALL, max_w + 20.0, ui);
+    let pt = ui.painter();
+    pt.text(Pos2::new(name_x, name_y), Align2::LEFT_CENTER, name, egui::FontId::proportional(fs::BODY), c(p.text));
+    pt.text(Pos2::new(name_x, sub_y), Align2::LEFT_CENTER, sub, egui::FontId::proportional(fs::SMALL), c(if missing { p.danger } else { p.dim }));
+    if missing {
+        pt.rect_filled(r, rad, p_overlay(ui));
+    }
+    let stroke = if hov { Stroke::new(1.5, c(p.accent)) } else { Stroke::new(1.0, c(p.line)) };
+    ui.painter().rect_stroke(r, rad, stroke, egui::StrokeKind::Inside);
+    if resp.clicked() {
+        sh.reqs.push(Req::OpenFile(e.file.clone()));
+    }
+    // Browser mit Lizenz: Browser-Board auf den Server verschieben
+    let to_server = !missing && crate::ui::server_store_available() && matches!(&e.file, crate::platform::FileRef::Uri(u) if u.starts_with("mem:"));
+    let act = std::cell::Cell::new(None::<u8>);
+    let menu = |ui: &mut egui::Ui, sh: &mut Shared| {
+        use owndraw_core::icons;
+        let mut items = Vec::new();
+        let mut ids = Vec::new();
+        if !missing {
+            items.push(style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false });
+            ids.push(0u8);
+        }
+        if to_server {
+            items.push(style::MenuItem { icon: icons::COPY, label: "Auf Server verschieben", danger: false });
+            ids.push(2);
+        }
+        items.push(style::MenuItem { icon: icons::TRASH, label: "Aus der Liste entfernen", danger: true });
+        ids.push(1);
+        if let Some(i) = style::card_menu(ui, &mut sh.icons, &items) {
+            act.set(Some(ids[i]));
+        }
+    };
+    resp.context_menu(|ui| menu(ui, sh));
+    let mresp = ui.interact(mr, resp.id.with("more"), Sense::click()).on_hover_text("Weitere Aktionen");
+    if mresp.hovered() {
+        ui.painter().rect_filled(mr.shrink(if touch { 6.0 } else { 0.0 }), CornerRadius::same(8), c(p.hover));
+    }
+    sh.icons.paint(ui, mr, owndraw_core::icons::MORE, p.dim, false, 18.0);
+    egui::Popup::menu(&mresp).align(egui::RectAlign::BOTTOM_END).show(|ui| menu(ui, sh));
+    match act.get() {
+        Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
+        Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
+        #[cfg(target_arch = "wasm32")]
+        Some(2) => super::account::ask_to_server(sh, &mut st.account, &e.file, &e.name),
+        _ => {}
+    }
+}
+
+/// Startseite im modernen Design: Kopfzeile mit Marke und Aktionen, Titel „Boards“ mit Hauptaktion und Suche, Filter, Kartenraster
+/// (schmal: einspaltige Liste). Der Inhalt ist auf `MAX_W` begrenzt und mittig gesetzt.
 fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Recent) {
+    use owndraw_core::icons;
+    use style::{fs, sp};
     const MAX_W: f32 = 1120.0;
     let ctx = ui.ctx().clone();
     let p = style::pal();
     let env = sh.env;
     let compact = env.ff == FormFactor::Compact;
-    let side = if compact { 16.0 } else if env.ff == FormFactor::Medium { 28.0 } else { 40.0 };
-    let h = if compact { env.btn } else { 36.0 };
+    let side = if compact { sp::L } else if env.ff == FormFactor::Medium { 28.0 } else { 40.0 };
+    let h = if compact || env.touch { env.btn.max(crate::layout::min_touch(env.touch)) } else { 36.0 };
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         // Spalte mittig setzen (egui-Ränder sind i8 und reichen dafür nicht)
         let full = ui.available_rect_before_wrap();
         let w = (full.width() - 2.0 * side).clamp(100.0, MAX_W);
-        let col = Rect::from_min_size(Pos2::new(full.center().x - w / 2.0, full.top() + if compact { 12.0 } else { 20.0 }), Vec2::new(w, f32::INFINITY));
+        let col = Rect::from_min_size(Pos2::new(full.center().x - w / 2.0, full.top() + if compact { sp::M } else { sp::XL }), Vec2::new(w, f32::INFINITY));
         ui.scope_builder(egui::UiBuilder::new().max_rect(col).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
             ui.set_width(w);
-            // Kopf: Marke links, Einstellungen rechts
+            let stack = w < 660.0;
+            // Kopfzeile: Marke links, Anleitung/Einstellungen (und Web-Extras) rechts; schmal nur Icons
+            let labels = w >= 760.0;
             ui.horizontal(|ui| {
-                brand_mark(ui, 30.0);
-                ui.add_space(2.0);
-                ui.label(egui::RichText::new("OwnDraw").size(18.0).strong().color(c(p.text)));
+                ui.set_min_height(h);
+                ui.spacing_mut().item_spacing.x = sp::S;
+                brand_mark(ui, 32.0);
+                ui.label(egui::RichText::new("OwnDraw").size(fs::SECTION + 4.0).strong().color(c(p.text)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if style::outline_btn(ui, "Einstellungen", h).clicked() {
+                    ui.spacing_mut().item_spacing.x = if labels { sp::XS } else { 0.0 };
+                    let lab = |s: &'static str| if labels { s } else { "" };
+                    if icon_label_btn(ui, &mut sh.icons, icons::GEAR, lab("Einstellungen"), "Einstellungen", BtnKind::Ghost, h).clicked() {
                         sh.reqs.push(Req::OpenSettings);
                     }
-                    if style::outline_btn(ui, "Anleitung", h).on_hover_text("Alle Funktionen, Tastenkürzel und Tipps").clicked() {
+                    if icon_label_btn(ui, &mut sh.icons, icons::HELP, lab("Anleitung"), "Anleitung: Funktionen, Tastenkürzel und Tipps", BtnKind::Ghost, h).clicked() {
                         sh.reqs.push(Req::OpenTutorial);
                     }
-                    if super::bug_report_available() && style::outline_btn(ui, "Fehler melden", h).clicked() {
+                    if super::bug_report_available() && icon_label_btn(ui, &mut sh.icons, icons::BUG, lab("Fehler melden"), "Fehler melden", BtnKind::Ghost, h).clicked() {
                         super::open_bug_report(sh);
                     }
-                    if super::bug_report_available() && style::outline_btn(ui, "Apps", h).on_hover_text("Android- und Linux-App herunterladen").clicked() {
+                    if super::bug_report_available() && icon_label_btn(ui, &mut sh.icons, icons::DOWNLOAD, lab("Apps"), "Android- und Linux-App herunterladen", BtnKind::Ghost, h).clicked() {
                         super::open_downloads(sh);
                     }
-                    if super::admin_available() && style::outline_btn(ui, "Admin-Panel", h).on_hover_text("Verwaltung öffnen (nur für Admins)").clicked() {
+                    if super::admin_available() && icon_label_btn(ui, &mut sh.icons, icons::SLIDERS, lab("Admin"), "Verwaltung öffnen (nur für Admins)", BtnKind::Ghost, h).clicked() {
                         super::open_admin(sh);
                     }
                 });
             });
-            ui.add_space(if compact { 14.0 } else { 22.0 });
+            ui.add_space(if compact { sp::L } else { sp::XL });
             #[cfg(target_arch = "wasm32")]
             {
                 super::account::header(ui, sh, &mut st.account);
-                ui.add_space(if compact { 18.0 } else { 28.0 });
+                ui.add_space(if compact { sp::L } else { sp::XL });
             }
             #[cfg(not(target_arch = "wasm32"))]
             if st.demo_banner {
@@ -426,7 +663,7 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                         let _ = style::outline_btn(ui, "Konto erstellen", h);
                     },
                 );
-                ui.add_space(if compact { 18.0 } else { 28.0 });
+                ui.add_space(if compact { sp::L } else { sp::XL });
             }
 
             // Titel mit Aktionen
@@ -437,34 +674,56 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 n => format!("{n} Boards"),
             };
             let sub = if crate::platform::WEB && n > 0 { format!("{sub} in diesem Browser") } else { sub };
-            let actions = |ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState| {
-                if style::primary_btn(ui, "Neues Board", h).clicked() {
-                    sh.reqs.push(Req::NewDialog);
-                }
-                if style::outline_btn(ui, "Öffnen …", h).clicked() {
-                    sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
+            // Ohne Boards trägt der Leerzustand die Aktionen (am PC), damit sie nicht doppelt erscheinen
+            let show_actions = n > 0;
+            let main_actions = |ui: &mut egui::Ui, sh: &mut Shared, rtl: bool| {
+                let new = |ui: &mut egui::Ui, sh: &mut Shared| {
+                    if icon_label_btn(ui, &mut sh.icons, icons::PLUS, "Neues Board", "", BtnKind::Primary, h).clicked() {
+                        sh.reqs.push(Req::NewDialog);
+                    }
+                };
+                let open = |ui: &mut egui::Ui, sh: &mut Shared| {
+                    if icon_label_btn(ui, &mut sh.icons, icons::FOLDER, "Öffnen …", "Board aus einer Datei öffnen", BtnKind::Outline, h).clicked() {
+                        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
+                    }
+                };
+                // rechtsbündig (rtl): erster Knopf steht ganz rechts, daher in beiden Fällen dieselbe Reihenfolge
+                let _ = rtl;
+                new(ui, sh);
+                open(ui, sh);
+            };
+            if stack {
+                ui.label(style::title("Boards"));
+                ui.label(style::hint(&sub));
+                if show_actions {
+                    ui.add_space(sp::M);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::splat(sp::S);
+                        main_actions(ui, sh, false);
+                    });
                 }
                 if n > 0 {
-                    let te = egui::TextEdit::singleline(&mut st.query)
-                        .hint_text("Boards durchsuchen …")
-                        .desired_width(if compact { ui.available_width() } else { 240.0 })
-                        .margin(egui::Margin::symmetric(12, 9));
-                    ui.add(te);
+                    ui.add_space(sp::M);
+                    let sw = ui.available_width();
+                    search_field(ui, &mut sh.icons, &mut st.query, "Boards durchsuchen …", sw, h);
                 }
-            };
-            if compact {
-                ui.label(egui::RichText::new("Boards").size(26.0).strong());
-                ui.label(egui::RichText::new(&sub).color(c(p.dim)));
-                ui.add_space(10.0);
-                ui.horizontal_wrapped(|ui| actions(ui, sh, st));
             } else {
                 ui.horizontal(|ui| {
+                    ui.set_min_height(h.max(40.0));
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 2.0;
-                        ui.label(egui::RichText::new("Boards").size(30.0).strong());
-                        ui.label(egui::RichText::new(&sub).size(13.5).color(c(p.dim)));
+                        ui.label(style::title("Boards"));
+                        ui.label(style::hint(&sub));
                     });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| actions(ui, sh, st));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.spacing_mut().item_spacing.x = sp::S;
+                        if show_actions {
+                            main_actions(ui, sh, true);
+                        }
+                        if n > 0 {
+                            search_field(ui, &mut sh.icons, &mut st.query, "Boards durchsuchen …", 240.0, h);
+                        }
+                    });
                 });
             }
             #[cfg(target_arch = "wasm32")]
@@ -473,39 +732,39 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
                 // Neben „Auf dem Server“ die Browser-Boards klar benennen
                 if server_section && n > 0 {
-                    ui.add_space(22.0);
-                    ui.label(egui::RichText::new("In diesem Browser").size(18.0).strong());
-                    ui.label(egui::RichText::new("Nur auf diesem Gerät gespeichert. Teilen geht erst nach „Auf Server verschieben“ im Kartenmenü.").size(12.5).color(c(p.dim)));
+                    ui.add_space(sp::XL);
+                    ui.label(egui::RichText::new("In diesem Browser").size(fs::SECTION + 3.0).strong());
+                    ui.label(style::hint("Nur auf diesem Gerät gespeichert. Teilen geht erst nach „Auf Server verschieben“ im Kartenmenü."));
                 }
             }
 
             if n == 0 {
-                ui.add_space(18.0);
+                ui.add_space(sp::L);
                 empty_state(ui, sh, h);
                 return;
             }
 
             // Filter
-            ui.add_space(16.0);
+            ui.add_space(sp::L);
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.spacing_mut().item_spacing = Vec2::splat(sp::S);
                 for (i, l) in [(0u8, "Alle"), (1, "Seiten"), (2, "Unendlich")] {
-                    if style::chip(ui, l, st.filter == i, 30.0).clicked() {
+                    if style::chip(ui, l, st.filter == i, if compact || env.touch { env.btn } else { 32.0 }).clicked() {
                         st.filter = i;
                     }
                 }
             });
-            ui.add_space(16.0);
+            ui.add_space(sp::L);
 
-            // Kartenraster
-            let gap = if compact { 12.0 } else { 20.0 };
+            // Kartenraster; schmal: eine Spalte als Liste
+            let row = w < 560.0;
+            let gap = if row { sp::M } else { sp::XL };
             let avail = ui.available_width();
-            let min_w = if compact { 150.0 } else { 240.0 };
-            let cols = (((avail + gap) / (min_w + gap)).floor() as usize).max(2);
+            let min_w = 240.0;
+            let cols = if row { 1 } else { (((avail + gap) / (min_w + gap)).floor() as usize).max(2) };
             let tw = ((avail - gap * (cols as f32 - 1.0)) / cols as f32).floor();
             let ph = (tw * 0.7).round();
-            let foot = if compact { 56.0 } else { 62.0 };
-            let th = ph + foot;
+            let th = if row { 88.0 } else { ph + 62.0 };
             let q = st.query.trim().to_lowercase();
             let list: Vec<_> = recent
                 .list()
@@ -520,129 +779,44 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 .collect();
             ui.spacing_mut().item_spacing = Vec2::splat(gap);
             let mut loaded = 0;
-            let rad = CornerRadius::same(14);
-            ui.horizontal_wrapped(|ui| {
+            let mut cards = |ui: &mut egui::Ui| {
                 for e in &list {
                     if loaded < 2 && !st.thumbs.contains_key(&e.file.to_key()) {
                         st.load(&ctx, sh, &e.file);
                         loaded += 1;
                     }
-                    let tex = st.thumbs.get(&e.file.to_key()).cloned().flatten();
                     let missing = recent.is_missing(&e.file);
-                    let (r, resp) = ui.allocate_exact_size(Vec2::new(tw, th), Sense::click());
-                    let hov = resp.hovered() && !missing;
-                    let pt = ui.painter();
-                    // weicher Schatten, beim Überfahren etwas stärker
-                    let sh_a = if p.dark { if hov { 110 } else { 70 } } else if hov { 28 } else { 14 };
-                    pt.add(egui::Shadow { offset: [0, if hov { 6 } else { 3 }], blur: if hov { 18 } else { 10 }, spread: 0, color: egui::Color32::from_black_alpha(sh_a) }.as_shape(r, rad));
-                    pt.rect_filled(r, rad, c(p.card));
-                    let img_r = Rect::from_min_size(r.min, Vec2::new(tw, ph));
-                    let top = CornerRadius { nw: 14, ne: 14, sw: 0, se: 0 };
-                    pt.rect_filled(img_r, top, c(p.sunken));
-                    // Blatt mit Rand in der Vorschaufläche
-                    let inset = (tw * 0.07).clamp(10.0, 18.0);
-                    let paper = img_r.shrink(inset);
-                    pt.add(egui::Shadow { offset: [0, 2], blur: 8, spread: 0, color: egui::Color32::from_black_alpha(if p.dark { 120 } else { 30 }) }.as_shape(paper, CornerRadius::same(6)));
-                    match tex {
-                        Some(t) => {
-                            let ts = t.size_vec2();
-                            let k = (paper.width() / ts.x).max(paper.height() / ts.y);
-                            let (uw, vh) = (paper.width() / (ts.x * k), paper.height() / (ts.y * k));
-                            let uv = Rect::from_min_max(Pos2::new((1.0 - uw) / 2.0, (1.0 - vh) / 2.0), Pos2::new((1.0 + uw) / 2.0, (1.0 + vh) / 2.0));
-                            egui::Image::new(&t).uv(uv).corner_radius(CornerRadius::same(6)).paint_at(ui, paper);
-                        }
-                        None => {
-                            let pt = ui.painter();
-                            pt.rect_filled(paper, CornerRadius::same(6), c(0xFFFBFBF8));
-                            if e.pages {
-                                // liniertes Blatt andeuten
-                                let mut y = paper.top() + 18.0;
-                                while y < paper.bottom() - 8.0 {
-                                    pt.line_segment([Pos2::new(paper.left() + 10.0, y), Pos2::new(paper.right() - 10.0, y)], Stroke::new(1.0, c(0xFFE3E4EA)));
-                                    y += 12.0;
-                                }
-                            } else {
-                                pt.text(paper.center(), Align2::CENTER_CENTER, "∞", egui::FontId::proportional(30.0), c(0xFFB8B9C0));
-                            }
-                        }
-                    }
-                    let pt = ui.painter();
-                    pt.line_segment([img_r.left_bottom(), img_r.right_bottom()], Stroke::new(1.0, c(p.line)));
-                    let name = elide(&e.name, 15.0, tw - 58.0, ui);
-                    let pt = ui.painter();
-                    let fy = r.top() + ph + foot / 2.0;
-                    pt.text(Pos2::new(r.left() + 16.0, fy - 10.0), Align2::LEFT_CENTER, name, egui::FontId::proportional(15.0), c(p.text));
-                    let kind = if e.pages { "Seiten" } else { "Unendlich" };
-                    let sub = if missing { "Datei nicht gefunden".to_string() } else { format!("{kind} · {}", fmt_rel(e.modified_ms)) };
-                    pt.text(Pos2::new(r.left() + 16.0, fy + 11.0), Align2::LEFT_CENTER, sub, egui::FontId::proportional(12.5), c(if missing { p.danger } else { p.dim }));
-                    if missing {
-                        pt.rect_filled(r, rad, p_overlay(ui));
-                    }
-                    let stroke = if hov { Stroke::new(1.5, c(p.accent)) } else { Stroke::new(1.0, c(p.line)) };
-                    pt.rect_stroke(r, rad, stroke, egui::StrokeKind::Inside);
-                    if resp.clicked() {
-                        sh.reqs.push(Req::OpenFile(e.file.clone()));
-                    }
-                    // Browser mit Lizenz: Browser-Board auf den Server verschieben
-                    let to_server = !missing && crate::ui::server_store_available() && matches!(&e.file, crate::platform::FileRef::Uri(u) if u.starts_with("mem:"));
-                    let act = std::cell::Cell::new(None::<u8>);
-                    let menu = |ui: &mut egui::Ui, sh: &mut Shared| {
-                        use owndraw_core::icons;
-                        let mut items = Vec::new();
-                        let mut ids = Vec::new();
-                        if !missing {
-                            items.push(style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false });
-                            ids.push(0u8);
-                        }
-                        if to_server {
-                            items.push(style::MenuItem { icon: icons::COPY, label: "Auf Server verschieben", danger: false });
-                            ids.push(2);
-                        }
-                        items.push(style::MenuItem { icon: icons::TRASH, label: "Aus der Liste entfernen", danger: true });
-                        ids.push(1);
-                        if let Some(i) = style::card_menu(ui, &mut sh.icons, &items) {
-                            act.set(Some(ids[i]));
-                        }
-                    };
-                    resp.context_menu(|ui| menu(ui, sh));
-                    let mr = Rect::from_center_size(Pos2::new(r.right() - 26.0, fy), Vec2::splat(34.0));
-                    let mresp = ui.interact(mr, resp.id.with("more"), Sense::click()).on_hover_text("Weitere Aktionen");
-                    if mresp.hovered() {
-                        ui.painter().rect_filled(mr, CornerRadius::same(8), c(p.hover));
-                    }
-                    sh.icons.paint(ui, mr, owndraw_core::icons::MORE, p.dim, false, 18.0);
-                    egui::Popup::menu(&mresp).align(egui::RectAlign::BOTTOM_END).show(|ui| menu(ui, sh));
-                    match act.get() {
-                        Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
-                        Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
-                        #[cfg(target_arch = "wasm32")]
-                        Some(2) => super::account::ask_to_server(sh, &mut st.account, &e.file, &e.name),
-                        _ => {}
-                    }
+                    board_card(ui, sh, st, e, missing, Vec2::new(tw, th), row, ph);
                 }
-                // „Neues Board“-Karte am Ende
-                if st.query.trim().is_empty() {
+                // „Neues Board“-Karte am Ende (schmal reicht der Knopf oben)
+                if st.query.trim().is_empty() && !row {
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw, th), Sense::click());
+                    let rad = CornerRadius::same(12);
                     let pt = ui.painter();
                     let hov = resp.hovered();
                     pt.rect_filled(r, rad, c(if hov { p.accent_soft } else { p.card }));
-                    dashed_round_rect(pt, r.shrink(0.75), 14.0, Stroke::new(1.5, c(if hov { p.accent } else { p.line })));
+                    dashed_round_rect(pt, r.shrink(0.75), 12.0, Stroke::new(1.5, c(if hov { p.accent } else { p.line })));
                     let ic = r.center() - Vec2::new(0.0, 16.0);
                     pt.circle_filled(ic, 24.0, c(if hov { p.accent } else { p.accent_soft }));
-                    sh.icons.paint(ui, Rect::from_center_size(ic, Vec2::splat(48.0)), owndraw_core::icons::PLUS, if hov { p.on_accent } else { p.accent }, false, 22.0);
+                    sh.icons.paint(ui, Rect::from_center_size(ic, Vec2::splat(48.0)), icons::PLUS, if hov { p.on_accent } else { p.accent }, false, 22.0);
                     let pt = ui.painter();
-                    pt.text(r.center() + Vec2::new(0.0, 26.0), Align2::CENTER_CENTER, "Neues Board", egui::FontId::proportional(15.0), c(p.text));
-                    pt.text(r.center() + Vec2::new(0.0, 46.0), Align2::CENTER_CENTER, "Unendlich oder Seiten", egui::FontId::proportional(12.0), c(p.dim));
-                    if resp.clicked() {
+                    pt.text(r.center() + Vec2::new(0.0, 26.0), Align2::CENTER_CENTER, "Neues Board", egui::FontId::proportional(fs::BODY), c(p.text));
+                    pt.text(r.center() + Vec2::new(0.0, 46.0), Align2::CENTER_CENTER, "Unendlich oder Seiten", egui::FontId::proportional(fs::SMALL), c(p.dim));
+                    if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         sh.reqs.push(Req::NewDialog);
                     }
                 }
-            });
-            if list.is_empty() {
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("Keine Boards gefunden.").color(c(p.dim)));
+            };
+            if row {
+                ui.vertical(|ui| cards(ui));
+            } else {
+                ui.horizontal_wrapped(|ui| cards(ui));
             }
-            ui.add_space(32.0);
+            if list.is_empty() {
+                ui.add_space(sp::S);
+                ui.label(egui::RichText::new("Nichts gefunden. Versuche ein anderes Stichwort oder wähle „Alle“.").size(fs::BODY).color(c(p.dim)));
+            }
+            ui.add_space(sp::XXL);
             if loaded > 0 {
                 ctx.request_repaint();
             }

@@ -3,8 +3,8 @@
 //! - `OWNDRAW_SCREENSHOT=pfad.png`: nach ein paar Frames Bild des Fensters speichern und beenden.
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
-//!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor).
+//!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `stamps` (alle Stempel).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -150,7 +150,14 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         let (sh, start, recent) = app.parts();
         let _ = sh;
         for (i, (n, pages)) in names.iter().enumerate().rev() {
-            let f = FileRef::Path(PathBuf::from(format!("/home/demo/Dokumente/OwnDraw/{n}.owndraw")));
+            // Dateien wirklich anlegen (leer), damit nur „Logo-Entwurf“ als fehlend erscheint
+            let dir = std::env::temp_dir().join("owndraw-demo");
+            let path = dir.join(format!("{n}.owndraw"));
+            if i != 4 {
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(&path, b"");
+            }
+            let f = FileRef::Path(path);
             recent.add(RecentEntry { file: f.clone(), name: n.to_string(), modified_ms: ms - (i as i64) * 86_400_000 - 3_600_000, pages: *pages });
             if i != 4 {
                 let b = demo_board(i as u32, 0.0, 0.0);
@@ -226,12 +233,22 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             ed.select_tool(app.parts().0, crate::ui::editor::Tool::Math);
             ed.demo_math(520.0, 120.0, "x_{1,2} = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}");
         }
+        if has("ruler") {
+            ed.demo_ruler();
+        }
+        if has("stamps") {
+            // alle Stempel nebeneinander (Größenvergleich ? und ! mit Haken/Kreuz/Stern)
+            for (i, k) in [board::STAMP_CHECK, board::STAMP_CROSS, board::STAMP_STAR, board::STAMP_QUESTION, board::STAMP_EXCLAIM].into_iter().enumerate() {
+                ed.board.stamp(k, 900.0 + i as f32 * 70.0, 520.0, 48.0);
+            }
+        }
         if has("edittools") {
             let sh = app.parts().0;
             ed.begin_edit_tools(sh);
         }
         ed.st.opts_open = has("options");
         ed.st.menu_open = has("menu");
+        ed.st.more_open = has("more");
         ed.st.layers_open = has("layers");
         if has("pagesclosed") {
             ed.st.pages_open = Some(false);
@@ -257,7 +274,22 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     if has("new") {
         app.sh.dialog = Some(Dialog::new_doc(true, None));
     }
-    if has("settings") {
+    if has("settings") || has("settingstools") || has("settingskeys") {
+        if has("settingstools") {
+            crate::ui::settings::open_tools_page(ctx);
+        }
+        if has("settingskeys") {
+            crate::ui::settings::open_keys_page(ctx);
+        }
         app.set_screen(Screen::Settings);
+    }
+    if has("tutorial") {
+        app.set_screen(Screen::Tutorial);
+    }
+    if has("confirm") {
+        app.sh.dialog = Some(Dialog::Confirm { title: "Ebene löschen?", text: "Die Ebene „Hintergrund“ und ihr Inhalt werden entfernt. Das lässt sich mit Rückgängig wieder herstellen.".into(), ok: "Löschen", action: crate::ui::dialogs::ConfirmAction::DeleteLayer(0) });
+    }
+    if has("rename") {
+        app.sh.dialog = Some(Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: "Maschinenbau Skizze".into(), focus: true });
     }
 }

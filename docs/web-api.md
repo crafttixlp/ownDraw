@@ -154,6 +154,7 @@ speichert geänderte Räume höchstens alle 5 s, wenn der letzte Teilnehmer geht
 | GET | `/api/admin/licenses` | → `[License]` |
 | POST | `/api/admin/licenses` | `{count, days:null\|n, quota_mb, note}` → `[License]` (neu erzeugte Codes) |
 | PATCH | `/api/admin/licenses/{code}` | `{revoked?, expires_at?, quota_mb?, note?}` |
+| GET | `/api/admin/stats` | → `{time, online_minutes, online:{account,guest}, users:{account,guest}, boards_created:{account,guest,total_ever}, boards_active:{account,guest,list:[{id,name,owner,accounts,guests}]}, stored:{boards,bytes}}` (Definitionen: `server.md` → Übersicht) |
 | GET | `/api/admin/update` | → `{current, latest, available, auto:false, auto_hour:3, last_check, log:[…]}` |
 | POST | `/api/admin/update/check` | sucht neue Version |
 | POST | `/api/admin/update/install` | installiert neueste Version (Backup, Austausch, Neustart) |
@@ -185,6 +186,31 @@ Mitteilungen im Zeitraum `starts_at ≤ jetzt < ends_at`, neueste zuerst. Die We
 nacheinander als Dialog, noch bevor der Editor bereit ist. Es wird nichts gemerkt: bei jedem Laden
 der Seite erscheinen alle aktiven Mitteilungen erneut, Wegklicken gilt nur bis zum nächsten Neuladen. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
 (Zeilenumbrüche bleiben), kein HTML.
+
+## Fehlerberichte (ab 4.10.0)
+
+`POST /api/bugreports` (ohne Anmeldung möglich, `X-OwnDraw: 1`, `multipart/form-data`): Felder `text` (Pflicht,
+höchstens 5000 Zeichen), optional `version`, `user_agent`, `page`, `screen` und bis zu 5 Dateien `image` (je höchstens
+5 MB; nur PNG, JPEG, WebP, erkannt am Inhalt). → `{id}`. Fehler: `invalid` (leerer Text, falscher Bildtyp, zu viele
+Bilder), `too_large`, `rate_limited` (5 Meldungen je Adresse und 10 Minuten), `quota` (insgesamt mehr als 1000 Meldungen
+oder 1 GB Screenshots), im Wartungsmodus `maintenance`. Absender: angemeldetes Konto („Name <E-Mail>“), Gast per
+Einladungslink (Gast-ID) oder „Ohne Konto“. Die IP-Adresse wird nicht gespeichert.
+
+| Methode | Pfad | |
+|---|---|---|
+| GET | `/api/admin/bugreports` | → `[BugReport]` (neueste zuerst) |
+| PATCH | `/api/admin/bugreports/{id}` | `{status:"open"\|"done"}` → `BugReport` |
+| DELETE | `/api/admin/bugreports/{id}` | löscht Meldung und Screenshots |
+| GET | `/api/admin/bugreports/{id}/images/{n}` | Screenshot (`Content-Type` aus der Inhaltsprüfung, `nosniff`, CSP `sandbox`) |
+
+```json
+BugReport = {"id":"…","created":…,"user_id":"…"|null,"sender":"…","guest":true,"text":"…","version":"4.10.0",
+             "user_agent":"…","page":"/","screen":"1280×800 @2","images":[{"n":0,"mime":"image/png","size":12345}],
+             "status":"open"|"done"}
+```
+
+Ablage: Tabelle `bug_reports`, Bilder unter `data/bugreports/<id>/<n>.<png|jpg|webp>`. Text ist reiner Text; das
+Admin-Panel setzt ihn nur per `textContent` ein.
 
 ## Wartungsmodus (ab 4.8.0)
 

@@ -127,6 +127,10 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         sh.reqs.push(Req::OpenSettings);
         close = true;
     }
+    if crate::ui::bug_report_available() && style::menu_row(ui, "Fehler melden …", false, h) {
+        crate::ui::open_bug_report(sh);
+        close = true;
+    }
     ui.add_space(2.0);
     ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top(), egui::Stroke::new(1.0, c(style::pal().line)));
     ui.add_space(4.0);

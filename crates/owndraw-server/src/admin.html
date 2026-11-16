@@ -25,8 +25,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 syst
 header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 header .bar { max-width: 1040px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
 .brand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-.mark { width: 28px; height: 28px; border-radius: 8px; background: var(--text); display: grid; place-items: center; flex: none; }
-.mark svg { width: 16px; height: 16px; stroke: var(--bg); fill: none; stroke-width: 2.2; stroke-linecap: round; }
+.mark { width: 30px; height: 30px; flex: none; display: block; }
 header h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: -.01em; }
 header h1 span { color: var(--muted); font-weight: 400; }
 header .who { color: var(--muted); font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
@@ -85,15 +84,31 @@ dialog::backdrop { background: rgba(10,10,16,.45); }
 dialog h2 { font-size: 1.1rem; }
 dialog .row { justify-content: flex-end; }
 .empty { color: var(--muted); padding: 8px 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stats .tile { margin: 0; padding: 16px; min-width: 0; }
+.tile .t { color: var(--muted); font-size: .86rem; font-weight: 500; }
+.tile .big { font-size: 2rem; font-weight: 600; line-height: 1.2; letter-spacing: -.02em; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.tile .sub { color: var(--muted); font-size: .88rem; font-variant-numeric: tabular-nums; }
+.tile .sub2 { color: var(--muted); font-size: .8rem; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.stable { width: 100%; border-collapse: collapse; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.stable th { text-align: left; color: var(--muted); font-weight: 500; font-size: .82rem; padding: 4px 8px 6px 0; border-bottom: 1px solid var(--line); }
+.stable td { padding: 8px 8px 8px 0; border-top: 1px solid var(--line); word-break: break-word; }
+.stable th:nth-child(n+3), .stable td:nth-child(n+3) { text-align: right; padding-right: 0; }
+.stable tr:first-child td { border-top: 0; }
 [hidden] { display: none !important; }
+.shots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.shots a { display: block; width: 120px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--sunken); }
+.shots img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.report-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 4px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--chip); border-radius: 10px; margin-bottom: 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-@media (max-width: 520px) { main { padding: 16px 12px 32px; } header .bar { padding: 10px 12px; } .card { padding: 14px; } header .who { display: none; } .tabs { display: flex; } }
+@media (max-width: 520px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile .big { font-size: 1.6rem; } main { padding: 16px 12px 32px; } header .bar { padding: 10px 12px; } .card { padding: 14px; } header .who { display: none; } .tabs { display: flex; } }
 </style>
 </head>
 <body>
 <header>
   <div class="bar">
-    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M4 20c4-1 6-4 8-8s4-7 8-8"/></svg></span><h1>OwnDraw <span>Verwaltung</span></h1></div>
+    <div class="brand"><img class="mark" src="/owndraw.png" alt=""><h1>OwnDraw <span>Verwaltung</span></h1></div>
     <span class="who" id="who"></span>
     <button id="logout" class="small" hidden>Abmelden</button>
   </div>
@@ -114,13 +129,23 @@ dialog .row { justify-content: flex-end; }
 
   <div id="appView" hidden>
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tab-users" data-tab="users" aria-selected="true">Nutzer</button>
+      <button class="tab" role="tab" id="tab-stats" data-tab="stats" aria-selected="true">Übersicht</button>
+      <button class="tab" role="tab" id="tab-users" data-tab="users" aria-selected="false">Nutzer</button>
       <button class="tab" role="tab" id="tab-licenses" data-tab="licenses" aria-selected="false">Lizenzen</button>
       <button class="tab" role="tab" id="tab-notices" data-tab="notices" aria-selected="false">Mitteilungen</button>
+      <button class="tab" role="tab" id="tab-bugs" data-tab="bugs" aria-selected="false">Fehlerberichte <span id="bugChip" class="chip acc" hidden></span></button>
       <button class="tab" role="tab" id="tab-maint" data-tab="maint" aria-selected="false">Wartung <span id="maintChip" class="chip warn" hidden>aktiv</span></button>
       <button class="tab" role="tab" id="tab-update" data-tab="update" aria-selected="false">Updates</button>
     </div>
     <div id="flash"></div>
+
+    <section id="panel-stats" role="tabpanel">
+      <div id="statsErr"></div>
+      <div id="statsTiles" class="stats"></div>
+      <div class="card"><h2>Gerade bearbeitete Boards</h2><div id="statsActive"></div></div>
+      <p class="hint" id="statsFoot"></p>
+      <p class="hint" id="statsExplain"></p>
+    </section>
 
     <section id="panel-users" class="card" role="tabpanel"><h2>Nutzer</h2><div id="usersList"></div></section>
 
@@ -162,6 +187,19 @@ dialog .row { justify-content: flex-end; }
         </form>
       </div>
       <div class="card"><h2>Alle Mitteilungen</h2><div id="nList"></div></div>
+    </section>
+
+    <section id="panel-bugs" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Fehlerberichte</h2>
+        <p class="hint" style="margin-top:0">Meldungen aus der Web-App („Fehler melden“), auch von Gästen ohne Konto. Screenshots liegen im Datenordner unter <code>bugreports/</code>.</p>
+        <div class="seg" role="group" aria-label="Filter">
+          <button class="tab" data-bugfilter="open" aria-selected="true">Offen</button>
+          <button class="tab" data-bugfilter="done" aria-selected="false">Erledigt</button>
+          <button class="tab" data-bugfilter="all" aria-selected="false">Alle</button>
+        </div>
+        <div id="bugList"></div>
+      </div>
     </section>
 
     <section id="panel-maint" role="tabpanel" hidden>
@@ -211,7 +249,7 @@ dialog .row { justify-content: flex-end; }
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { me: null, tab: "users", users: [], licenses: [], update: null, notices: [], editNotice: null, maint: null };
+const state = { bugs: [], bugFilter: "open", me: null, tab: "stats", users: [], licenses: [], update: null, notices: [], editNotice: null, maint: null };
 
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
@@ -293,6 +331,7 @@ async function showApp(me) {
   $("logout").hidden = false; $("who").textContent = me.email;
   selectTab(state.tab);
   if (state.tab !== "maint") loadMaint(true);
+  if (state.tab !== "bugs") loadBugs(true);
 }
 $("loginForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -311,12 +350,64 @@ $("logout").addEventListener("click", async () => { try { await api("POST", "/ap
 // ---------- Tabs ----------
 function selectTab(name) {
   state.tab = name;
-  for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
-  for (const n of ["users", "licenses", "notices", "maint", "update"]) $("panel-" + n).hidden = n !== name;
+  for (const t of document.querySelectorAll(".tab[data-tab]")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
+  for (const n of ["stats", "users", "licenses", "notices", "bugs", "maint", "update"]) $("panel-" + n).hidden = n !== name;
   flash("");
-  if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "maint") loadMaint(); else loadUpdate();
+  stopStats();
+  if (name === "stats") startStats();
+  else if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "bugs") loadBugs(); else if (name === "maint") loadMaint(); else loadUpdate();
 }
-for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => selectTab(t.dataset.tab));
+for (const t of document.querySelectorAll(".tab[data-tab]")) t.addEventListener("click", () => selectTab(t.dataset.tab));
+
+// ---------- Übersicht ----------
+let statsTimer = null, statsBusy = false;
+const nf = new Intl.NumberFormat("de-AT");
+function fmtBytes(b) {
+  b = Number(b) || 0;
+  const f = (v, d) => v.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+  if (b < 1024 * 1024) return f(b / 1024, 0) + " KB";
+  if (b < 1024 * 1024 * 1024) return f(b / 1048576, 1) + " MB";
+  return f(b / 1073741824, 2) + " GB";
+}
+function statTile(title, big, sub, sub2) {
+  return h("div", { class: "card tile" }, h("div", { class: "t" }, title), h("div", { class: "big" }, big), h("div", { class: "sub" }, sub), sub2 && h("div", { class: "sub2" }, sub2));
+}
+const accGuest = (o) => "Konten " + nf.format(o.account) + " · Gäste " + nf.format(o.guest);
+function renderStats(s) {
+  $("statsErr").replaceChildren();
+  const bc = s.boards_created, ba = s.boards_active;
+  $("statsTiles").replaceChildren(
+    statTile("Gerade online", nf.format(s.online.account + s.online.guest), accGuest(s.online)),
+    statTile("Nutzer gesamt", nf.format(s.users.account + s.users.guest), accGuest(s.users)),
+    statTile("Erstellte Boards", nf.format(bc.account + bc.guest), accGuest(bc), "Insgesamt erstellt: " + nf.format(bc.total_ever)),
+    statTile("Gerade bearbeitet", nf.format(ba.account + ba.guest), accGuest(ba)),
+    statTile("Am Server gespeichert", nf.format(s.stored.boards), fmtBytes(s.stored.bytes)));
+  const list = ba.list || [];
+  $("statsActive").replaceChildren(list.length
+    ? h("table", { class: "stable" },
+        h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Besitzer"), h("th", {}, "Konten"), h("th", {}, "Gäste"))),
+        h("tbody", {}, list.map((b) => h("tr", {}, h("td", {}, b.name || "Ohne Namen"), h("td", {}, b.owner || "–"), h("td", {}, nf.format(b.accounts)), h("td", {}, nf.format(b.guests))))))
+    : h("div", { class: "empty" }, "Gerade bearbeitet niemand ein Board."));
+  $("statsFoot").textContent = "Wird alle 5 Sekunden aktualisiert · Stand: " + new Date((s.time || Date.now() / 1000) * 1000).toLocaleTimeString("de-AT");
+  $("statsExplain").textContent = "Online heißt: aktiv in den letzten " + (s.online_minutes || 5) + " Minuten oder live verbunden.";
+}
+async function loadStats() {
+  if (statsBusy) return;
+  statsBusy = true;
+  try { renderStats(await api("GET", "/api/admin/stats")); }
+  catch (e) { if (state.tab === "stats") $("statsErr").replaceChildren(h("div", { class: "msg err", role: "status" }, e.message)); }
+  finally { statsBusy = false; }
+}
+function stopStats() { if (statsTimer) { clearInterval(statsTimer); statsTimer = null; } }
+function startStats() {
+  stopStats();
+  loadStats();
+  statsTimer = setInterval(() => {
+    if (state.tab !== "stats" || !state.me) return stopStats();
+    if (document.visibilityState === "visible") loadStats();
+  }, 5000);
+}
+document.addEventListener("visibilitychange", () => { if (state.me && state.tab === "stats" && document.visibilityState === "visible") startStats(); });
 
 // ---------- Nutzer ----------
 function licenseChip(l) {
@@ -512,6 +603,49 @@ async function deleteNotice(n) {
   const ok = await confirmDialog("Mitteilung löschen?", "„" + (n.title || n.body.slice(0, 60)) + "“ wird gelöscht.", "Löschen");
   if (!ok) return;
   try { await api("DELETE", "/api/admin/notices/" + encodeURIComponent(n.id)); if (state.editNotice === n.id) resetNoticeForm(); flash("Mitteilung gelöscht."); loadNotices(); } catch (e) { fail(e); }
+}
+
+// ---------- Fehlerberichte ----------
+function bugCount() {
+  const n = state.bugs.filter((b) => b.status === "open").length;
+  $("bugChip").hidden = !n; $("bugChip").textContent = String(n);
+}
+async function loadBugs(quiet) {
+  try { state.bugs = await api("GET", "/api/admin/bugreports"); } catch (e) { if (!quiet) fail(e); return; }
+  bugCount();
+  if (!quiet) renderBugs();
+}
+function renderBugs() {
+  for (const b of document.querySelectorAll("[data-bugfilter]")) b.setAttribute("aria-selected", String(b.dataset.bugfilter === state.bugFilter));
+  const list = $("bugList");
+  const shown = state.bugs.filter((b) => state.bugFilter === "all" || b.status === state.bugFilter);
+  if (!shown.length) return list.replaceChildren(h("div", { class: "empty" }, state.bugFilter === "open" ? "Keine offenen Meldungen." : "Keine Meldungen."));
+  list.replaceChildren(...shown.map((b) => {
+    const done = b.status === "done";
+    const tech = [b.version && "OwnDraw " + b.version, b.screen, b.page, b.user_agent].filter(Boolean).join(" · ");
+    return h("div", { class: "item" },
+      h("div", { class: "main" },
+        h("div", {}, h("b", {}, b.sender), b.guest && b.user_id && h("span", { class: "chip" }, "Gast"), h("span", { class: "chip " + (done ? "ok" : "acc") }, done ? "erledigt" : "offen")),
+        h("div", { class: "meta" }, fmtDate(b.created)),
+        h("div", { class: "report-text" }, b.text),
+        b.images.length > 0 && h("div", { class: "shots" }, ...b.images.map((i) => {
+          const url = "/api/admin/bugreports/" + encodeURIComponent(b.id) + "/images/" + i.n;
+          return h("a", { href: url, target: "_blank", rel: "noopener", title: "Screenshot " + (i.n + 1) + " öffnen (" + Math.max(1, Math.round(i.size / 1024)) + " KB)" }, h("img", { src: url, alt: "Screenshot " + (i.n + 1), loading: "lazy" }));
+        })),
+        tech && h("div", { class: "meta", style: "overflow-wrap:anywhere" }, tech)),
+      h("div", { class: "actions" },
+        h("button", { class: "small", onclick: () => patchBug(b, done ? "open" : "done") }, done ? "Wieder öffnen" : "Als erledigt markieren"),
+        h("button", { class: "small danger", onclick: () => deleteBug(b) }, "Löschen")));
+  }));
+}
+for (const b of document.querySelectorAll("[data-bugfilter]")) b.addEventListener("click", () => { state.bugFilter = b.dataset.bugfilter; renderBugs(); });
+async function patchBug(b, status) {
+  try { await api("PATCH", "/api/admin/bugreports/" + encodeURIComponent(b.id), { status }); loadBugs(); } catch (e) { fail(e); }
+}
+async function deleteBug(b) {
+  const ok = await confirmDialog("Meldung löschen?", "Die Meldung von " + b.sender + " wird mit allen Screenshots gelöscht.", "Löschen");
+  if (!ok) return;
+  try { await api("DELETE", "/api/admin/bugreports/" + encodeURIComponent(b.id)); flash("Meldung gelöscht."); loadBugs(); } catch (e) { fail(e); }
 }
 
 // ---------- Wartung ----------

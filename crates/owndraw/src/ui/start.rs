@@ -82,6 +82,9 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     if style::plain_btn(ui, "Einstellungen", h).clicked() {
                         sh.reqs.push(Req::OpenSettings);
                     }
+                    if super::bug_report_available() && style::plain_btn(ui, "Fehler melden", h).clicked() {
+                        super::open_bug_report(sh);
+                    }
                 });
             });
             // Browser: Konto bzw. Gastmodus-Hinweis (dezent)
@@ -314,20 +317,12 @@ pub fn banner(ui: &mut egui::Ui, compact: bool, title: &str, body: &str, buttons
         });
 }
 
-/// Marke (Logo-Kachel mit Strich) in der Größe `s`.
+/// OwnDraw-Logo (App-Icon) in der Größe `s`.
 fn brand_mark(ui: &mut egui::Ui, s: f32) {
-    let p = style::pal();
     let (r, _) = ui.allocate_exact_size(Vec2::splat(s), Sense::hover());
-    let pt = ui.painter();
-    pt.rect_filled(r, CornerRadius::same((s * 0.28) as u8), c(p.accent));
-    let a = r.shrink(s * 0.28);
-    let pts: Vec<Pos2> = (0..=12)
-        .map(|i| {
-            let t = i as f32 / 12.0;
-            Pos2::new(a.left() + a.width() * t, a.bottom() - a.height() * (t * t * (3.0 - 2.0 * t)))
-        })
-        .collect();
-    pt.add(egui::Shape::line(pts, Stroke::new(s * 0.08, c(p.on_accent))));
+    if let Some(t) = style::logo(ui.ctx()) {
+        egui::Image::new(&t).paint_at(ui, r);
+    }
 }
 
 /// Leerzustand ohne Boards: großes Symbol, kurzer Text, beide Aktionen.
@@ -389,6 +384,9 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if style::outline_btn(ui, "Einstellungen", h).clicked() {
                         sh.reqs.push(Req::OpenSettings);
+                    }
+                    if super::bug_report_available() && style::outline_btn(ui, "Fehler melden", h).clicked() {
+                        super::open_bug_report(sh);
                     }
                 });
             });

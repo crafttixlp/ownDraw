@@ -138,6 +138,7 @@ direkt ins Internet stellen (Port 8080 ist im Compose-Setup nur intern erreichba
 data/owndraw.db        Konten, Sitzungen, Lizenzen, Board-Metadaten, Update-Einstellungen (SQLite, WAL)
 data/boards/<id>.owndraw   Board-Dateien
 data/backups/          automatische DB-Sicherungen vor jedem Update
+data/bugreports/<id>/  Screenshots der Fehlerberichte (ab 4.10.0, Text in der DB)
 data/versions/<v>/     per Self-Update installierte Versionen (Binary + web/)
 data/current           Symlink auf die aktive Version (data/previous = die vorige)
 ```
@@ -149,6 +150,7 @@ cd /opt/owndraw/packaging/server
 mkdir -p backup
 sqlite3 data/owndraw.db "VACUUM INTO '$PWD/backup/owndraw-$(date +%F).db'"     # (sqlite3 auf dem Host)
 rsync -a data/boards/ backup/boards/
+rsync -a data/bugreports/ backup/bugreports/
 ```
 
 Ohne `sqlite3` auf dem Host: `docker compose stop owndraw`, den ganzen Ordner `data/` kopieren
@@ -157,7 +159,7 @@ mindestens eine Kopie außerhalb des Servers aufbewahren. Die Zertifikate (Volum
 jederzeit neu ausstellen und brauchen kein Backup.
 
 **Wiederherstellen**: Container stoppen, `data/owndraw.db` (und die zugehörigen `-wal`/`-shm`-Dateien löschen) und
-`data/boards/` aus der Sicherung zurückspielen, Container starten.
+`data/boards/` und `data/bugreports/` aus der Sicherung zurückspielen, Container starten.
 
 ## 7. Updates
 
@@ -214,6 +216,24 @@ man den Wartungsmodus ein (optional mit eigener Nachricht und Endzeit, danach en
 sehen dann eine Wartungsseite, die API antwortet ihnen mit 503 `maintenance`, Live-Verbindungen werden getrennt.
 Admins arbeiten weiter; `/admin` und `/api/health` bleiben erreichbar. Details: [`web-api.md`](web-api.md).
 Tipp für Updates: vorher Wartung einschalten, nach dem Neustart prüfen, dann ausschalten.
+
+**Fehlerberichte (ab 4.10.0).** In der Web-App können Nutzer und Gäste über „Fehler melden“ eine Beschreibung mit bis zu
+5 Screenshots senden. Im Admin-Panel unter **Fehlerberichte** stehen alle Meldungen (Filter Offen/Erledigt/Alle) mit
+Datum, Absender, Text, Screenshots und technischen Angaben; dort lassen sie sich als erledigt markieren oder löschen.
+Grenzen: je Bild 5 MB (PNG/JPEG/WebP), 5 Meldungen je Adresse in 10 Minuten, insgesamt 1000 Meldungen bzw. 1 GB
+Screenshots. Im Wartungsmodus nimmt der Server keine Meldungen an.
+
+**Übersicht (ab 4.13.0).** Der erste Tab im Admin-Panel zeigt Kacheln, jeweils getrennt nach Konten und Gästen, und
+aktualisiert sich alle 5 Sekunden, solange er sichtbar ist:
+- *Gerade online*: Personen mit einer angemeldeten Anfrage in den letzten 5 Minuten oder einer offenen
+  Live-Verbindung. Wird nur im Arbeitsspeicher gezählt und beginnt nach einem Neustart bei null.
+- *Nutzer gesamt*: Anzahl der Konten bzw. Gast-IDs (Gäste per Einladungslink).
+- *Erstellte Boards*: Konten = Boards am Server (Besitzer ist immer ein Konto). Gäste können keine eigenen Server-Boards
+  anlegen, deshalb zählt bei Gästen jedes Board, in dem mindestens ein Gast Mitglied ist. Zusätzlich „Insgesamt
+  erstellt“ inklusive gelöschter Boards (Zähler beginnt beim ersten neuen Board nach dem Update mit dem Bestand).
+- *Gerade bearbeitet*: Boards mit laufender Live-Sitzung (mit mindestens einem Konto bzw. Gast), darunter eine Liste
+  mit Name, Besitzer und Anzahl der Teilnehmer.
+- *Am Server gespeichert*: Anzahl der Boards und belegter Speicher (Summe der Board-Dateien).
 
 ## 9. Hinweise zum Vertrag (`web-api.md`)
 

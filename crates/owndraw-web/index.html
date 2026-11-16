@@ -42,6 +42,31 @@
   #mitteilung small { color: var(--muted); }
   #mitteilung button { font: inherit; font-weight: 600; padding: 0 18px; border-radius: 8px; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; height: 38px; }
   #wartung-admin { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 40; background: var(--card); color: var(--warn); border: 1px solid var(--warn); font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; pointer-events: none; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Fehler melden (nur mit Server, geöffnet aus der App über window.owndrawFehlerMelden) */
+  #fehlerbericht { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0,0,0,.45); }
+  #fehlerbericht .karte { background: var(--card); color: var(--text); border: 1px solid var(--line); max-width: 34em; width: 100%; max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; border-radius: 12px; padding: 20px 22px; box-shadow: 0 8px 28px rgba(0,0,0,.18); }
+  #fehlerbericht h2 { margin: 0 0 4px; font-size: 1.1rem; }
+  #fehlerbericht .sub { margin: 0 0 14px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+  #fehlerbericht label.feld { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin: 12px 0 6px; }
+  #fehlerbericht textarea { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical; font: inherit; font-size: 15px; line-height: 1.45; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+  #fehlerbericht textarea:focus-visible, #fehlerbericht button:focus-visible, #fehlerbericht input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #fehlerbericht .zone { border: 1px dashed var(--line); border-radius: 10px; padding: 12px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.45; }
+  #fehlerbericht .zone.drueber { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  #fehlerbericht .bilder { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  #fehlerbericht .bilder:empty { display: none; }
+  #fehlerbericht .bild { position: relative; width: 84px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+  #fehlerbericht .bild img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #fehlerbericht .bild button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 14px; line-height: 22px; cursor: pointer; }
+  #fehlerbericht .tech { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 14px; }
+  #fehlerbericht .tech input { margin-top: 3px; accent-color: var(--accent); }
+  #fehlerbericht .tech small { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  #fehlerbericht .meldung { margin-top: 12px; font-size: 14px; }
+  #fehlerbericht .meldung.err { color: var(--danger); }
+  #fehlerbericht .fuss { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  #fehlerbericht button { font: inherit; font-weight: 600; padding: 0 16px; border-radius: 8px; height: 38px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--text); }
+  #fehlerbericht button.haupt { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+  #fehlerbericht button.link { border: 0; padding: 0; height: auto; color: var(--accent); background: none; font-weight: 600; }
+  #fehlerbericht button:disabled { opacity: .55; cursor: default; }
 </style>
 </head>
 <body>
@@ -128,6 +153,137 @@
       b.textContent = "Wartungsmodus aktiv. Nur Admins können OwnDraw nutzen.";
       document.body.append(b);
     }).catch(() => {});
+  })();
+</script>
+<script>
+  // Fehler melden: Dialog mit Beschreibung und Screenshots (Datei wählen, Strg+V, Ziehen und Ablegen).
+  // Sendet an POST api/bugreports (multipart). Solange der Dialog offen ist, bekommt die App keine Tasten,
+  // Einfüge- oder Ablege-Ereignisse (Abfangen in der Capture-Phase am window).
+  (() => {
+    const MAX_BILDER = 5, MAX_BYTES = 5 * 1024 * 1024, ERLAUBT = ["image/png", "image/jpeg", "image/webp"];
+    const VERSION = document.querySelector('meta[name="owndraw-version"]')?.content || "";
+    const el = (tag, props, ...kids) => {
+      const e = document.createElement(tag);
+      for (const [k, v] of Object.entries(props || {})) { if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e[k] = v; }
+      for (const k of kids) if (k != null) e.append(k);
+      return e;
+    };
+    // Zu große oder andere Bildformate (GIF, BMP …) im Browser als JPEG neu kodieren, bei Bedarf verkleinern.
+    async function passend(file) {
+      if (ERLAUBT.includes(file.type) && file.size <= MAX_BYTES) return file;
+      let bmp;
+      try { bmp = await createImageBitmap(file); } catch (e) { throw new Error("„" + (file.name || "Bild") + "“ ist kein lesbares Bild."); }
+      let scale = Math.min(1, 4096 / Math.max(bmp.width, bmp.height));
+      for (let i = 0; i < 6; i++) {
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(bmp.width * scale)); c.height = Math.max(1, Math.round(bmp.height * scale));
+        const g = c.getContext("2d");
+        g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+        const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+        if (blob && blob.size <= MAX_BYTES) return new File([blob], "screenshot.jpg", { type: "image/jpeg" });
+        scale *= 0.75;
+      }
+      throw new Error("„" + (file.name || "Bild") + "“ ist zu groß.");
+    }
+    let offen = null;
+    window.owndrawFehlerMelden = () => {
+      if (offen) return;
+      const bilder = [];
+      const text = el("textarea", { id: "fb-text", maxLength: 5000, placeholder: "Was hast du gemacht, was ist passiert und was hättest du erwartet?" });
+      const liste = el("div", { class: "bilder" });
+      const meldung = el("div", { class: "meldung", role: "status" });
+      const wahl = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/*", multiple: true, hidden: true });
+      const zone = el("div", { class: "zone" }, "Bild hierher ziehen, mit Strg+V einfügen oder ",
+        el("button", { type: "button", class: "link", onclick: () => wahl.click() }, "Datei wählen"), el("br"),
+        el("small", {}, "Bis zu 5 Bilder (PNG, JPEG, WebP), je höchstens 5 MB"));
+      const tech = (navigator.userAgent || "").slice(0, 300);
+      const screen = innerWidth + "×" + innerHeight + " @" + (devicePixelRatio || 1);
+      const technik = el("input", { type: "checkbox", id: "fb-technik", checked: true });
+      const senden = el("button", { type: "button", class: "haupt" }, "Senden");
+      const abbrechen = el("button", { type: "button" }, "Abbrechen");
+      const zeige = (t, err) => { meldung.textContent = t || ""; meldung.className = "meldung" + (err ? " err" : ""); };
+      const neuZeichnen = () => {
+        liste.replaceChildren(...bilder.map((b, i) => el("div", { class: "bild" }, el("img", { src: b.url, alt: "Screenshot " + (i + 1) }),
+          el("button", { type: "button", title: "Entfernen", ariaLabel: "Screenshot " + (i + 1) + " entfernen", onclick: () => { URL.revokeObjectURL(b.url); bilder.splice(i, 1); neuZeichnen(); } }, "×"))));
+      };
+      async function hinzu(files) {
+        zeige("");
+        for (const f of files) {
+          if (!f.type.startsWith("image/")) { zeige("Nur Bilder können angehängt werden.", true); continue; }
+          if (bilder.length >= MAX_BILDER) { zeige("Höchstens " + MAX_BILDER + " Bilder pro Meldung.", true); break; }
+          try { const p = await passend(f); bilder.push({ file: p, url: URL.createObjectURL(p) }); } catch (e) { zeige(e.message, true); }
+        }
+        neuZeichnen();
+      }
+      wahl.addEventListener("change", () => { hinzu([...wahl.files]); wahl.value = ""; });
+      const huelle = el("div", { id: "fehlerbericht" });
+      huelle.setAttribute("role", "dialog"); huelle.setAttribute("aria-modal", "true"); huelle.setAttribute("aria-labelledby", "fb-titel");
+      huelle.append(el("div", { class: "karte" },
+        el("h2", { id: "fb-titel" }, "Fehler melden"),
+        el("p", { class: "sub" }, "Deine Meldung geht direkt an die Betreiber dieses Servers."),
+        el("label", { class: "feld", htmlFor: "fb-text" }, "Beschreibung"), text,
+        el("label", { class: "feld" }, "Screenshots (optional)"), zone, liste, wahl,
+        el("label", { class: "tech", htmlFor: "fb-technik" }, technik, el("span", {}, "Technische Angaben mitsenden", el("small", {}, "OwnDraw " + VERSION + " · " + screen + " · " + tech))),
+        meldung,
+        el("div", { class: "fuss" }, abbrechen, senden)));
+      // Ereignisse vor der App abfangen
+      const drin = (e) => huelle.contains(e.target);
+      const tasten = (e) => {
+        e.stopImmediatePropagation();
+        if (e.type === "keydown" && e.key === "Escape" && !senden.disabled) { e.preventDefault(); zu(); }
+      };
+      const einfuegen = (e) => {
+        e.stopImmediatePropagation();
+        const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+        if (files.length) { e.preventDefault(); hinzu(files); }
+      };
+      const ziehen = (e) => {
+        e.stopImmediatePropagation(); e.preventDefault();
+        const ueber = drin(e) && e.type !== "drop" && e.type !== "dragleave";
+        zone.classList.toggle("drueber", ueber);
+        if (e.type === "drop" && drin(e)) hinzu([...(e.dataTransfer?.files || [])]);
+      };
+      const T = ["keydown", "keyup", "keypress"], C = ["paste", "copy", "cut"], D = ["dragenter", "dragover", "dragleave", "drop"];
+      T.forEach((t) => window.addEventListener(t, tasten, true));
+      window.addEventListener("paste", einfuegen, true);
+      ["copy", "cut"].forEach((t) => window.addEventListener(t, tasten, true));
+      D.forEach((t) => window.addEventListener(t, ziehen, true));
+      function zu() {
+        T.forEach((t) => window.removeEventListener(t, tasten, true));
+        window.removeEventListener("paste", einfuegen, true);
+        ["copy", "cut"].forEach((t) => window.removeEventListener(t, tasten, true));
+        D.forEach((t) => window.removeEventListener(t, ziehen, true));
+        bilder.forEach((b) => URL.revokeObjectURL(b.url));
+        huelle.remove(); offen = null;
+        document.getElementById("owndraw-canvas")?.focus();
+      }
+      abbrechen.addEventListener("click", zu);
+      senden.addEventListener("click", async () => {
+        if (!text.value.trim()) { zeige("Bitte beschreibe den Fehler.", true); text.focus(); return; }
+        const fd = new FormData();
+        fd.append("text", text.value);
+        if (technik.checked) {
+          fd.append("version", VERSION); fd.append("user_agent", tech); fd.append("screen", screen);
+          fd.append("page", location.pathname); // ohne #… (Einladungslinks enthalten dort ein Geheimnis)
+        }
+        bilder.forEach((b) => fd.append("image", b.file, b.file.name || "screenshot"));
+        senden.disabled = abbrechen.disabled = true; senden.textContent = "Wird gesendet …"; zeige("");
+        try {
+          const r = await fetch("api/bugreports", { method: "POST", body: fd, credentials: "same-origin", headers: { "X-OwnDraw": "1" } });
+          let j = null; try { j = await r.json(); } catch (e) { /* kein JSON */ }
+          if (!r.ok) throw new Error(j?.message || (r.status === 404 ? "Fehlerberichte sind hier nicht verfügbar." : "Senden fehlgeschlagen (" + r.status + ")."));
+          huelle.querySelector(".karte").replaceChildren(el("h2", {}, "Danke!"), el("p", { class: "sub" }, "Deine Meldung wurde gesendet."),
+            el("div", { class: "fuss" }, el("button", { type: "button", class: "haupt", onclick: zu }, "Schließen")));
+          huelle.querySelector(".haupt").focus();
+        } catch (e) {
+          zeige(e.message === "Failed to fetch" ? "Server nicht erreichbar. Prüfe die Verbindung." : e.message, true);
+          senden.disabled = abbrechen.disabled = false; senden.textContent = "Senden";
+        }
+      });
+      offen = huelle;
+      document.body.append(huelle);
+      text.focus();
+    };
   })();
 </script>
 <script type="module">

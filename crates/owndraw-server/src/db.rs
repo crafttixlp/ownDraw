@@ -68,6 +68,21 @@ CREATE TABLE IF NOT EXISTS notices (
     created INTEGER NOT NULL,
     updated INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS bug_reports (
+    id TEXT PRIMARY KEY,
+    created INTEGER NOT NULL,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    sender TEXT NOT NULL,
+    guest INTEGER NOT NULL DEFAULT 0,
+    text TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT '',
+    page TEXT NOT NULL DEFAULT '',
+    screen TEXT NOT NULL DEFAULT '',
+    images TEXT NOT NULL DEFAULT '[]',
+    size INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open'
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

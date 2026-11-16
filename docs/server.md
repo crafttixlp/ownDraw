@@ -218,6 +218,18 @@ Datum, Absender, Text, Screenshots und technischen Angaben; dort lassen sie sich
 Grenzen: je Bild 5 MB (PNG/JPEG/WebP), 5 Meldungen je Adresse in 10 Minuten, insgesamt 1000 Meldungen bzw. 1 GB
 Screenshots. Im Wartungsmodus nimmt der Server keine Meldungen an.
 
+**Übersicht (ab 4.13.0).** Der erste Tab im Admin-Panel zeigt Kacheln, jeweils getrennt nach Konten und Gästen, und
+aktualisiert sich alle 5 Sekunden, solange er sichtbar ist:
+- *Gerade online*: Personen mit einer angemeldeten Anfrage in den letzten 5 Minuten oder einer offenen
+  Live-Verbindung. Wird nur im Arbeitsspeicher gezählt und beginnt nach einem Neustart bei null.
+- *Nutzer gesamt*: Anzahl der Konten bzw. Gast-IDs (Gäste per Einladungslink).
+- *Erstellte Boards*: Konten = Boards am Server (Besitzer ist immer ein Konto). Gäste können keine eigenen Server-Boards
+  anlegen, deshalb zählt bei Gästen jedes Board, in dem mindestens ein Gast Mitglied ist. Zusätzlich „Insgesamt
+  erstellt“ inklusive gelöschter Boards (Zähler beginnt beim ersten neuen Board nach dem Update mit dem Bestand).
+- *Gerade bearbeitet*: Boards mit laufender Live-Sitzung (mit mindestens einem Konto bzw. Gast), darunter eine Liste
+  mit Name, Besitzer und Anzahl der Teilnehmer.
+- *Am Server gespeichert*: Anzahl der Boards und belegter Speicher (Summe der Board-Dateien).
+
 ## 9. Hinweise zum Vertrag (`web-api.md`)
 
 - Umgesetzt wie beschrieben, einschließlich Live-Zusammenarbeit über `/api/collab/{board_id}` (WebSocket).

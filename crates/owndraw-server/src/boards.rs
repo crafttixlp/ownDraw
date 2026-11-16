@@ -158,6 +158,7 @@ pub async fn create(State(s): State<AppState>, a: Auth, headers: HeaderMap, body
                 "INSERT INTO boards(id,owner_id,name,version,size,modified) VALUES(?1,?2,?3,1,?4,?5)",
                 params![id, uid, name, bytes.len() as i64, t],
             )?;
+            crate::stats::count_board_created(c)?;
             let b = board_row(c, &id)?.ok_or_else(|| ApiError::internal("Board fehlt nach dem Anlegen"))?;
             Ok(info(&b, "owner"))
         })

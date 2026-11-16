@@ -55,6 +55,7 @@ struct Peer {
     role: String,
     /// Admins bleiben im Wartungsmodus verbunden.
     admin: bool,
+    guest: bool,
     tx: mpsc::UnboundedSender<Out>,
 }
 
@@ -113,6 +114,12 @@ pub struct Room {
     st: Mutex<RoomState>,
 }
 
+/// Kurzinfo zu einem offenen Raum (`Hub::snapshot`).
+pub struct RoomInfo {
+    pub id: String,
+    pub peers: Vec<(String, bool)>,
+}
+
 /// Alle offenen Räume.
 #[derive(Default)]
 pub struct Hub {
@@ -154,6 +161,19 @@ impl Hub {
                 let _ = p.tx.send(Out::Close(4503, "maintenance".into()));
             }
         }
+    }
+
+    /// Offene Räume mit ihren Teilnehmern (Nutzer-ID, Gast) für die Admin-Statistik.
+    pub fn snapshot(&self) -> Vec<RoomInfo> {
+        let rooms: Vec<Arc<Room>> = lock(&self.rooms).values().cloned().collect();
+        rooms
+            .iter()
+            .filter_map(|r| {
+                let st = lock(&r.st);
+                (!st.closed && !st.peers.is_empty())
+                    .then(|| RoomInfo { id: r.id.clone(), peers: st.peers.iter().map(|p| (p.user_id.clone(), p.guest)).collect() })
+            })
+            .collect()
     }
 
     /// Offener Raum zu einem Board (für PUT/Bilder).
@@ -381,7 +401,7 @@ async fn session(s: AppState, sock: WebSocket, board_id: String, user: db::UserR
         st.set_write_ok(write_ok);
         let id = st.next_peer;
         st.next_peer += 1;
-        let peer = Peer { id, user_id: user.id.clone(), name: user.name.clone(), color: COLORS[(id as usize - 1) % COLORS.len()], role: role.clone(), admin: user.admin, tx };
+        let peer = Peer { id, user_id: user.id.clone(), name: user.name.clone(), color: COLORS[(id as usize - 1) % COLORS.len()], role: role.clone(), admin: user.admin, guest: user.guest, tx };
         let hello = json!({
             "t": "hello",
             "proto": PROTO,

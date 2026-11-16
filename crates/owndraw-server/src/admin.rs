@@ -133,7 +133,7 @@ pub async fn create_licenses(State(s): State<AppState>, _a: AdminAuth, J(b): J<C
         return Err(ApiError::invalid("Die Laufzeit muss zwischen 1 und 36500 Tagen liegen (oder leer für unbegrenzt)."));
     }
     if !(1..=10_000_000).contains(&b.quota_mb) {
-        return Err(ApiError::invalid("Die Quote muss mindestens 1 MB betragen."));
+        return Err(ApiError::invalid("Der Speicherplatz muss mindestens 1 MB betragen."));
     }
     let note: String = b.note.trim().chars().take(500).collect();
     let v =
@@ -191,7 +191,7 @@ pub async fn patch_license(
     J(b): J<PatchLicense>,
 ) -> ApiResult<Json<Value>> {
     if b.quota_mb.is_some_and(|q| !(1..=10_000_000).contains(&q)) {
-        return Err(ApiError::invalid("Die Quote muss mindestens 1 MB betragen."));
+        return Err(ApiError::invalid("Der Speicherplatz muss mindestens 1 MB betragen."));
     }
     let code = code.trim().to_uppercase();
     let v =

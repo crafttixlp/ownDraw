@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS members (
     role TEXT NOT NULL,
     PRIMARY KEY (board_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS invites (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    created INTEGER NOT NULL,
+    expires_at INTEGER,
+    uses INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -55,7 +64,17 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_user ON licenses(redeemed_by);
+CREATE INDEX IF NOT EXISTS idx_invites_board ON invites(board_id);
 ";
+
+/// Spalten, die nach 4.6 dazugekommen sind (ältere Datenbanken bekommen sie beim Start).
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let has_guest = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='guest'")?.exists([])?;
+    if !has_guest {
+        conn.execute_batch("ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;")?;
+    }
+    Ok(())
+}
 
 pub fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
@@ -79,6 +98,7 @@ impl Db {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")?;
         conn.execute_batch(SCHEMA)?;
+        migrate(&conn)?;
         Ok(Self { conn: Arc::new(Mutex::new(conn)) })
     }
 
@@ -120,6 +140,8 @@ pub struct UserRow {
     pub admin: bool,
     pub disabled: bool,
     pub created: i64,
+    /// Gast ohne Konto (über einen Einladungslink beigetreten): kein Passwort, keine Lizenz, eigene Boards nicht möglich.
+    pub guest: bool,
 }
 
 fn user_from_row(r: &rusqlite::Row) -> rusqlite::Result<UserRow> {
@@ -131,10 +153,11 @@ fn user_from_row(r: &rusqlite::Row) -> rusqlite::Result<UserRow> {
         admin: r.get::<_, i64>(4)? != 0,
         disabled: r.get::<_, i64>(5)? != 0,
         created: r.get(6)?,
+        guest: r.get::<_, i64>(7)? != 0,
     })
 }
 
-const USER_COLS: &str = "id,email,name,pw_hash,admin,disabled,created";
+const USER_COLS: &str = "id,email,name,pw_hash,admin,disabled,created,guest";
 
 pub fn user_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Option<UserRow>> {
     conn.query_row(&format!("SELECT {USER_COLS} FROM users WHERE email=?1"), [email], user_from_row).optional()
@@ -154,7 +177,7 @@ pub fn insert_user(conn: &Connection, email: &str, name: &str, pw_hash: &str, ad
         "INSERT INTO users(id,email,name,pw_hash,admin,disabled,created) VALUES(?1,?2,?3,?4,?5,0,?6)",
         params![id, email, name, pw_hash, admin as i64, created],
     )?;
-    Ok(UserRow { id, email: email.into(), name: name.into(), pw_hash: pw_hash.into(), admin, disabled: false, created })
+    Ok(UserRow { id, email: email.into(), name: name.into(), pw_hash: pw_hash.into(), admin, disabled: false, created, guest: false })
 }
 
 pub fn used_bytes(conn: &Connection, user_id: &str) -> rusqlite::Result<i64> {
@@ -259,28 +282,81 @@ pub fn me_json(conn: &Connection, u: &UserRow) -> ApiResult<Value> {
         }
         None => Value::Null,
     };
-    Ok(json!({"id": u.id, "email": u.email, "name": u.name, "admin": u.admin, "license": license}))
+    let email = if u.guest { "" } else { u.email.as_str() };
+    Ok(json!({"id": u.id, "email": email, "name": u.name, "admin": u.admin, "guest": u.guest, "license": license}))
+}
+
+/// Ein kryptografisch zufälliges Zeichen aus `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (ohne 0/O/1/I).
+fn code_char() -> char {
+    const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut buf = [0u8; 1];
+    loop {
+        getrandom::fill(&mut buf).expect("Zufallsquelle nicht verfügbar");
+        // 224 = 7 * 32: Werte darüber verwerfen, damit keine Verzerrung entsteht.
+        if buf[0] < 224 {
+            return ALPHABET[(buf[0] % 32) as usize] as char;
+        }
+    }
 }
 
 /// Erzeugt einen Lizenzcode `OWND-XXXX-XXXX-XXXX` (ohne 0/O/1/I), kryptografisch zufällig.
 pub fn new_license_code() -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let mut out = String::from("OWND");
-    let mut buf = [0u8; 1];
     for i in 0..12 {
         if i % 4 == 0 {
             out.push('-');
         }
-        loop {
-            getrandom::fill(&mut buf).expect("Zufallsquelle nicht verfügbar");
-            // 224 = 7 * 32: Werte darüber verwerfen, damit keine Verzerrung entsteht.
-            if buf[0] < 224 {
-                out.push(ALPHABET[(buf[0] % 32) as usize] as char);
-                break;
-            }
-        }
+        out.push(code_char());
     }
     out
+}
+
+// ---------- Gäste ----------
+
+/// Länge des selbst gewählten Namensteils einer Gast-ID.
+pub const GUEST_NAME_MAX: usize = 24;
+
+/// Prüft und kürzt den gewünschten Gastnamen (ohne `#`, keine Steuerzeichen, 1–24 Zeichen).
+pub fn clean_guest_name(raw: &str) -> ApiResult<String> {
+    let name: String = raw.trim().chars().filter(|c| !c.is_control() && *c != '#').collect();
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        return Err(ApiError::invalid("Bitte einen Namen angeben."));
+    }
+    if name.chars().count() > GUEST_NAME_MAX {
+        return Err(ApiError::invalid(format!("Der Name darf höchstens {GUEST_NAME_MAX} Zeichen lang sein.")));
+    }
+    Ok(name)
+}
+
+/// Legt einen Gast an. Seine ID für die Anzeige ist `<Name>#<4 Zeichen>` (eindeutig unter allen Nutzern).
+pub fn insert_guest(conn: &Connection, name: &str) -> ApiResult<UserRow> {
+    for _ in 0..50 {
+        let tag: String = (0..4).map(|_| code_char()).collect();
+        let display = format!("{name}#{tag}");
+        let taken: bool = conn.prepare("SELECT 1 FROM users WHERE name=?1")?.exists([&display])?;
+        if taken {
+            continue;
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        let created = now();
+        // Platzhalter-Adresse (nicht anmeldbar, wird nie angezeigt); `!` ist kein gültiger Passwort-Hash.
+        let email = format!("gast:{id}");
+        conn.execute(
+            "INSERT INTO users(id,email,name,pw_hash,admin,disabled,created,guest) VALUES(?1,?2,?3,'!',0,0,?4,1)",
+            params![id, email, display, created],
+        )?;
+        return Ok(UserRow { id, email, name: display, pw_hash: "!".into(), admin: false, disabled: false, created, guest: true });
+    }
+    Err(ApiError::internal("Keine freie Gast-ID gefunden"))
+}
+
+/// Löscht Gäste ohne gültige Sitzung (abgelaufen oder abgemeldet) samt ihren Mitgliedschaften.
+pub fn purge_guests(conn: &Connection, now: i64) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM users WHERE guest=1 AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.user_id=users.id AND s.expires>?1)",
+        [now],
+    )
 }
 
 pub fn random_hex(bytes: usize) -> String {
@@ -292,6 +368,22 @@ pub fn random_hex(bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gast_ids_eindeutig_und_name_geprueft() {
+        let db = Db::memory().unwrap();
+        let c = db.conn.lock().unwrap();
+        let a = insert_guest(&c, "Mila").unwrap();
+        let b = insert_guest(&c, "Mila").unwrap();
+        assert!(a.guest && a.name.starts_with("Mila#") && a.name.len() == 9);
+        assert_ne!(a.name, b.name);
+        assert_ne!(a.id, b.id);
+        assert_eq!(clean_guest_name("  Ben  #  Lu ").unwrap(), "Ben Lu");
+        assert!(clean_guest_name("   ").is_err());
+        assert!(clean_guest_name(&"x".repeat(GUEST_NAME_MAX + 1)).is_err());
+        // ohne Sitzung: wird aufgeräumt
+        assert_eq!(purge_guests(&c, now()).unwrap(), 2);
+    }
 
     #[test]
     fn lizenzcode_format() {

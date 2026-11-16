@@ -53,6 +53,9 @@ pub struct Peer {
 struct ShareDlg {
     email: String,
     edit: bool,
+    /// Einladungslink: Rolle und Laufzeit.
+    link_edit: bool,
+    link_forever: bool,
 }
 
 pub struct Live {
@@ -79,6 +82,12 @@ pub struct Live {
     share: Option<ShareDlg>,
     conflict_open: bool,
     view_hint_at: f64,
+}
+
+/// TT.MM.JJJJ aus Unix-Sekunden.
+fn date(secs: i64) -> String {
+    let s = owndraw_core::doc::rfc3339(secs * 1000);
+    format!("{}.{}.{}", &s[8..10], &s[5..7], &s[0..4])
 }
 
 fn color_of(s: &str) -> Color32 {
@@ -523,7 +532,8 @@ impl Live {
         });
         if share {
             api::load_members(&self.board_id);
-            self.share = Some(ShareDlg { edit: true, ..ShareDlg::default() });
+            api::load_invites(&self.board_id);
+            self.share = Some(ShareDlg { edit: true, link_edit: true, ..ShareDlg::default() });
         }
         ed.st.popup_rects.push(r);
         self.share_dialog(ctx, sh);
@@ -533,7 +543,8 @@ impl Live {
     /// Öffnet den Teilen-Dialog (aus dem Menü ⋯).
     pub fn open_share(&mut self) {
         api::load_members(&self.board_id);
-        self.share = Some(ShareDlg { edit: true, ..ShareDlg::default() });
+        api::load_invites(&self.board_id);
+        self.share = Some(ShareDlg { edit: true, link_edit: true, ..ShareDlg::default() });
     }
 
     fn share_dialog(&mut self, ctx: &egui::Context, sh: &mut Shared) {
@@ -541,16 +552,18 @@ impl Live {
         let h = sh.env.btn;
         let mut close = false;
         let width = (ctx.content_rect().width() - 24.0).clamp(260.0, 460.0);
-        let (members, busy, err) = api::with(|n| {
+        let (members, busy, err, invites, new_link) = api::with(|n| {
             let m = n.members.as_ref().filter(|(id, _)| *id == self.board_id).map(|(_, l)| l.clone());
-            (m, n.busy, n.form_error.clone())
+            let i = n.invites.as_ref().filter(|(id, _)| *id == self.board_id).map(|(_, l)| l.clone());
+            let nl = n.new_link.as_ref().filter(|(id, _)| *id == self.board_id).map(|(_, u)| u.clone());
+            (m, n.busy, n.form_error.clone(), i, nl)
         });
         let pal = style::pal();
         let id = self.board_id.clone();
         egui::Modal::new(egui::Id::unique("share-dlg")).frame(style::card()).show(ctx, |ui| {
             ui.set_width(width - 40.0);
             ui.label(egui::RichText::new("Board teilen").heading().strong());
-            ui.label(egui::RichText::new("Eingeladene brauchen ein Konto (ohne eigene Lizenz) und sehen das Board in ihrer Liste. Änderungen erscheinen bei allen sofort.").size(12.5).color(c(pal.dim)));
+            ui.label(egui::RichText::new("Per E-Mail Eingeladene brauchen ein Konto (ohne eigene Lizenz); per Link geht es auch als Gast. Änderungen erscheinen bei allen sofort.").size(12.5).color(c(pal.dim)));
             ui.add_space(8.0);
             style::caption(ui, "Mitglieder");
             match &members {
@@ -563,7 +576,8 @@ impl Live {
                             ui.vertical(|ui| {
                                 let n = if m.name.is_empty() { m.email.clone() } else { m.name.clone() };
                                 ui.label(egui::RichText::new(n).size(14.0));
-                                ui.label(egui::RichText::new(&m.email).size(11.5).color(c(pal.dim)));
+                                let sub = if m.guest { "Gast" } else { m.email.as_str() };
+                                ui.label(egui::RichText::new(sub).size(11.5).color(c(pal.dim)));
                             });
                             ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 34.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if m.role == "owner" {
@@ -604,6 +618,60 @@ impl Live {
                         d.email.clear();
                     }
                 });
+            });
+            ui.add_space(12.0);
+            style::caption(ui, "Einladungslink (auch für Gäste ohne Konto)");
+            ui.horizontal_wrapped(|ui| {
+                if style::chip(ui, "Darf bearbeiten", d.link_edit, h).clicked() {
+                    d.link_edit = true;
+                }
+                if style::chip(ui, "Nur ansehen", !d.link_edit, h).clicked() {
+                    d.link_edit = false;
+                }
+                if style::chip(ui, "7 Tage", !d.link_forever, h).clicked() {
+                    d.link_forever = false;
+                }
+                if style::chip(ui, "Unbefristet", d.link_forever, h).clicked() {
+                    d.link_forever = true;
+                }
+            });
+            ui.add_space(4.0);
+            if style::accent_btn(ui, "Link erstellen", h).clicked() {
+                api::create_invite(&id, if d.link_edit { "edit" } else { "view" }, if d.link_forever { None } else { Some(7) });
+            }
+            if let Some(url) = &new_link {
+                ui.add_space(4.0);
+                let mut shown = url.clone();
+                ui.horizontal(|ui| {
+                    let w = (ui.available_width() - 90.0).max(80.0);
+                    ui.add(egui::TextEdit::singleline(&mut shown).desired_width(w).font(egui::FontId::proportional(13.0)).margin(Vec2::new(8.0, 6.0)));
+                    if style::plain_btn(ui, "Kopieren", h - 6.0).clicked() {
+                        ui.ctx().copy_text(url.clone());
+                    }
+                });
+                ui.label(egui::RichText::new("Der Link wird nur jetzt angezeigt – bitte kopieren.").size(11.5).color(c(pal.dim)));
+            }
+            match &invites {
+                None => {
+                    ui.spinner();
+                }
+                Some(list) => {
+                    for i in list {
+                        ui.horizontal(|ui| {
+                            let role = if i.role == "edit" { "bearbeiten" } else { "ansehen" };
+                            let until = i.expires_at.map(|e| format!("bis {}", date(e))).unwrap_or_else(|| "unbefristet".into());
+                            ui.label(egui::RichText::new(format!("{role} · {until} · {}× benutzt", i.uses)).size(12.5));
+                            ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 30.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if style::plain_btn(ui, "Löschen", 30.0).clicked() {
+                                    api::delete_invite(&id, &i.id);
+                                }
+                            });
+                        });
+                    }
+                }
+            }
+            ui.add_space(10.0);
+            ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 close |= style::plain_btn(ui, "Schließen", h).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape));
             });
         });

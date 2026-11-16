@@ -88,28 +88,47 @@ fn cookie_header(token: &str, max_age: i64) -> HeaderValue {
         .expect("Cookie-Header ist gültig")
 }
 
-fn with_cookie(token: &str, max_age: i64, body: Value) -> Response {
+pub(crate) fn with_cookie(token: &str, max_age: i64, body: Value) -> Response {
     let mut r = Json(body).into_response();
     r.headers_mut().append(SET_COOKIE, cookie_header(token, max_age));
     r
 }
 
-pub async fn create_session(state: &AppState, user_id: String) -> ApiResult<String> {
+/// Legt eine Sitzung an (räumt abgelaufene mit auf) und liefert das Token für den Cookie.
+pub(crate) fn insert_session(c: &rusqlite::Connection, user_id: &str) -> rusqlite::Result<String> {
     let token = db::random_hex(32);
-    let th = hash_token(&token);
-    state
-        .db
-        .call(move |c| {
-            let t = now();
-            c.execute("DELETE FROM sessions WHERE expires<?1", [t])?;
-            c.execute(
-                "INSERT INTO sessions(token_hash,user_id,created,expires) VALUES(?1,?2,?3,?4)",
-                params![th, user_id, t, t + SESSION_SECS],
-            )?;
-            Ok(())
-        })
-        .await?;
+    let t = now();
+    c.execute("DELETE FROM sessions WHERE expires<?1", [t])?;
+    c.execute(
+        "INSERT INTO sessions(token_hash,user_id,created,expires) VALUES(?1,?2,?3,?4)",
+        params![hash_token(&token), user_id, t, t + SESSION_SECS],
+    )?;
     Ok(token)
+}
+
+pub async fn create_session(state: &AppState, user_id: String) -> ApiResult<String> {
+    state.db.call(move |c| Ok(insert_session(c, &user_id)?)).await
+}
+
+/// Übernimmt die Mitgliedschaften eines Gastes in ein Konto (Gast meldet sich an oder registriert sich) und
+/// löscht den Gast. Bei doppelter Mitgliedschaft gewinnt `edit` vor `view`. Liefert die betroffenen Boards.
+fn adopt_guest(c: &rusqlite::Connection, guest_id: &str, user_id: &str) -> rusqlite::Result<Vec<String>> {
+    let mut st = c.prepare("SELECT board_id, role FROM members WHERE user_id=?1")?;
+    let rows = st.query_map([guest_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+    drop(st);
+    for (board, role) in &rows {
+        let owner: bool = c.prepare("SELECT 1 FROM boards WHERE id=?1 AND owner_id=?2")?.exists(params![board, user_id])?;
+        if owner {
+            continue;
+        }
+        c.execute(
+            "INSERT INTO members(board_id,user_id,role) VALUES(?1,?2,?3)
+             ON CONFLICT(board_id,user_id) DO UPDATE SET role=CASE WHEN members.role='edit' OR excluded.role='edit' THEN 'edit' ELSE 'view' END",
+            params![board, user_id, role],
+        )?;
+    }
+    c.execute("DELETE FROM users WHERE id=?1 AND guest=1", [guest_id])?;
+    Ok(rows.into_iter().map(|(b, _)| b).collect())
 }
 
 /// Legt einen Admin an (oder macht einen vorhandenen Nutzer zum Admin und setzt das Passwort).
@@ -201,6 +220,20 @@ impl FromRequestParts<AppState> for Auth {
     }
 }
 
+/// Angemeldet oder nicht (z. B. Beitritt per Einladungslink: mit Konto oder als neuer Gast).
+pub struct MaybeAuth(pub Option<Auth>);
+
+impl FromRequestParts<AppState> for MaybeAuth {
+    type Rejection = ApiError;
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        match Auth::from_request_parts(parts, state).await {
+            Ok(a) => Ok(MaybeAuth(Some(a))),
+            Err(e) if e.code == "unauthorized" => Ok(MaybeAuth(None)),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 /// Angemeldeter Admin.
 pub struct AdminAuth(pub Auth);
 
@@ -224,9 +257,14 @@ pub async fn csrf(req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
-fn rate_check(state: &AppState, kind: &str, ip: &str) -> ApiResult<()> {
+pub(crate) fn rate_check(state: &AppState, kind: &str, ip: &str) -> ApiResult<()> {
+    rate_check_n(state, kind, ip, state.cfg.rate_limit)
+}
+
+/// Wie [`rate_check`], aber mit eigenem Limit je Zeitfenster.
+pub(crate) fn rate_check_n(state: &AppState, kind: &str, ip: &str, limit: u32) -> ApiResult<()> {
     let key = format!("{kind}:{ip}");
-    if state.limiter.hit(&key, state.cfg.rate_limit, Duration::from_secs(state.cfg.rate_window_secs)) {
+    if state.limiter.hit(&key, limit, Duration::from_secs(state.cfg.rate_window_secs)) {
         Ok(())
     } else {
         Err(ApiError::rate_limited())
@@ -243,20 +281,30 @@ pub struct RegisterBody {
     name: String,
 }
 
-pub async fn register(State(s): State<AppState>, ClientIp(ip): ClientIp, J(b): J<RegisterBody>) -> ApiResult<Response> {
+pub async fn register(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: MaybeAuth, J(b): J<RegisterBody>) -> ApiResult<Response> {
     rate_check(&s, "register", &ip)?;
     let email = normalize_email(&b.email)?;
     check_password(&b.password)?;
     let name = b.name.trim().chars().take(100).collect::<String>();
     let name = if name.is_empty() { email.split('@').next().unwrap_or("").to_string() } else { name };
     let hash = hash_password(b.password).await?;
-    let (user, me) =
+    let guest = cur.0.map(|a| a.user).filter(|u| u.guest).map(|u| u.id);
+    let (user, me, moved) =
         s.db.call(move |c| {
-            let u = db::insert_user(c, &email, &name, &hash, false)?;
-            let me = db::me_json(c, &u)?;
-            Ok((u, me))
+            let tx = c.transaction()?;
+            let u = db::insert_user(&tx, &email, &name, &hash, false)?;
+            let moved = match &guest {
+                Some(g) => adopt_guest(&tx, g, &u.id)?.into_iter().map(|b| (b, g.clone())).collect(),
+                None => Vec::new(),
+            };
+            let me = db::me_json(&tx, &u)?;
+            tx.commit()?;
+            Ok((u, me, moved))
         })
         .await?;
+    for (board, g) in moved {
+        s.hub.kick(&board, Some(&g), "role_changed", "Du bist jetzt mit deinem Konto angemeldet.");
+    }
     let token = create_session(&s, user.id).await?;
     Ok(with_cookie(&token, SESSION_SECS, me))
 }
@@ -267,13 +315,13 @@ pub struct LoginBody {
     password: String,
 }
 
-pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, J(b): J<LoginBody>) -> ApiResult<Response> {
+pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: MaybeAuth, J(b): J<LoginBody>) -> ApiResult<Response> {
     rate_check(&s, "login", &ip)?;
     let email = b.email.trim().to_lowercase();
     let e2 = email.clone();
     let user = s.db.call(move |c| Ok(db::user_by_email(c, &e2)?)).await?;
     let bad = || ApiError::unauthorized_with("E-Mail oder Passwort ist falsch.");
-    let Some(user) = user else {
+    let Some(user) = user.filter(|u| !u.guest) else {
         // Gleiche Rechenzeit wie bei einem echten Konto (kein Hinweis, ob die Adresse existiert).
         verify_password(b.password, dummy_hash().to_string()).await;
         return Err(bad());
@@ -285,7 +333,19 @@ pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, J(b): J<Lo
         return Err(ApiError::forbidden("Dieses Konto ist gesperrt."));
     }
     let u2 = user.clone();
-    let me = s.db.call(move |c| db::me_json(c, &u2)).await?;
+    let guest = cur.0.map(|a| a.user).filter(|u| u.guest).map(|u| u.id);
+    let (me, moved) =
+        s.db.call(move |c| {
+            let moved = match &guest {
+                Some(g) => adopt_guest(c, g, &u2.id)?.into_iter().map(|b| (b, g.clone())).collect(),
+                None => Vec::new(),
+            };
+            Ok((db::me_json(c, &u2)?, moved))
+        })
+        .await?;
+    for (board, g) in moved {
+        s.hub.kick(&board, Some(&g), "role_changed", "Du bist jetzt mit deinem Konto angemeldet.");
+    }
     let token = create_session(&s, user.id).await?;
     Ok(with_cookie(&token, SESSION_SECS, me))
 }
@@ -293,7 +353,28 @@ pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, J(b): J<Lo
 pub async fn logout(State(s): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     if let Some(token) = session_cookie(&headers) {
         let th = hash_token(&token);
-        s.db.call(move |c| Ok(c.execute("DELETE FROM sessions WHERE token_hash=?1", [th])?)).await?;
+        // Ein Gast hat nur diese Sitzung: beim Abmelden wird er samt Mitgliedschaften gelöscht.
+        let gone =
+            s.db.call(move |c| {
+                let guest: Option<String> = c
+                    .query_row("SELECT u.id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?1 AND u.guest=1", [&th], |r| r.get(0))
+                    .optional()?;
+                c.execute("DELETE FROM sessions WHERE token_hash=?1", [&th])?;
+                let mut boards = Vec::new();
+                if let Some(g) = &guest {
+                    let mut st = c.prepare("SELECT board_id FROM members WHERE user_id=?1")?;
+                    boards = st.query_map([g], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+                    drop(st);
+                    c.execute("DELETE FROM users WHERE id=?1", [g])?;
+                }
+                Ok(guest.map(|g| (g, boards)))
+            })
+            .await?;
+        if let Some((g, boards)) = gone {
+            for b in boards {
+                s.hub.kick(&b, Some(&g), "removed", "Gastzugang beendet.");
+            }
+        }
     }
     Ok(with_cookie("", 0, json!({})))
 }
@@ -309,6 +390,9 @@ pub struct PasswordBody {
 }
 
 pub async fn change_password(State(s): State<AppState>, a: Auth, J(b): J<PasswordBody>) -> ApiResult<Json<Value>> {
+    if a.user.guest {
+        return Err(ApiError::forbidden("Gäste haben kein Passwort. Lege dafür ein Konto an."));
+    }
     check_password(&b.new)?;
     if !verify_password(b.old, a.user.pw_hash.clone()).await {
         return Err(ApiError::forbidden("Das bisherige Passwort ist falsch."));
@@ -332,6 +416,9 @@ pub struct RedeemBody {
 
 pub async fn redeem(State(s): State<AppState>, ClientIp(ip): ClientIp, a: Auth, J(b): J<RedeemBody>) -> ApiResult<Json<Value>> {
     rate_check(&s, "redeem", &ip)?;
+    if a.user.guest {
+        return Err(ApiError::forbidden("Als Gast kannst du keine Lizenz einlösen. Lege dafür ein Konto an."));
+    }
     let code = b.code.trim().to_uppercase();
     let user = a.user;
     let me =

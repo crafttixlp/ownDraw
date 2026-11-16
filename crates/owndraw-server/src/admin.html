@@ -276,12 +276,12 @@ async function loadUsers() {
     const quota = l ? " von " + l.quota_mb + " MB" : "";
     return h("div", { class: "item" },
       h("div", { class: "main" },
-        h("div", {}, h("b", {}, u.name || u.email), u.admin && h("span", { class: "chip acc" }, "Admin"), u.disabled && h("span", { class: "chip bad" }, "gesperrt"), self && h("span", { class: "chip" }, "du")),
-        h("div", { class: "meta" }, u.email),
+        h("div", {}, h("b", {}, u.name || u.email), u.admin && h("span", { class: "chip acc" }, "Admin"), u.guest && h("span", { class: "chip" }, "Gast"), u.disabled && h("span", { class: "chip bad" }, "gesperrt"), self && h("span", { class: "chip" }, "du")),
+        h("div", { class: "meta" }, u.guest ? "Gast-ID ohne Konto (per Einladungslink beigetreten)" : u.email),
         h("div", { class: "meta" }, licenseChip(l), " ", l ? (l.code + " · bis " + fmtDay(l.expires_at)) : "", " · Speicherplatz ", u.used_mb + " MB" + quota + " belegt", " · ", u.boards + " Boards", " · seit ", fmtDay(u.created))),
       h("div", { class: "actions" },
         h("button", { class: "small", disabled: self, onclick: () => patchUser(u, { disabled: !u.disabled }) }, u.disabled ? "Entsperren" : "Sperren"),
-        h("button", { class: "small", disabled: self, onclick: () => patchUser(u, { admin: !u.admin }) }, u.admin ? "Admin-Recht entziehen" : "Zum Admin machen"),
+        h("button", { class: "small", disabled: self || u.guest, onclick: () => patchUser(u, { admin: !u.admin }) }, u.admin ? "Admin-Recht entziehen" : "Zum Admin machen"),
         h("button", { class: "small danger", disabled: self, onclick: () => deleteUser(u) }, "Löschen")));
   }));
 }
@@ -289,7 +289,7 @@ async function patchUser(u, body) {
   try { await api("PATCH", "/api/admin/users/" + encodeURIComponent(u.id), body); flash("Gespeichert."); loadUsers(); } catch (e) { fail(e); }
 }
 async function deleteUser(u) {
-  const ok = await confirmDialog("Nutzer löschen?", u.email + " und alle " + u.boards + " Boards dieses Nutzers werden unwiderruflich gelöscht.", "Endgültig löschen");
+  const ok = await confirmDialog("Nutzer löschen?", (u.email || u.name) + " und alle " + u.boards + " Boards dieses Nutzers werden unwiderruflich gelöscht.", "Endgültig löschen");
   if (!ok) return;
   try { await api("DELETE", "/api/admin/users/" + encodeURIComponent(u.id)); flash("Nutzer gelöscht."); loadUsers(); } catch (e) { fail(e); }
 }

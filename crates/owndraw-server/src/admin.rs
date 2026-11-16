@@ -15,9 +15,10 @@ fn user_json(c: &Connection, u: &UserRow) -> ApiResult<Value> {
     let boards: i64 = c.query_row("SELECT COUNT(*) FROM boards WHERE owner_id=?1", [&u.id], |r| r.get(0))?;
     Ok(json!({
         "id": u.id,
-        "email": u.email,
+        "email": if u.guest { "" } else { u.email.as_str() },
         "name": u.name,
         "admin": u.admin,
+        "guest": u.guest,
         "disabled": u.disabled,
         "created": u.created,
         "license": db::license_of(c, &u.id)?.map(|l| l.to_json(t)),
@@ -62,6 +63,9 @@ pub async fn patch_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<
                 if d {
                     c.execute("DELETE FROM sessions WHERE user_id=?1", [&id])?;
                 }
+            }
+            if u.guest && b.admin == Some(true) {
+                return Err(ApiError::invalid("Gäste können keine Admins werden."));
             }
             if let Some(ad) = b.admin {
                 c.execute("UPDATE users SET admin=?2 WHERE id=?1", params![id, ad as i64])?;

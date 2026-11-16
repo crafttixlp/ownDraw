@@ -636,3 +636,118 @@ async fn update_pruefung_ohne_release_und_ohne_repo() {
     let st = app.post("/api/admin/update/check", Some(&admin), json!({})).await.json();
     assert_eq!((st["no_release"].clone(), st["available"].clone(), st["latest"].clone()), (json!(false), json!(true), json!("99.0.0")));
 }
+
+#[tokio::test]
+async fn einladungslink_gast_mit_eigener_id() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let owner = app.register("owner@example.org").await;
+    let other = app.register("andere@example.org").await;
+    let code = app.give_license(&admin, &owner, json!(null), 10).await;
+    let id = app.upload(&owner, "Gemeinsam", zip_bytes(10)).await.json()["id"].as_str().unwrap().to_string();
+    let invites = format!("/api/boards/{id}/invites");
+
+    // Links verwalten nur Besitzer; Rolle/Laufzeit werden geprüft
+    assert_eq!(app.post(&invites, Some(&other), json!({"role": "edit"})).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.post(&invites, Some(&owner), json!({"role": "owner"})).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(app.post(&invites, Some(&owner), json!({"role": "edit", "days": 0})).await.status, StatusCode::BAD_REQUEST);
+    let r = app.post(&invites, Some(&owner), json!({"role": "edit"})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let edit = r.json();
+    let token = edit["token"].as_str().unwrap().to_string();
+    assert_eq!(token.len(), 48);
+    assert!(edit["expires_at"].as_i64().unwrap() > now() + 6 * 86400);
+    let view = app.post(&invites, Some(&owner), json!({"role": "view", "days": null})).await.json();
+    assert!(view["expires_at"].is_null());
+    let list = app.get(&invites, Some(&owner)).await.json();
+    assert_eq!(list.as_array().unwrap().len(), 2);
+    assert!(list[0].get("token").is_none(), "Token nur beim Anlegen");
+
+    // Linkinfo ohne Anmeldung; falsche Tokens → 404
+    let r = app.get(&format!("/api/invites/{token}"), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["board"]["name"], "Gemeinsam");
+    assert_eq!(r.json()["role"], "edit");
+    assert_eq!(app.get(&format!("/api/invites/{}", "0".repeat(48)), None).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.get("/api/invites/kurz", None).await.status, StatusCode::NOT_FOUND);
+
+    // Gast tritt bei: Name nötig, bekommt eigene ID + Cookie
+    let join = format!("/api/invites/{token}/join");
+    assert_eq!(app.post(&join, None, json!({"name": "  "})).await.status, StatusCode::BAD_REQUEST);
+    let r = app.post(&join, None, json!({"name": "Mila"})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let guest = cookie_of(&r);
+    let me = r.json()["me"].clone();
+    let gid = me["name"].as_str().unwrap().to_string();
+    assert!(gid.starts_with("Mila#") && gid.len() == 9, "{gid}");
+    assert_eq!((me["guest"].as_bool(), me["email"].as_str()), (Some(true), Some("")));
+    assert_eq!(r.json()["board"]["role"], "edit");
+    let me2 = app.get("/api/me", Some(&guest)).await.json();
+    assert_eq!(me2["name"], gid.as_str());
+
+    // Zweiter Gast mit gleichem Namen bekommt eine andere ID; per Ansehen-Link nur view
+    let r = app.post(&format!("/api/invites/{}/join", view["token"].as_str().unwrap()), None, json!({"name": "Mila"})).await;
+    let guest2 = cookie_of(&r);
+    assert_ne!(r.json()["me"]["name"], gid.as_str());
+    assert_eq!(r.json()["board"]["role"], "view");
+
+    // Gast sieht/bearbeitet das Board, darf aber nichts Eigenes
+    let l = app.get("/api/boards", Some(&guest)).await.json();
+    assert_eq!((l[0]["id"].as_str(), l[0]["role"].as_str()), (Some(id.as_str()), Some("edit")));
+    assert_eq!(app.put_board(&guest, &id, "1", zip_bytes(20)).await.status, StatusCode::OK);
+    assert_eq!(app.put_board(&guest2, &id, "2", zip_bytes(20)).await.code(), "forbidden");
+    assert_eq!(app.upload(&guest, "eigenes", zip_bytes(1)).await.code(), "license_required");
+    assert_eq!(app.post("/api/license/redeem", Some(&guest), json!({"code": code})).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.post(&invites, Some(&guest), json!({"role": "edit"})).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.post("/api/me/password", Some(&guest), json!({"old": "", "new": "geheim12345"})).await.status, StatusCode::FORBIDDEN);
+    // per E-Mail sind Gäste nicht einladbar, in der Mitgliederliste ohne Adresse
+    let members = app.get(&format!("/api/boards/{id}/members"), Some(&owner)).await.json();
+    let g = members.as_array().unwrap().iter().find(|m| m["name"] == gid.as_str()).unwrap();
+    assert_eq!((g["guest"].as_bool(), g["email"].as_str()), (Some(true), Some("")));
+    let gmail = app.state.db.call(|c| Ok(c.query_row("SELECT email FROM users WHERE guest=1 LIMIT 1", [], |r| r.get::<_, String>(0))?)).await.unwrap();
+    assert_eq!(app.post(&format!("/api/boards/{id}/members"), Some(&owner), json!({"email": gmail, "role": "edit"})).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.login(&gmail, "!").await.status, StatusCode::UNAUTHORIZED);
+
+    // Konto per Link: wird Mitglied; edit bleibt bei späterem view-Link
+    let r = app.post(&join, Some(&other), json!({})).await;
+    assert_eq!(r.json()["board"]["role"], "edit");
+    let r = app.post(&format!("/api/invites/{}/join", view["token"].as_str().unwrap()), Some(&other), json!({})).await;
+    assert_eq!(r.json()["board"]["role"], "edit");
+    assert!(r.headers.get(header::SET_COOKIE).is_none());
+    assert_eq!(app.get(&invites, Some(&owner)).await.json().as_array().unwrap().iter().map(|i| i["uses"].as_i64().unwrap()).sum::<i64>(), 4);
+
+    // Gast legt ein Konto an: Mitgliedschaft wandert mit, Gast ist weg
+    let r = app.api(Method::POST, "/api/auth/register", Some(&guest2), Some(json!({"email": "mila@example.org", "password": "geheim1234", "name": "Mila"}))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let mila = cookie_of(&r);
+    assert_eq!(app.get("/api/boards", Some(&mila)).await.json()[0]["role"], "view");
+    assert_eq!(app.get("/api/me", Some(&guest2)).await.status, StatusCode::UNAUTHORIZED);
+
+    // Abmelden löscht den Gast samt Zugriff
+    assert_eq!(app.post("/api/auth/logout", Some(&guest), json!({})).await.status, StatusCode::OK);
+    let n: i64 = app.state.db.call(|c| Ok(c.query_row("SELECT COUNT(*) FROM users WHERE guest=1", [], |r| r.get(0))?)).await.unwrap();
+    assert_eq!(n, 0);
+
+    // Link löschen → ungültig; abgelaufene Lizenz → kein Beitritt
+    let r = app.api(Method::DELETE, &format!("{invites}/{}", edit["id"].as_str().unwrap()), Some(&owner), None).await;
+    assert_eq!(r.json().as_array().unwrap().len(), 1);
+    assert_eq!(app.post(&join, None, json!({"name": "Ben"})).await.status, StatusCode::NOT_FOUND);
+    app.patch(&format!("/api/admin/licenses/{code}"), Some(&admin), json!({"expires_at": now() - 1})).await;
+    let r = app.post(&format!("/api/invites/{}/join", view["token"].as_str().unwrap()), None, json!({"name": "Ben"})).await;
+    assert_eq!(r.code(), "license_required");
+}
+
+#[tokio::test]
+async fn gast_beitritt_hat_rate_limit() {
+    let app = App::with(|c| c.rate_limit = 3);
+    let admin = app.admin().await;
+    let owner = app.register("owner@example.org").await;
+    app.give_license(&admin, &owner, json!(null), 10).await;
+    let id = app.upload(&owner, "x", zip_bytes(1)).await.json()["id"].as_str().unwrap().to_string();
+    let token = app.post(&format!("/api/boards/{id}/invites"), Some(&owner), json!({"role": "view"})).await.json()["token"].as_str().unwrap().to_string();
+    let join = format!("/api/invites/{token}/join");
+    // Registrierungen (owner oben) und neue Gäste teilen sich das Limit je IP
+    assert_eq!(app.post(&join, None, json!({"name": "A"})).await.status, StatusCode::OK);
+    assert_eq!(app.post(&join, None, json!({"name": "B"})).await.status, StatusCode::OK);
+    assert_eq!(app.post(&join, None, json!({"name": "C"})).await.status, StatusCode::TOO_MANY_REQUESTS);
+}

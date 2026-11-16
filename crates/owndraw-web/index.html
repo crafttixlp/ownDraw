@@ -4,40 +4,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f4f4f6">
+<meta name="theme-color" content="#f6f6f8">
 <meta name="owndraw-version" content="__OWNDRAW_VERSION__">
 <title>OwnDraw</title>
 <link rel="icon" type="image/png" href="owndraw.png">
 <style>
-  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f4f4f6; font-family: system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; color: #303138; }
-  @media (prefers-color-scheme: dark) { html, body { background: #1c1d22; color: #e9eaee; } }
+  :root { --bg: #f6f6f8; --card: #ffffff; --line: #e2e2e8; --text: #17171c; --muted: #6b6b78; --accent: #5b5bf0; --on-accent: #ffffff; --warn: #d4870f; --danger: #d93f3f; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111114; --card: #18181c; --line: #2a2a31; --text: #ececf1; --muted: #9a9aa8; --accent: #7c7cff; --on-accent: #111116; --warn: #e0a23a; --danger: #ff8484; } }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; color: var(--text); }
   /* Canvas über die ganze Seite; eframe übernimmt Größe und Pixeldichte */
   #owndraw-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
-  #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 16px; overflow: auto; box-sizing: border-box; }
-  #lade img { width: 72px; height: 72px; }
-  #lade .ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(127,127,140,.25); border-top-color: #5b6cff; animation: dreh 0.9s linear infinite; }
+  #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 16px; overflow: auto; box-sizing: border-box; background: var(--bg); }
+  #lade img { width: 48px; height: 48px; border-radius: 12px; }
+  #lade .ring { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: dreh 0.9s linear infinite; }
+  #lade.fehler { justify-content: flex-start; padding-top: max(16px, 8vh); }
   #lade.fehler .ring { display: none; }
-  #lade.fehler #text { color: #d93a3a; max-width: 36em; font-weight: 600; }
-  #hilfe { display: none; max-width: 36em; text-align: left; line-height: 1.45; }
+  #lade.fehler #text { color: var(--danger); max-width: 36em; font-weight: 600; font-size: 1.1rem; }
+  #hilfe { display: none; width: 100%; max-width: 36em; box-sizing: border-box; text-align: left; line-height: 1.5; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; }
   #lade.fehler #hilfe { display: block; }
-  #hilfe ol { padding-left: 1.3em; margin: 8px 0; }
-  #hilfe details { margin-top: 10px; opacity: .7; font-size: 13px; }
+  #hilfe p { margin: 0 0 10px; }
+  #hilfe p:last-of-type { margin-bottom: 0; }
+  #hilfe ol { padding-left: 1.3em; margin: 8px 0 10px; }
+  #hilfe details { margin-top: 12px; color: var(--muted); font-size: 13px; }
+  #hilfe summary { cursor: pointer; }
   #hilfe code { font-size: 12px; word-break: break-word; }
   #lade.fehler > small { display: none; }
-  #lade small { opacity: .65; }
+  #lade small { color: var(--muted); }
   @keyframes dreh { to { transform: rotate(360deg); } }
   noscript { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
   /* Mitteilungen vom Server (/api/notices) und Hinweis für Admins im Wartungsmodus */
   #mitteilung { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0,0,0,.45); }
-  #mitteilung .karte { background: #fff; color: #303138; max-width: 30em; width: 100%; max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; border-radius: 14px; padding: 20px 22px; border-top: 5px solid #5b6cff; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
-  #mitteilung .karte.warnung { border-top-color: #e08a00; }
-  #mitteilung h2 { margin: 0 0 8px; font-size: 1.15rem; }
+  #mitteilung .karte { background: var(--card); color: var(--text); border: 1px solid var(--line); max-width: 30em; width: 100%; max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; border-radius: 12px; padding: 20px 22px; box-shadow: 0 8px 28px rgba(0,0,0,.18); }
+  #mitteilung .karte.warnung::before { content: "Wichtig"; display: inline-block; margin-bottom: 10px; padding: 2px 10px; border: 1px solid var(--warn); border-radius: 999px; color: var(--warn); font-size: 12px; font-weight: 600; }
+  #mitteilung h2 { margin: 0 0 8px; font-size: 1.1rem; }
   #mitteilung p { margin: 0 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
   #mitteilung .fuss { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  #mitteilung small { opacity: .6; }
-  #mitteilung button { font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: 0; background: #5b6cff; color: #fff; cursor: pointer; min-height: 40px; }
-  #wartung-admin { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 40; background: #e08a00; color: #fff; font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; pointer-events: none; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  @media (prefers-color-scheme: dark) { #mitteilung .karte { background: #25262d; color: #e9eaee; } }
+  #mitteilung small { color: var(--muted); }
+  #mitteilung button { font: inherit; font-weight: 600; padding: 0 18px; border-radius: 8px; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; height: 38px; }
+  #wartung-admin { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 40; background: var(--card); color: var(--warn); border: 1px solid var(--warn); font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; pointer-events: none; max-width: calc(100vw - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -46,26 +50,26 @@
   <img src="owndraw.png" alt="">
   <div class="ring"></div>
   <div id="text">OwnDraw wird geladen …</div>
-  <small>Zeichnen in Ebenen und auf Seiten · Version __OWNDRAW_VERSION__</small>
+  <small>Version __OWNDRAW_VERSION__</small>
   <div id="hilfe">
     <div id="hilfe-grafik">
-      <p>Dein Browser stellt gerade keine Grafik für Webseiten bereit (WebGL und Canvas). Meist ist die
-      <b>Hardwarebeschleunigung</b> ausgeschaltet. So schaltest du sie ein:</p>
+      <p>Dein Browser stellt keine Grafik für Webseiten bereit (WebGL und Canvas). Meist ist die
+      <b>Hardwarebeschleunigung</b> ausgeschaltet. So aktivierst du sie:</p>
       <ol>
         <li><b>Chrome / Edge:</b> Einstellungen → System → „Grafikbeschleunigung verwenden, wenn verfügbar“
-          einschalten, dann den Browser neu starten.</li>
+          aktivieren und den Browser neu starten.</li>
         <li><b>Firefox:</b> Einstellungen → Allgemein → Leistung → „Hardwarebeschleunigung verwenden, wenn
-          verfügbar“ einschalten (ggf. erst „Empfohlene Leistungseinstellungen verwenden“ abwählen), dann neu starten.</li>
-        <li><b>Safari:</b> auf eine aktuelle Version aktualisieren.</li>
+          verfügbar“ aktivieren (falls nötig zuerst „Empfohlene Leistungseinstellungen verwenden“ abwählen) und neu starten.</li>
+        <li><b>Safari:</b> auf die aktuelle Version aktualisieren.</li>
       </ol>
-      <p>Hilft das nicht: Grafiktreiber aktualisieren oder einen anderen Browser versuchen.</p>
+      <p>Hilft das nicht, aktualisiere den Grafiktreiber oder probiere einen anderen Browser.</p>
     </div>
-    <p id="hilfe-allg">Bitte lade die Seite neu. Hilft das nicht, verwende einen aktuellen Browser (Chrome, Edge,
-      Firefox oder Safari) mit eingeschaltetem JavaScript.</p>
+    <p id="hilfe-allg">Lade die Seite neu. Hilft das nicht, nutze einen aktuellen Browser (Chrome, Edge,
+      Firefox oder Safari) mit aktiviertem JavaScript.</p>
     <details><summary>Technische Details</summary><code id="detail"></code></details>
   </div>
 </div>
-<noscript>OwnDraw braucht JavaScript und WebAssembly.</noscript>
+<noscript>OwnDraw benötigt JavaScript und WebAssembly.</noscript>
 <script>
   // Mittlere Maustaste: Unter Linux fügt der Browser bei Mittelklick die markierte Auswahl ein
   // (Primary Selection) und löst dabei ein `paste`-Ereignis aus. OwnDraw würde daraus einen
@@ -127,7 +131,7 @@
       if (!m || !m.active) return;
       const b = document.createElement("div");
       b.id = "wartung-admin";
-      b.textContent = "Wartungsmodus aktiv – nur Admins können OwnDraw gerade nutzen";
+      b.textContent = "Wartungsmodus aktiv. Nur Admins können OwnDraw nutzen.";
       document.body.append(b);
     }).catch(() => {});
   })();
@@ -143,7 +147,7 @@
     lade.classList.add("fehler");
     lade.style.display = "flex";
     document.getElementById("owndraw-canvas")?.style.setProperty("visibility", "hidden");
-    text.textContent = grafik ? "OwnDraw kann hier keine Grafik anzeigen." : "OwnDraw konnte nicht starten.";
+    text.textContent = grafik ? "OwnDraw kann keine Grafik anzeigen." : "OwnDraw konnte nicht starten.";
     document.getElementById("hilfe-grafik").style.display = grafik ? "block" : "none";
     document.getElementById("hilfe-allg").style.display = grafik ? "none" : "block";
     document.getElementById("detail").textContent = "OwnDraw __OWNDRAW_VERSION__: " + msg;

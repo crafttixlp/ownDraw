@@ -1,6 +1,7 @@
 # OwnDraw im Browser (WebAssembly, ab 4.6)
 
-Gleiche App wie Desktop/Android (`crates/owndraw`), im Browser über eframe/WebGL (glow). Die Hülle ist
+Gleiche App wie Desktop/Android (`crates/owndraw`), im Browser über eframe/WebGL (glow); ohne WebGL mit eigener
+Software-Darstellung (siehe [Ohne WebGL](#ohne-webgl-software-darstellung-ab-461)). Die Hülle ist
 `crates/owndraw-web` (cdylib, `start(canvas_id)` → `owndraw::run_web`). Ausgeliefert vom `owndraw-server`
 ([server.md](server.md)) spricht die App mit dessen API ([web-api.md](web-api.md)); ohne erreichbaren Server
 (z. B. rein statisch gehostet) läuft sie im **Gastmodus**.
@@ -36,6 +37,46 @@ sollte `.wasm` als `application/wasm` und komprimiert (gzip/brotli) senden.
   eingefügte Bilder (Strg+V) werden eingesetzt. Beim Kopieren landet Text/JSON in der System-Zwischenablage.
 - Hinweis „Gastmodus“ auf der Startseite und in den Einstellungen; beim Verlassen der Seite warnt der Browser,
   solange Änderungen noch nicht heruntergeladen wurden (`beforeunload`).
+
+## Ohne WebGL (Software-Darstellung, ab 4.6.1)
+
+Ist im Browser die Hardwarebeschleunigung aus (neuere Chrome-Versionen haben dann keinen SwiftShader-Ersatz mehr),
+liefert `getContext("webgl")` nichts und eframe startet nicht („WebGL isn't supported“). OwnDraw prüft deshalb beim
+Start mit einem Test-Canvas, ob WebGL2 oder WebGL1 geht:
+
+- **ja** → bisheriger Weg über eframe (`WebRunner`, glow), unverändert. Scheitert eframe trotzdem, bevor die App
+  gebaut ist, geht es mit der Software-Darstellung weiter (Canvas wird bei Bedarf durch eine frische Kopie ersetzt).
+- **nein** → eigener kleiner Runner ohne eframe-Painter (`platform/web/soft`): dieselbe App (`App::frame_ui`, von
+  `eframe::App::ui` und vom Runner aufgerufen), Eingaben aus DOM-Ereignissen (Zeiger, Touch mit Druck, Rad/Pinch,
+  Tastatur, Texteingabe und IME über ein verstecktes `<input>`, Kopieren/Ausschneiden/Einfügen, Ablegen von Dateien,
+  Größe/`devicePixelRatio`, Fokus, Hell/Dunkel). Der Ereigniscode ist aus eframe 0.37 übernommen (MIT/Apache-2.0),
+  verhält sich also wie im WebGL-Weg (auch: Stiftdruck nur über Touch-`force`, wie bei eframe).
+- Darstellung: egui tesselieren, mit `softraster.rs` auf der CPU in einen RGBA-Puffer rastern, per `putImageData`
+  auf ein 2D-Canvas. Wie `egui_glow`: Gamma-Raum, vormultipliziertes Alpha, Pixelmitten mit Top-Left-Regel,
+  Scissor-Rundung, Filter nächster/bilinear, Wrap-Modi (keine Mipmaps, kein Dithering). Gemalt wird nur bei Bedarf
+  (`request_repaint`/`request_repaint_after`) und nur, was sich geändert hat: Meshes werden inhaltsabhängig in
+  Stücke von ~32 Dreiecken geteilt und mit dem letzten Frame verglichen (gemeinsame Teilfolge); Textur-Teilupdates
+  (Board-Pixmap, Schrift-Atlas) werden über die UV-Abbildung der Dreiecke auf den Bildschirm umgerechnet. Achsen-
+  parallele Rechtecke werden ohne Dreiecks-Rasterung gezeichnet, bei 1:1-Abbildung (Board, Schrift) als Kopie.
+  Unit-Tests vergleichen u. a. inkrementelles mit vollständigem Neuzeichnen einer echten egui-Oberfläche.
+- Unten erscheint einmal der Hinweis „Ohne Grafikbeschleunigung – Zeichnen kann langsamer sein. Tipp:
+  Hardwarebeschleunigung im Browser aktivieren.“; ✕ blendet ihn aus (gemerkt in `localStorage`
+  `owndraw.softwareHint`).
+- Erzwingen zum Testen: `?renderer=software` bzw. `?renderer=webgl`. Gewählter Weg: `window.owndrawRenderer`,
+  `<html data-renderer>`; im Software-Weg Messwerte in `window.owndrawSoftStats` (Frames, ms für Logik/Malen,
+  gerasterte Pixel).
+- Geht gar nichts (auch kein 2D-Canvas, oder `?renderer=webgl` ohne WebGL), zeigt `index.html` eine deutsche
+  Fehlerseite mit Anleitung (Chrome/Edge: Einstellungen → System → Grafikbeschleunigung; Firefox: Einstellungen →
+  Allgemein → Leistung) und den technischen Details zum Aufklappen. Ein Absturz im Software-Weg landet über
+  `window.owndrawFehler` ebenfalls dort.
+
+Gemessen (Chromium headless ohne GPU, `--disable-gpu --disable-webgl --disable-3d-apis`, 1280 × 800, Faktor 1):
+Zeichnen mit der Maus ~53–56 Bilder/s (begrenzt durch die Eingaberate), Malzeit ~0,3 ms je Frame (nur der
+Strich); Ansicht verschieben (alles neu) ~58 Bilder/s bei ~3 ms Malzeit, in 1920 × 1080 ~6 ms. Logik/Board-Rendern
+wie im WebGL-Weg. Auf langsamen Rechnern und bei hoher Pixeldichte entsprechend mehr.
+
+Grenzen: keine Mipmaps (stark verkleinerte Bilder flimmern etwas mehr), keine Barrierefreiheit (wie eframe ohne
+`web_screen_reader`), kein `App::on_exit` (wie eframe im Browser).
 
 ## Mit Server (Konto, Boards am Server, Live)
 
@@ -79,6 +120,9 @@ Beim Start fragt die App `GET /api/me` (gleiche Origin, `credentials: include`, 
 
 - `crates/owndraw/src/platform/web/mod.rs` – `WebPlatform` und `Store` (IndexedDB), Download, Upload, Drops,
   Zwischenablage, `beforeunload`.
+- `crates/owndraw/src/platform/web/soft/` – Software-Runner ohne WebGL (Frame-Schleife, Ereignisse, Text-Agent,
+  Hinweis); `crates/owndraw/src/softraster.rs` – CPU-Rasterizer mit Änderungserkennung (auf allen Zielen übersetzt,
+  damit `cargo test` ihn prüft). Auswahl des Wegs in `owndraw::run_web` (`lib.rs`).
 - `crates/owndraw/src/platform/web/api.rs` – Server-Anbindung: `fetch`, Konto, Boards, Mitglieder, Bilder, WebSocket.
 - `crates/owndraw/src/ui/account.rs` – Konto-Karte, „Am Server“-Liste, Dialoge (Anmelden, Lizenz, Teilen, …).
 - `crates/owndraw/src/ui/editor/live.rs` – Live-Sitzung im Editor (Abgleich, Zeiger, Teilnehmer, Neuverbindung).

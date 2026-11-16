@@ -14,6 +14,8 @@
 //! - Server-Boards: `FileRef::Uri("srv:<id>")` (Inhalt vorab geladen, Speichern per PUT), siehe [`api`].
 
 pub mod api;
+/// Darstellung ohne WebGL (CPU-Rasterizer, 2D-Canvas).
+pub mod soft;
 
 use super::{ClipData, Drop, FileKind, FileRef, Platform, PlatformEvent, Tag};
 use std::cell::RefCell;

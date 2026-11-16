@@ -13,6 +13,9 @@ mod recent;
 mod session;
 #[allow(dead_code)]
 mod settings;
+/// CPU-Rasterizer für den Browser ohne WebGL (überall übersetzt, damit `cargo test` ihn prüft).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod softraster;
 mod style;
 mod ui;
 /// Update-Dienst (GitHub-Releases, Signaturprüfung); im Browser aus.
@@ -128,23 +131,84 @@ pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
 /// Browser-Start (aus `start` im Crate `owndraw-web`): gleiche App, Plattform = [`platform::web::WebPlatform`]
 /// (Gastmodus: Öffnen per Upload, Speichern als Download, Boards in IndexedDB; mit Server: Konto, Boards am
 /// Server, Live-Zusammenarbeit, siehe `platform/web/api.rs`).
+///
+/// Darstellung: mit WebGL über eframe (wie bisher); ohne WebGL (Hardwarebeschleunigung aus) per CPU in ein
+/// 2D-Canvas ([`platform::web::soft`]). URL-Parameter `?renderer=software` bzw. `?renderer=webgl` erzwingt einen Weg.
 #[cfg(target_arch = "wasm32")]
 pub async fn run_web(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     let store = platform::web::Store::load().await;
     platform::web::install_page_hooks();
-    let runner = eframe::WebRunner::new();
-    runner
-        .start(
-            canvas,
-            eframe::WebOptions::default(),
-            Box::new(move |cc| {
-                let platform: Box<dyn platform::Platform> = Box::new(platform::web::WebPlatform::new(cc.egui_ctx.clone(), store));
-                // Server-Anbindung: Anmeldung prüfen (ohne Server bleibt alles im Gastmodus)
-                platform::web::api::init(&cc.egui_ctx);
-                let settings = app::load_settings(&*platform);
-                style::apply(&cc.egui_ctx, &settings);
-                Ok(Box::new(app::App::new(platform, settings, None)))
-            }),
-        )
-        .await
+    let forced = web_renderer_param();
+    let use_gl = match forced.as_deref() {
+        Some("software") => false,
+        Some("webgl") => true,
+        _ => webgl_available(),
+    };
+    // Die App braucht den Store; schlägt eframe fehl, bevor sie gebaut ist, bekommt ihn der Software-Weg.
+    let store = Rc::new(RefCell::new(Some(store)));
+    if use_gl {
+        let st = store.clone();
+        let runner = eframe::WebRunner::new();
+        let r = runner
+            .start(
+                canvas.clone(),
+                eframe::WebOptions::default(),
+                Box::new(move |cc| {
+                    let store = st.borrow_mut().take().ok_or("Browser-Speicher fehlt")?;
+                    Ok(Box::new(make_web_app(&cc.egui_ctx, store)))
+                }),
+            )
+            .await;
+        match r {
+            Ok(()) => {
+                set_web_renderer("webgl");
+                return Ok(());
+            }
+            Err(e) if forced.as_deref() == Some("webgl") || store.borrow().is_none() => return Err(e),
+            Err(e) => web_sys::console::warn_1(&format!("OwnDraw: WebGL-Start fehlgeschlagen ({}), Software-Darstellung", e.as_string().unwrap_or_default()).into()),
+        }
+    }
+    let store = store.borrow_mut().take().ok_or("Browser-Speicher fehlt")?;
+    platform::web::soft::start(canvas, move |ctx| make_web_app(ctx, store)).await?;
+    set_web_renderer("software");
+    Ok(())
+}
+
+/// App für den Browser bauen (beide Darstellungswege).
+#[cfg(target_arch = "wasm32")]
+fn make_web_app(ctx: &egui::Context, store: platform::web::Store) -> app::App {
+    let platform: Box<dyn platform::Platform> = Box::new(platform::web::WebPlatform::new(ctx.clone(), store));
+    // Server-Anbindung: Anmeldung prüfen (ohne Server bleibt alles im Gastmodus)
+    platform::web::api::init(ctx);
+    let settings = app::load_settings(&*platform);
+    style::apply(ctx, &settings);
+    app::App::new(platform, settings, None)
+}
+
+/// `renderer` aus der Adresse (`?renderer=software|webgl`).
+#[cfg(target_arch = "wasm32")]
+fn web_renderer_param() -> Option<String> {
+    let search = web_sys::window()?.location().search().ok()?;
+    search.trim_start_matches('?').split('&').find_map(|kv| kv.strip_prefix("renderer=")).map(|v| v.to_ascii_lowercase())
+}
+
+/// Liefert ein Test-Canvas einen WebGL2- oder WebGL1-Kontext?
+#[cfg(target_arch = "wasm32")]
+fn webgl_available() -> bool {
+    use wasm_bindgen::JsCast;
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else { return false };
+    let Some(c) = doc.create_element("canvas").ok().and_then(|e| e.dyn_into::<web_sys::HtmlCanvasElement>().ok()) else { return false };
+    ["webgl2", "webgl", "experimental-webgl"].iter().any(|k| c.get_context(k).ok().flatten().is_some())
+}
+
+/// Gewählte Darstellung für Seite und Tests: `window.owndrawRenderer`, `<html data-renderer>`.
+#[cfg(target_arch = "wasm32")]
+fn set_web_renderer(r: &str) {
+    let Some(w) = web_sys::window() else { return };
+    let _ = js_sys::Reflect::set(&w, &"owndrawRenderer".into(), &r.into());
+    if let Some(el) = w.document().and_then(|d| d.document_element()) {
+        let _ = el.set_attribute("data-renderer", r);
+    }
 }

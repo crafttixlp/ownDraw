@@ -12,11 +12,17 @@
   @media (prefers-color-scheme: dark) { html, body { background: #1c1d22; color: #e9eaee; } }
   /* Canvas über die ganze Seite; eframe übernimmt Größe und Pixeldichte */
   #owndraw-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
-  #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 16px; }
+  #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 16px; overflow: auto; box-sizing: border-box; }
   #lade img { width: 72px; height: 72px; }
   #lade .ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(127,127,140,.25); border-top-color: #5b6cff; animation: dreh 0.9s linear infinite; }
   #lade.fehler .ring { display: none; }
-  #lade.fehler #text { color: #d93a3a; max-width: 36em; }
+  #lade.fehler #text { color: #d93a3a; max-width: 36em; font-weight: 600; }
+  #hilfe { display: none; max-width: 36em; text-align: left; line-height: 1.45; }
+  #lade.fehler #hilfe { display: block; }
+  #hilfe ol { padding-left: 1.3em; margin: 8px 0; }
+  #hilfe details { margin-top: 10px; opacity: .7; font-size: 13px; }
+  #hilfe code { font-size: 12px; word-break: break-word; }
+  #lade.fehler > small { display: none; }
   #lade small { opacity: .65; }
   @keyframes dreh { to { transform: rotate(360deg); } }
   noscript { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
@@ -29,22 +35,54 @@
   <div class="ring"></div>
   <div id="text">OwnDraw wird geladen …</div>
   <small>Zeichnen in Ebenen und auf Seiten</small>
+  <div id="hilfe">
+    <div id="hilfe-grafik">
+      <p>Dein Browser stellt gerade keine Grafik für Webseiten bereit (WebGL und Canvas). Meist ist die
+      <b>Hardwarebeschleunigung</b> ausgeschaltet. So schaltest du sie ein:</p>
+      <ol>
+        <li><b>Chrome / Edge:</b> Einstellungen → System → „Grafikbeschleunigung verwenden, wenn verfügbar“
+          einschalten, dann den Browser neu starten.</li>
+        <li><b>Firefox:</b> Einstellungen → Allgemein → Leistung → „Hardwarebeschleunigung verwenden, wenn
+          verfügbar“ einschalten (ggf. erst „Empfohlene Leistungseinstellungen verwenden“ abwählen), dann neu starten.</li>
+        <li><b>Safari:</b> auf eine aktuelle Version aktualisieren.</li>
+      </ol>
+      <p>Hilft das nicht: Grafiktreiber aktualisieren oder einen anderen Browser versuchen.</p>
+    </div>
+    <p id="hilfe-allg">Bitte lade die Seite neu. Hilft das nicht, verwende einen aktuellen Browser (Chrome, Edge,
+      Firefox oder Safari) mit eingeschaltetem JavaScript.</p>
+    <details><summary>Technische Details</summary><code id="detail"></code></details>
+  </div>
 </div>
 <noscript>OwnDraw braucht JavaScript und WebAssembly.</noscript>
 <script type="module">
   import init, { start } from "./owndraw_web.js";
   const lade = document.getElementById("lade");
   const text = document.getElementById("text");
+  // Verständliche Fehlerseite (auch für Abstürze während des Betriebs, siehe platform/web/soft).
   function fehler(msg) {
+    msg = String(msg || "unbekannter Fehler");
+    const grafik = /webgl|canvas|2d|grafik|context/i.test(msg);
     lade.classList.add("fehler");
     lade.style.display = "flex";
-    text.textContent = "OwnDraw konnte nicht starten: " + msg;
+    document.getElementById("owndraw-canvas")?.style.setProperty("visibility", "hidden");
+    text.textContent = grafik ? "OwnDraw kann hier keine Grafik anzeigen." : "OwnDraw konnte nicht starten.";
+    document.getElementById("hilfe-grafik").style.display = grafik ? "block" : "none";
+    document.getElementById("hilfe-allg").style.display = grafik ? "none" : "block";
+    document.getElementById("detail").textContent = msg;
   }
+  window.owndrawFehler = (msg) => {
+    if (!document.body.contains(lade)) document.body.appendChild(lade);
+    fehler(msg);
+    document.getElementById("hilfe-grafik").style.display = "none";
+    document.getElementById("hilfe-allg").style.display = "block";
+    text.textContent = "OwnDraw wurde wegen eines Fehlers angehalten.";
+  };
   try {
     await init();
     await start("owndraw-canvas");
     lade.remove();
-    document.getElementById("owndraw-canvas").focus();
+    // Der Software-Weg kann den Canvas ersetzt haben: per id neu suchen
+    document.getElementById("owndraw-canvas")?.focus();
   } catch (e) {
     console.error(e);
     fehler((e && e.message) || String(e));

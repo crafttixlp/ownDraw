@@ -491,6 +491,14 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame_ui(ui);
+    }
+}
+
+impl App {
+    /// Ein Frame der App (ohne eframe-`Frame`, das die App nicht braucht): von `eframe::App::ui` und vom
+    /// Software-Runner im Browser (`platform/web/soft`, ohne WebGL) aufgerufen.
+    pub(crate) fn frame_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sh.now = ctx.input(|i| i.time);
         // Einstellungen anwenden (Theme, UI-Größe, Akzent) und bei Änderung speichern

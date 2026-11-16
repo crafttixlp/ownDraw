@@ -104,6 +104,9 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::neu(Tool::Ruler, "ruler", "Lineal", Group::Extras, ic::RULER, "Blendet ein Lineal oder Geodreieck ein; Striche an der Kante werden gerade.").key("U"),
     ToolDef::neu(Tool::Laser, "laser", "Laserpointer", Group::Extras, ic::LASER, "Leuchtspur zum Zeigen, verblasst nach 1,5 s und wird nicht gespeichert.").key("Q"),
     ToolDef::neu(Tool::Space, "space", "Platz schaffen", Group::Ordnen, ic::SPACE, "Senkrecht ziehen schiebt alles darunter nach unten oder oben.").key("G"),
+    ToolDef::neu(Tool::Connector, "connector", "Verbinder", Group::Formen, ic::CONNECTOR, "Linie oder Pfeil, der an Objekten andockt und beim Verschieben mitgeht.").key("W"),
+    ToolDef::neu(Tool::Table, "table", "Tabelle", Group::Ordnen, ic::TABLE, "Setzt eine Tabelle; Zellen beschriftest du direkt auf dem Blatt.").key("B"),
+    ToolDef::neu(Tool::Pin, "pin", "Kommentar", Group::Extras, ic::PIN, "Stecknadel mit Kommentar und Antworten, für alle im Board sichtbar.").key("C"),
 ];
 
 /// Werkzeug nach Kennung.

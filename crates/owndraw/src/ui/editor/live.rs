@@ -146,6 +146,11 @@ impl Live {
         }
     }
 
+    /// Schreibrecht (Rolle „Bearbeiten“/Eigentümer).
+    pub fn can_write(&self) -> bool {
+        self.can_write
+    }
+
     pub fn is_live(&self) -> bool {
         self.conn == Conn::Live
     }

@@ -184,6 +184,11 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
                 });
             }
         }
+        for x in ["xtable", "xpin", "xsel", "xcrop", "xconn"] {
+            if has(x) {
+                ed.demo_x(x);
+            }
+        }
         if has("shape4") {
             ed.board.shape_kind = 4;
         }

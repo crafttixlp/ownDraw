@@ -1,7 +1,9 @@
 //! Editor-Bildschirm: Zeichenfläche, Eingabe, Tastenkürzel, Autosave-Anbindung und das Gerüst für Leisten,
 //! Optionen, ⋯-Menü, Ebenen und Seiten (je nach Formfaktor Compact/Medium/Expanded).
 
+mod arrange;
 pub mod clip;
+mod crop;
 pub mod drop;
 mod extras;
 pub mod keys;
@@ -13,6 +15,8 @@ mod menu;
 mod options;
 pub mod pages;
 mod ruler;
+mod pins;
+mod table;
 mod text;
 mod toolbar;
 pub mod tools;
@@ -72,6 +76,9 @@ pub enum Tool {
     Ruler,
     Laser,
     Space,
+    Connector,
+    Table,
+    Pin,
 }
 
 impl Tool {
@@ -198,6 +205,8 @@ pub struct Editor {
     /// Live-Zusammenarbeit (nur Browser, Server-Boards `srv:<id>`).
     #[cfg(target_arch = "wasm32")]
     pub live: Option<live::Live>,
+    /// Verbinder, Tabelle, Kommentar, Zuschnitt (arrange.rs).
+    xs: arrange::Xs,
 }
 
 impl Editor {
@@ -252,6 +261,7 @@ impl Editor {
             live_dirty: false,
             #[cfg(target_arch = "wasm32")]
             live: None,
+            xs: arrange::Xs::default(),
         }
     }
 
@@ -483,6 +493,9 @@ impl Editor {
     // ---------------------------------------------------------------- Werkzeuge
 
     pub fn active_tool(&self) -> Tool {
+        if let Some(t) = self.xtool() {
+            return t;
+        }
         if let Some(t) = self.ext.xtool {
             return t;
         }
@@ -515,6 +528,9 @@ impl Editor {
     /// Wählt ein Werkzeug (ohne Bild, das die Dateiauswahl braucht).
     fn set_tool_ui(&mut self, t: Tool) {
         let cur = self.active_tool();
+        if t != Tool::Ruler {
+            self.leave_xtool();
+        }
         match t {
             Tool::Ruler => return self.toggle_ruler(),
             Tool::Laser | Tool::Space => {
@@ -555,6 +571,10 @@ impl Editor {
             }
             Tool::Note => board::NOTE,
             Tool::Image | Tool::Ruler | Tool::Laser | Tool::Space => return,
+            Tool::Connector | Tool::Table | Tool::Pin => {
+                self.select_xtool(t);
+                return;
+            }
         };
         if self.board.tool != bt {
             self.board.set_tool(bt);
@@ -667,7 +687,7 @@ impl Editor {
             let pan_key = ctx.input(|i| keys::held(i, &sh.settings, "pan"));
             self.handle_pointer(&ctx, rect, layer, pan_key);
         }
-        if !modal && self.text.is_none() && !ctx.egui_wants_keyboard_input() {
+        if !modal && self.text.is_none() && self.xs.crop.is_none() && !ctx.egui_wants_keyboard_input() {
             self.shortcuts(&ctx, sh);
         }
         self.drain_events(sh);
@@ -750,6 +770,8 @@ impl Editor {
                 } else {
                     CursorIcon::Crosshair
                 }
+            } else if self.xs.tool.is_some() {
+                CursorIcon::Crosshair
             } else {
                 match self.board.tool {
                     board::PEN | board::MARKER | board::SHAPE | board::ERASER | TAP => CursorIcon::Crosshair,
@@ -770,6 +792,7 @@ impl Editor {
         toolbar::show(self, &ctx, sh, &lay, &tools);
         options::show(self, &ctx, sh, &lay);
         menu::show(self, &ctx, sh, &lay);
+        self.x_frame(&ctx, sh, &lay, layer);
         self.text_editor(&ctx, &sh.settings);
         self.close_popups_on_esc(&ctx, &sh.settings);
         self.drain_events(sh);
@@ -839,6 +862,10 @@ impl Editor {
             ("penstyle", b.pen_style.into()),
         ];
         for (k, v) in vals {
+            // Verbinder setzt Form/Pfeilstil nur vorübergehend
+            if self.xs.saved.is_some() && (k == "shape" || k == "arrow") {
+                continue;
+            }
             if s.extra.get(k) != Some(&v) {
                 s.extra.insert(k.to_string(), v);
             }
@@ -865,6 +892,7 @@ impl Editor {
         let on_board = |p: Pos2| rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
         let has_touch = !self.touches.is_empty() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
         let rel = |p: Pos2| p - rect.min;
+        let now = ctx.input(|i| i.time);
         self.hover = hover.filter(|p| on_board(*p));
         for ev in events {
             match ev {
@@ -872,6 +900,9 @@ impl Editor {
                     // Ein Finger, der auf einer Leiste beginnt, gehört nicht zur Zeichenfläche.
                     // Während der Texteingabe beendet ein Tippen daneben nur die Eingabe.
                     if phase == TouchPhase::Start && (!on_board(pos) || self.text.is_some()) {
+                        continue;
+                    }
+                    if self.x_touch(id.0, phase, rel(pos).to_pos2(), now) {
                         continue;
                     }
                     let ph = match phase {
@@ -887,6 +918,7 @@ impl Editor {
                 }
                 _ if has_touch && matches!(ev, Event::PointerMoved(_) | Event::PointerButton { .. }) => {}
                 Event::PointerMoved(p) => {
+                    self.x_move(arrange::MOUSE, rel(p).to_pos2());
                     let r = match self.ext_hook(extras::MOUSE, extras::Ph::Move, rel(p).to_pos2(), false) {
                         extras::Hook::Eat => continue,
                         extras::Hook::Pass(q) => q.to_vec2(),
@@ -904,7 +936,11 @@ impl Editor {
                         if self.drawing || self.panning.is_some() || !on_board(pos) || self.text.is_some() || self.ext_grabs(extras::MOUSE) {
                             continue;
                         }
-                        if button == PointerButton::Primary && !space {
+                        if button == PointerButton::Primary && !space && self.x_down(arrange::MOUSE, r.to_pos2(), now) {
+                            // Tabelle/Kommentar setzen, Kommentar öffnen: Tippen; Ziehen verschiebt die Ansicht
+                            self.panning = Some((pos, button));
+                            self.pan_start = Some(pos);
+                        } else if button == PointerButton::Primary && !space {
                             let r = match self.ext_hook(extras::MOUSE, extras::Ph::Down, r.to_pos2(), false) {
                                 extras::Hook::Eat => continue,
                                 extras::Hook::Pass(q) => q.to_vec2(),
@@ -924,7 +960,11 @@ impl Editor {
                         };
                         self.drawing = false;
                         self.touch_in(&Motion::single(Action::Up, r.x, r.y, 0.5, ToolType::Stylus));
+                        self.x_up(arrange::MOUSE, r.to_pos2(), true, now);
                     } else if self.panning.map(|(_, b)| b == button).unwrap_or(false) {
+                        if button == PointerButton::Primary {
+                            self.x_up(arrange::MOUSE, r.to_pos2(), true, now);
+                        }
                         self.panning = None;
                         // Mittlere Maustaste ohne Verschieben: Objekt darunter auswählen (erweitertes Menü)
                         let still = self.pan_start.take().map(|s| s.distance(pos) < 10.0).unwrap_or(false);
@@ -1110,6 +1150,7 @@ impl Editor {
             return;
         }
         match a.id.as_str() {
+            "group" | "ungroup" => arrange::run(self, &a.id),
             "undo" => self.board.undo(),
             "redo" => self.board.redo(),
             "copy" => clip::copy(self, &*sh.platform),

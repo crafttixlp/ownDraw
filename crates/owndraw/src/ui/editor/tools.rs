@@ -101,6 +101,9 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::neu(Tool::Picker, "picker", "Pipette", Group::Extras, ic::FINGER, "Übernimmt die Farbe einer Stelle auf dem Blatt.").key("K"),
     ToolDef::neu(Tool::Dim, "dim", "Maßlinie", Group::Formen, ic::LINE, "Linie mit Maßpfeilen und der Länge in der Mitte.").key("L"),
     ToolDef::neu(Tool::Stamp, "stamp", "Stempel", Group::Extras, ic::MAGIC, "Setzt Haken, Kreuz, Stern, Fragezeichen oder Ausrufezeichen.").key("J"),
+    ToolDef::neu(Tool::Ruler, "ruler", "Lineal", Group::Extras, ic::RULER, "Blendet ein Lineal oder Geodreieck ein; Striche an der Kante werden gerade.").key("U"),
+    ToolDef::neu(Tool::Laser, "laser", "Laserpointer", Group::Extras, ic::LASER, "Leuchtspur zum Zeigen, verblasst nach 1,5 s und wird nicht gespeichert.").key("Q"),
+    ToolDef::neu(Tool::Space, "space", "Platz schaffen", Group::Ordnen, ic::SPACE, "Senkrecht ziehen schiebt alles darunter nach unten oder oben.").key("G"),
 ];
 
 /// Werkzeug nach Kennung.

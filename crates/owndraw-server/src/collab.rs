@@ -539,6 +539,16 @@ async fn handle(s: &AppState, room: &Arc<Room>, peer_id: u64, text: &str) {
             let (x, y) = pos.map(|(x, y)| (json!(x), json!(y))).unwrap_or((Value::Null, Value::Null));
             st.broadcast(&json!({"t": "cursor", "peer": peer_id, "x": x, "y": y}), Some(peer_id));
         }
+        Some("laser") => {
+            // Laserpointer: nur weiterreichen (nie gespeichert); auch Gäste mit Leserecht dürfen zeigen
+            let Some(mut l) = oc::LaserMsg::from_json(&m) else { return };
+            if l.pts.is_empty() {
+                return;
+            }
+            l.peer = Some(peer_id);
+            let st = lock(&room.st);
+            st.broadcast(&l.to_json(), Some(peer_id));
+        }
         Some("ping") => {
             let st = lock(&room.st);
             if let Some(p) = st.peers.iter().find(|p| p.id == peer_id) {

@@ -12,9 +12,10 @@ use owndraw_core::item;
 
 pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     if !ed.st.opts_open {
+        ed.ext.ruler_pop = false;
         return;
     }
-    let t = ed.active_tool();
+    let t = if ed.ext.ruler_pop { Tool::Ruler } else { ed.active_tool() };
     if !t.has_options() {
         ed.st.opts_open = false;
         return;
@@ -247,7 +248,8 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             colors(ui, ed, sh);
         }
         Tool::Note => colors(ui, ed, sh),
-        Tool::Image => {}
+        Tool::Ruler => super::ruler::options(ui, ed, sh),
+        Tool::Image | Tool::Laser | Tool::Space => {}
     }
 }
 

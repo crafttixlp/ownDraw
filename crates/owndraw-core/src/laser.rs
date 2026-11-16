@@ -54,6 +54,11 @@ impl Laser {
         self.pts.iter().any(Option::is_some)
     }
 
+    /// Punkte (x, y, Zeit) der Spuren; `None` trennt Spuren (zum Zeichnen in der Oberfläche).
+    pub fn points(&self) -> &[Option<(f32, f32, f64)>] {
+        &self.pts
+    }
+
     pub fn is_empty(&self) -> bool {
         !self.pts.iter().any(Option::is_some)
     }

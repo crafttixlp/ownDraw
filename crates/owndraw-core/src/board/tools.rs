@@ -136,6 +136,7 @@ impl Board {
                 Kind::Img(_) if it.hit(x, y, 0.0) => return Some(it.img_pixel(x, y).unwrap_or(it.color)),
                 Kind::Note(n) if it.hit(x, y, 0.0) => return Some(if n.bg != 0 { n.bg } else { it.color }),
                 Kind::Table(_) if it.hit(x, y, 0.0) => return Some(it.color),
+                Kind::Math(_) if it.hit(x, y, 0.0) => return Some(it.color),
                 Kind::Stroke(_) | Kind::Shape(_) => {
                     if it.near(x, y, r) && it.hit_outline(x, y, r) {
                         return Some(it.color);

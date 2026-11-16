@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor).
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -213,6 +213,13 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             let id = ed.board.items.last().map(|i| i.id).unwrap_or(0);
             ed.board.set_tool(board::SELECT);
             ed.board.select_only(id);
+        }
+        // Formel-Werkzeug: eingeschaltet, eine Formel auf dem Blatt und der Editor mit Vorschau offen
+        if has("math") {
+            app.parts().0.settings.tool_on.insert("math".into(), true);
+            ed.board.add_math(520.0, 300.0, 34.0, "\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}");
+            ed.select_tool(app.parts().0, crate::ui::editor::Tool::Math);
+            ed.demo_math(520.0, 120.0, "x_{1,2} = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}");
         }
         if has("edittools") {
             let sh = app.parts().0;

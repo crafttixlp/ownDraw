@@ -373,6 +373,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         }
         Tool::Note => ic::NOTE,
         Tool::Image => ic::IMAGE,
+        Tool::Math => ic::FORMULA,
     })
 }
 
@@ -388,7 +389,7 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
         None => style::paint_arrow_eng(ui.painter(), Rect::from_center_size(rect.center(), Vec2::splat(isz + 4.0)), c(tint)),
     }
     // Farbpunkt als Hinweis auf die aktuelle Farbe
-    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note) {
+    if matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Math) {
         let pos = rect.right_bottom() - Vec2::new(size * 0.22, size * 0.22);
         ui.painter().circle_filled(pos, 4.5, c(ed.board.color));
         ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.0, c(p.line)));

@@ -1,4 +1,4 @@
-//! Board-Objekte: Freihand-Strich, geometrische Form, Notiz/Text, Bild, Tabelle und Kommentar-Stecknadel.
+//! Board-Objekte: Freihand-Strich, geometrische Form, Notiz/Text, Bild, Tabelle, Kommentar-Stecknadel und Mathe-Formel.
 //! Koordinaten sind Welt-Koordinaten.
 //!
 //! Verträglichkeit der Erweiterungen aus 4.25 mit älteren Versionen:
@@ -6,7 +6,8 @@
 //!   `Item::extra` und bleiben beim Speichern erhalten; dort werden sie nur nicht dargestellt.
 //! - Neue Formtypen 11–15 sind Vielecke mit Eckpunkten in `q` (ältere Versionen zeichnen sie als Polygon),
 //!   ARC (16) ist eine Polylinie (dort mit Sehne geschlossen), DIM (17) erscheint dort als Linie ohne Maß.
-//! - Neue Objektarten `"t":"tb"` (Tabelle) und `"t":"pin"` (Kommentar): ältere Rust-Versionen fallen bei
+//! - Neue Objektarten `"t":"tb"` (Tabelle), `"t":"pin"` (Kommentar) und `"t":"mx"` (Mathe-Formel; nur Felder
+//!   x, y, s, tx, an, c, w – alle schon in KNOWN_KEYS): ältere Rust-Versionen fallen bei
 //!   unbekanntem `t` auf eine Notiz zurück, scheitern an den fehlenden Pflichtfeldern und lassen den Eintrag
 //!   weg (kein Absturz; beim Speichern mit einer alten Version geht er aber verloren). Für Java 2.x liegt der
 //!   Quelltext nicht im Repo; erwartet wird dasselbe Verhalten (unbekannte Einträge überspringen) – ungeprüft.
@@ -733,6 +734,58 @@ pub struct Pin {
 /// Radius des Nadelkopfs (Welteinheiten).
 pub const PIN_R: f32 = 9.0;
 
+/// Mathe-Formel (JSON `"t":"mx"`): linke obere Ecke, LaTeX-Quelltext `tx`, Schriftgröße `s`, Drehung `an`.
+/// Farbe = `Item::color`; fehlerhafte Stellen rot. Gesetzt wird bei [`MATH_BASE`] und beim Zeichnen skaliert.
+#[derive(Clone, Debug)]
+pub struct Math {
+    pub x: f32,
+    pub y: f32,
+    pub size: f32,
+    pub ang: f32,
+    pub src: String,
+    lay: Rc<crate::math::Formula>,
+}
+
+/// Schriftgröße, bei der Formeln gesetzt werden.
+pub const MATH_BASE: f32 = 40.0;
+
+impl Math {
+    pub fn new(x: f32, y: f32, size: f32, src: &str) -> Math {
+        Math { x, y, size, ang: 0.0, src: src.to_string(), lay: Rc::new(crate::math::layout(src, MATH_BASE)) }
+    }
+    fn k(&self) -> f32 {
+        self.size / MATH_BASE
+    }
+    pub fn w(&self) -> f32 {
+        self.lay.w * self.k()
+    }
+    pub fn h(&self) -> f32 {
+        self.lay.h * self.k()
+    }
+    /// Gesetzte Formel (bei MATH_BASE).
+    pub fn formula(&self) -> &crate::math::Formula {
+        &self.lay
+    }
+    /// Fehlermeldungen des Quelltexts (leer = gültig).
+    pub fn errors(&self) -> &[String] {
+        &self.lay.errors
+    }
+    pub fn set_src(&mut self, src: &str) {
+        self.src = src.to_string();
+        self.lay = Rc::new(crate::math::layout(src, MATH_BASE));
+    }
+    /// Weltpunkt eines Punkts der Formel (Koordinaten bei MATH_BASE, links oben = 0).
+    pub fn world(&self, x: f32, y: f32) -> (f32, f32) {
+        let k = self.k();
+        let (wx, wy) = (self.x + x * k, self.y + y * k);
+        if self.ang != 0.0 {
+            rot_pt(wx, wy, self.x + self.w() / 2.0, self.y + self.h() / 2.0, self.ang)
+        } else {
+            (wx, wy)
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Kind {
     Stroke(Stroke),
@@ -741,6 +794,7 @@ pub enum Kind {
     Img(Img),
     Table(Table),
     Pin(Pin),
+    Math(Math),
 }
 
 /// Ein Board-Objekt. `id` ist nur zur Laufzeit eindeutig (Auswahl), nicht Teil des Dateiformats.
@@ -816,6 +870,12 @@ impl Item {
     pub fn as_note(&self) -> Option<&Note> {
         match &self.kind {
             Kind::Note(s) => Some(s),
+            _ => None,
+        }
+    }
+    pub fn as_math(&self) -> Option<&Math> {
+        match &self.kind {
+            Kind::Math(m) => Some(m),
             _ => None,
         }
     }
@@ -913,6 +973,13 @@ impl Item {
                 RectF::new(t.x - h, t.y - h, t.x + t.w() + h, t.y + t.h() + h)
             }
             Kind::Pin(p) => RectF::new(p.x - PIN_R, p.y - PIN_R * 3.3, p.x + PIN_R, p.y),
+            Kind::Math(m) => {
+                if m.ang != 0.0 {
+                    rect_hull(m.x + m.w() / 2.0, m.y + m.h() / 2.0, m.w(), m.h(), m.ang)
+                } else {
+                    RectF::new(m.x, m.y, m.x + m.w(), m.y + m.h())
+                }
+            }
         };
         self.b.set(Some(b));
         b
@@ -987,6 +1054,16 @@ impl Item {
                 }
             }
             Kind::Table(t) => self.draw_table(t, c, dark),
+            Kind::Math(m) => {
+                c.save();
+                if m.ang != 0.0 {
+                    c.rotate(m.ang.to_degrees(), m.x + m.w() / 2.0, m.y + m.h() / 2.0);
+                }
+                c.translate(m.x, m.y);
+                c.scale(m.k(), m.k());
+                m.lay.draw(c, ink(self.color, dark));
+                c.restore();
+            }
             Kind::Pin(p) => {
                 let col = if self.color == INK { 0xFFE5484D } else { self.color };
                 let (hx, hy) = (p.x, p.y - PIN_R * 2.2);
@@ -1111,7 +1188,7 @@ impl Item {
                 u * u + v * v <= 1.0
             }
             Kind::Shape(_) | Kind::Stroke(_) => self.fill_outline().map(|o| point_in_poly(&o, x, y)).unwrap_or(false),
-            Kind::Note(_) | Kind::Img(_) | Kind::Table(_) => self.hit(x, y, 0.0),
+            Kind::Note(_) | Kind::Img(_) | Kind::Table(_) | Kind::Math(_) => self.hit(x, y, 0.0),
             Kind::Pin(_) => false,
         }
     }
@@ -1654,6 +1731,10 @@ impl Item {
                 px >= m.x.min(m.x + m.w) - r && px <= m.x.max(m.x + m.w) + r && py >= m.y.min(m.y + m.h) - r && py <= m.y.max(m.y + m.h) + r
             }
             Kind::Table(t) => x >= t.x - r && x <= t.x + t.w() + r && y >= t.y - r && y <= t.y + t.h() + r,
+            Kind::Math(m) => {
+                let (px, py) = if m.ang != 0.0 { rot_pt(x, y, m.x + m.w() / 2.0, m.y + m.h() / 2.0, -m.ang) } else { (x, y) };
+                px >= m.x - r && px <= m.x + m.w() + r && py >= m.y - r && py <= m.y + m.h() + r
+            }
             Kind::Pin(p) => {
                 let (hx, hy) = (p.x, p.y - PIN_R * 2.2);
                 hypot(x - hx, y - hy) <= PIN_R + r || seg(x, y, p.x, p.y, hx, hy) <= r + PIN_R * 0.3
@@ -1710,6 +1791,11 @@ impl Item {
                     self.width *= s;
                 }
             }
+            Kind::Math(m) => {
+                m.x = px + (m.x - px) * s + dx;
+                m.y = py + (m.y - py) * s + dy;
+                m.size *= s;
+            }
             Kind::Pin(p) => {
                 // Nadel behaelt ihre Groesse, nur die Spitze wandert
                 p.x = px + (p.x - px) * s + dx;
@@ -1755,6 +1841,12 @@ impl Item {
                 let (cx, cy) = rot_pt(t.x + w / 2.0, t.y + h / 2.0, px, py, rad);
                 t.x = cx - w / 2.0;
                 t.y = cy - h / 2.0;
+            }
+            Kind::Math(m) => {
+                let (cx, cy) = rot_pt(m.x + m.w() / 2.0, m.y + m.h() / 2.0, px, py, rad);
+                m.x = cx - m.w() / 2.0;
+                m.y = cy - m.h() / 2.0;
+                m.ang = norm_ang(m.ang as f64 + rad as f64);
             }
             Kind::Pin(p) => {
                 let (x, y) = rot_pt(p.x, p.y, px, py, rad);
@@ -1977,6 +2069,18 @@ impl Item {
                 o.insert("cl".into(), json!(t.cells));
                 o.insert("s".into(), num(t.size));
             }
+            Kind::Math(m) => {
+                o.insert("t".into(), json!("mx"));
+                o.insert("c".into(), json!(c));
+                o.insert("w".into(), num(self.width));
+                o.insert("x".into(), num(m.x));
+                o.insert("y".into(), num(m.y));
+                o.insert("s".into(), num(m.size));
+                o.insert("tx".into(), json!(m.src));
+                if m.ang != 0.0 {
+                    o.insert("an".into(), num(m.ang));
+                }
+            }
             Kind::Pin(p) => {
                 o.insert("t".into(), json!("pin"));
                 o.insert("c".into(), json!(c));
@@ -2048,6 +2152,12 @@ impl Item {
                 cells.resize(cw.len() * rh.len(), String::new());
                 let size = jf(o, "s").filter(|s| *s > 0.0 && s.is_finite()).unwrap_or(16.0);
                 Kind::Table(Table { x: jf(o, "x")?, y: jf(o, "y")?, cw, rh, cells, size })
+            }
+            "mx" => {
+                let size = jf(o, "s").filter(|s| *s > 0.0 && s.is_finite())?;
+                let mut m = Math::new(jf(o, "x")?, jf(o, "y")?, size, o.get("tx")?.as_str()?);
+                m.ang = jf(o, "an").unwrap_or(0.0);
+                Kind::Math(m)
             }
             "pin" => {
                 let st = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -2322,6 +2432,14 @@ impl Item {
                 t.x = cx - t.w() / 2.0;
                 t.y = cy - t.h() / 2.0;
             }
+            Kind::Math(m) => {
+                // Formeln behalten ihr Seitenverhältnis (wie freier Text)
+                let (cx, cy) = pt(m.x + m.w() / 2.0, m.y + m.h() / 2.0);
+                let (fx, fy) = box_f(m.ang);
+                m.size *= (fx * fy).sqrt();
+                m.x = cx - m.w() / 2.0;
+                m.y = cy - m.h() / 2.0;
+            }
             Kind::Pin(p) => {
                 let (x, y) = pt(p.x, p.y);
                 p.x = x;
@@ -2375,6 +2493,7 @@ impl Item {
             Kind::Img(m) => (m.x + m.w / 2.0, m.y + m.h / 2.0, m.w.abs(), m.h.abs(), m.ang),
             Kind::Table(t) => (t.x + t.w() / 2.0, t.y + t.h() / 2.0, t.w(), t.h(), 0.0),
             Kind::Pin(p) => (p.x, p.y - PIN_R * 2.2, PIN_R * 2.0, PIN_R * 2.0, 0.0),
+            Kind::Math(m) => (m.x + m.w() / 2.0, m.y + m.h() / 2.0, m.w(), m.h(), m.ang),
         }
     }
 

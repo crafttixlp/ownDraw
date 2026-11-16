@@ -42,6 +42,8 @@ pub const DUPLICATE: i32 = 35;
 pub const ERASER_PART: i32 = 36;
 /// Maschinenbau-Pfeil: schmaler gefuellter Pfeil (Form-Menue).
 pub const MACHINE_ARROW: i32 = 37;
+/// Mathe-Formel (Wurzelzeichen mit x). Hohe Nummer, damit parallel ergänzte Icons nicht kollidieren.
+pub const FORMULA: i32 = 60;
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -286,6 +288,11 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, false, &[12.5, 14.75, 17.0, 14.75]);
             poly(&mut pb, false, &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5]);
         }
+        FORMULA => {
+            poly(&mut pb, false, &[2.5, 13.0, 5.0, 11.5, 8.5, 20.0, 12.5, 4.0, 21.5, 4.0]);
+            poly(&mut pb, false, &[14.0, 9.0, 20.0, 17.0]);
+            poly(&mut pb, false, &[20.0, 9.0, 14.0, 17.0]);
+        }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
             poly(&mut pb, false, &[5.0, 12.0, 19.0, 12.0]);
@@ -313,7 +320,7 @@ mod tests {
 
     #[test]
     fn alle_icons_sichtbar() {
-        for id in 0..=37 {
+        for id in (0..=37).chain([FORMULA]) {
             for filled in [false, true] {
                 let pm = render(id, 48, 0xFFFFFFFF, filled).expect("pixmap");
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();

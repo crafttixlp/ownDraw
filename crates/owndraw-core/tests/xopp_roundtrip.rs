@@ -98,6 +98,7 @@ fn objekte(d: &Document) -> Vec<Obj> {
                 Kind::Shape(_) => o.art = "form",
                 Kind::Table(_) => o.art = "tabelle",
                 Kind::Pin(_) => o.art = "kommentar",
+                Kind::Math(_) => o.art = "formel",
             }
             o
         })
@@ -342,4 +343,22 @@ fn seitenmodus_export_owndraw() {
     assert_eq!(xml.matches("<page ").count(), 2);
     assert_eq!(xml.matches(r#"style="graph""#).count(), 2);
     assert!(xml.contains(r##"<stroke tool="highlighter" color="#00ff007f" width="2">10 10 50 30</stroke>"##));
+}
+
+#[test]
+fn formeln_als_text_und_striche() {
+    let mut f = Item::new(Kind::Math(owndraw_core::item::Math::new(100.0, 100.0, 24.0, "\\frac{\\alpha}{\\sqrt{x}} + \\left( y^2 \\right) \\foo")));
+    f.color = 0xFF0000FF;
+    let mut g = Item::new(Kind::Math(owndraw_core::item::Math::new(100.0, 300.0, 24.0, "\\sum_{k=1}^n k")));
+    g.rot(0.4, 150.0, 300.0);
+    let d = unendlich(vec![f, g]);
+    let xml = entpacke(&export_xopp(&d, XoppExport::default()).unwrap());
+    let x = roxmltree::Document::parse(&xml).unwrap();
+    let texte: Vec<_> = x.descendants().filter(|n| n.has_tag_name("text")).collect();
+    assert!(texte.iter().any(|n| n.text() == Some("α") && n.attribute("font") == Some("Sans Italic")));
+    assert!(texte.iter().any(|n| n.text() == Some("\\foo") && n.attribute("color") == Some("#e5484dff")), "Fehler rot");
+    assert!(x.descendants().any(|n| n.has_tag_name("stroke") && n.attribute("fill") == Some("255")), "Bruchstrich/Klammer gefüllt");
+    assert!(x.descendants().any(|n| n.has_tag_name("stroke") && n.attribute("fill").is_none() && n.attribute("color") == Some("#0000ffff")), "Wurzel als Strich");
+    // wieder einlesen klappt
+    import_xopp(&export_xopp(&d, XoppExport::default()).unwrap()).unwrap();
 }

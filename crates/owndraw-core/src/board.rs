@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use tiny_skia::{PathBuilder, Pixmap};
 
+mod math;
 mod tools;
 use tools::dup_all;
 pub use tools::{Align, STAMP_CHECK, STAMP_CROSS, STAMP_EXCLAIM, STAMP_QUESTION, STAMP_STAR};
@@ -2867,7 +2868,8 @@ impl Board {
                 self.expand_groups();
             } else if matches!(self.drag, 1 | 2 | 7) && !self.moved {
                 // Erneutes Tippen auf einen ausgewaehlten Text (auch auf einen Griff kleiner Texte): direkt bearbeiten
-                if let Some(id) = self.single_note().map(|n| n.id) {
+                // (Formeln ebenso; die Oberfläche unterscheidet nach der Objektart)
+                if let Some(id) = self.single_note().or_else(|| self.single_math()).map(|n| n.id) {
                     self.events.push(Event::EditNote(id));
                 }
             }

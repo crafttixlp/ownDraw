@@ -97,6 +97,7 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::std(Tool::Text, "text", "Text", Group::Extras, ic::TEXT, "Schreibt Text direkt auf das Blatt.").key("T"),
     ToolDef::std(Tool::Note, "note", "Haftnotiz", Group::Extras, ic::NOTE, "Farbiger Zettel mit Text, erreichbar über das Text-Werkzeug.").key("N").inside("text"),
     ToolDef::std(Tool::Image, "image", "Bild", Group::Extras, ic::IMAGE, "Fügt ein Bild aus einer Datei ein.").key("I"),
+    ToolDef::neu(Tool::Math, "math", "Formel", Group::Extras, ic::FORMULA, "Setzt Mathe-Formeln in LaTeX-Schreibweise mit Live-Vorschau.").key("Y"),
 ];
 
 /// Werkzeug nach Kennung.

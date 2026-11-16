@@ -5,6 +5,7 @@ pub mod clip;
 pub mod drop;
 pub mod keys;
 mod layers;
+mod mathed;
 #[cfg(target_arch = "wasm32")]
 pub mod live;
 mod menu;
@@ -58,6 +59,7 @@ pub enum Tool {
     Text,
     Note,
     Image,
+    Math,
 }
 
 impl Tool {
@@ -113,6 +115,8 @@ pub struct UiState {
     pub tools_vert: bool,
     /// Haftnotiz hat einen eigenen Knopf (Text ist ausgeschaltet).
     pub note_in_bar: bool,
+    /// Werkzeug „Formel“ aktiv (Board-Werkzeug TEXT: Tippen fragt nach einer Formel statt nach Text).
+    pub math_tool: bool,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).
@@ -153,6 +157,8 @@ pub struct Editor {
     pan_start: Option<Pos2>,
     touches: Vec<(u64, Pos2)>,
     pub(super) text: Option<text::TextEdState>,
+    /// Offener Formel-Editor.
+    pub(super) math: Option<mathed::MathEd>,
     pub st: UiState,
     pub(super) page_thumbs: pages::PageThumbs,
     canvas: Rect,
@@ -210,6 +216,7 @@ impl Editor {
             pan_start: None,
             touches: Vec::new(),
             text: None,
+            math: None,
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
             canvas: Rect::NOTHING,
@@ -458,6 +465,7 @@ impl Editor {
             board::SELECT => Tool::Select,
             board::SHAPE => Tool::Shape,
             board::NOTE if self.st.note_in_bar => Tool::Note,
+            board::TEXT if self.st.math_tool => Tool::Math,
             _ => Tool::Text,
         }
     }
@@ -482,7 +490,9 @@ impl Editor {
                 self.pick_image(sh);
                 return;
             }
+            Tool::Math => board::TEXT,
         };
+        self.st.math_tool = t == Tool::Math;
         if self.board.tool != bt {
             self.board.set_tool(bt);
         }
@@ -573,7 +583,7 @@ impl Editor {
             pages::initial_view(&mut self.board);
         }
 
-        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some();
+        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some();
         // Klick auf die Zeichenfläche schließt offene Popups und zeichnet nicht.
         let popup_open = self.st.opts_open || self.st.menu_open;
         let mut swallow = false;
@@ -690,6 +700,7 @@ impl Editor {
         options::show(self, &ctx, sh, &lay);
         menu::show(self, &ctx, sh, &lay);
         self.text_editor(&ctx, &sh.settings);
+        self.math_editor(&ctx, sh);
         self.close_popups_on_esc(&ctx, &sh.settings);
         self.drain_events(sh);
 
@@ -767,7 +778,12 @@ impl Editor {
         for e in std::mem::take(&mut self.board.events) {
             match e {
                 board::Event::Notice(s) => sh.toast(&s),
+                board::Event::AskText { wx, wy, .. } if self.st.math_tool => match self.board.math_at(wx, wy) {
+                    Some(id) => self.edit_math(id),
+                    None => self.start_math(wx, wy),
+                },
                 board::Event::AskText { wx, wy, note } => self.start_text(wx, wy, note),
+                board::Event::EditNote(id) if self.board.items.iter().any(|it| it.id == id && it.as_math().is_some()) => self.edit_math(id),
                 board::Event::EditNote(id) => self.edit_note(id),
                 board::Event::Changed | board::Event::Haptic => {}
             }
@@ -938,8 +954,14 @@ impl Editor {
         if let Some(t) = a.tool {
             match t {
                 // T/N wählen Text bzw. Haftnotiz direkt (wie bisher)
-                Tool::Text => self.board.set_tool(board::TEXT),
-                Tool::Note => self.board.set_tool(board::NOTE),
+                Tool::Text => {
+                    self.st.math_tool = false;
+                    self.board.set_tool(board::TEXT)
+                }
+                Tool::Note => {
+                    self.st.math_tool = false;
+                    self.board.set_tool(board::NOTE)
+                }
                 _ => self.select_tool(sh, t),
             }
             return;

@@ -85,6 +85,11 @@ dialog::backdrop { background: rgba(10,10,16,.45); }
 dialog h2 { font-size: 1.1rem; }
 dialog .row { justify-content: flex-end; }
 .empty { color: var(--muted); padding: 8px 0; }
+.mfa { max-width: 420px; }
+.qr { display: block; width: 200px; height: 200px; margin: 14px auto 6px; padding: 8px; background: #fff; border-radius: 10px; border: 1px solid var(--line); }
+.secret { display: block; text-align: center; word-break: break-all; padding: 8px; margin-top: 6px; user-select: all; }
+.otp { font: 1.25rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .2em; text-align: center; }
+.codes { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (max-width: 520px) { main { padding: 16px 12px 32px; } header .bar { padding: 10px 12px; } .card { padding: 14px; } header .who { display: none; } .tabs { display: flex; } }
@@ -95,6 +100,7 @@ dialog .row { justify-content: flex-end; }
   <div class="bar">
     <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M4 20c4-1 6-4 8-8s4-7 8-8"/></svg></span><h1>OwnDraw <span>Verwaltung</span></h1></div>
     <span class="who" id="who"></span>
+    <button id="security" class="small" hidden>Sicherheit</button>
     <button id="logout" class="small" hidden>Abmelden</button>
   </div>
 </header>
@@ -110,6 +116,39 @@ dialog .row { justify-content: flex-end; }
       <input id="password" type="password" autocomplete="current-password" required>
       <div class="row"><button class="primary" type="submit" style="width:100%">Anmelden</button></div>
     </form>
+  </section>
+
+  <section id="mfaVerifyView" class="card login mfa" hidden>
+    <h2>Bestätigen</h2>
+    <p class="sub">Gib den 6-stelligen Code aus deiner Authenticator-App ein.</p>
+    <div id="verifyMsg"></div>
+    <form id="verifyForm">
+      <label for="verifyCode">Code</label>
+      <input id="verifyCode" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="11" required>
+      <p class="hint">Kein Zugriff auf die App? Gib einen Wiederherstellungscode ein (z. B. ABCDE-FGHJK).</p>
+      <div class="row"><button class="primary" type="submit" style="width:100%">Bestätigen</button></div>
+    </form>
+  </section>
+
+  <section id="mfaSetupView" class="card login mfa" hidden>
+    <h2>Zwei-Faktor-Anmeldung einrichten</h2>
+    <p class="sub">Für die Verwaltung ist ein zweiter Faktor Pflicht. Scanne den QR-Code mit einer Authenticator-App (z. B. Aegis, Google Authenticator, 2FAS).</p>
+    <div id="setupMsg"></div>
+    <img id="setupQr" class="qr" alt="QR-Code für die Authenticator-App">
+    <p class="hint" style="text-align:center">Oder den Schlüssel von Hand eingeben:</p>
+    <code id="setupSecret" class="code secret"></code>
+    <form id="setupForm">
+      <label for="setupCode">Code aus der App</label>
+      <input id="setupCode" class="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <div class="row"><button class="primary" type="submit" style="width:100%">Einrichten</button></div>
+    </form>
+  </section>
+
+  <section id="mfaCodesView" class="card login mfa" hidden>
+    <h2>Wiederherstellungscodes</h2>
+    <p class="sub">Jeder Code funktioniert einmal, falls du keinen Zugriff auf die App hast. Bewahre sie sicher auf. Sie werden nur jetzt angezeigt.</p>
+    <div class="newcodes"><div id="codesList" class="codes"></div></div>
+    <div class="row"><button id="codesCopy" type="button">Kopieren</button><button id="codesDone" class="primary" type="button" style="flex:1">Gesichert, weiter</button></div>
   </section>
 
   <div id="appView" hidden>
@@ -236,7 +275,8 @@ async function api(method, path, body) {
   let data = null;
   try { data = await res.json(); } catch (e) { /* leer */ }
   if (!res.ok) {
-    if (res.status === 401 && path !== "/api/auth/login") showLogin("Deine Sitzung ist abgelaufen. Melde dich erneut an.");
+    if (res.status === 401 && path !== "/api/auth/login" && !path.startsWith("/api/auth/2fa/")) showLogin("Deine Sitzung ist abgelaufen. Melde dich erneut an.");
+    if (res.status === 403 && data && data.error === "mfa_required" && state.me) api("GET", "/api/me").then(afterLogin).catch(() => showLogin());
     const err = new Error((data && data.message) || "Anfrage fehlgeschlagen (" + res.status + ")");
     err.status = res.status; err.code = data && data.error;
     throw err;
@@ -281,30 +321,93 @@ function dialog(title, bodyNodes, okLabel, danger) {
 const confirmDialog = (title, text, okLabel) => dialog(title, h("p", {}, text), okLabel, true);
 
 // ---------- Anmeldung ----------
+const VIEWS = ["loginView", "mfaVerifyView", "mfaSetupView", "mfaCodesView", "appView"];
+function showView(id) {
+  for (const v of VIEWS) $(v).hidden = v !== id;
+  const inApp = id === "appView";
+  $("security").hidden = !inApp;
+  $("logout").hidden = id === "loginView";
+}
+const msgBox = (id, msg) => $(id).replaceChildren(msg ? h("div", { class: "msg err" }, msg) : "");
 function showLogin(msg) {
   state.me = null;
-  $("appView").hidden = true; $("loginView").hidden = false;
-  $("logout").hidden = true; $("who").textContent = "";
-  $("loginMsg").replaceChildren(msg ? h("div", { class: "msg err" }, msg) : "");
+  showView("loginView"); $("who").textContent = "";
+  msgBox("loginMsg", msg);
 }
 async function showApp(me) {
   state.me = me;
-  $("loginView").hidden = true; $("appView").hidden = false;
-  $("logout").hidden = false; $("who").textContent = me.email;
+  showView("appView"); $("who").textContent = me.email;
   selectTab(state.tab);
   if (state.tab !== "maint") loadMaint(true);
+}
+// Nach dem Passwort: 2FA einrichten, Code abfragen oder (schon bestätigt) direkt zur Verwaltung.
+async function afterLogin(me) {
+  if (!me.admin) {
+    try { await api("POST", "/api/auth/logout", {}); } catch (e) { /* egal */ }
+    return showLogin("Dieses Konto hat keine Administratorrechte.");
+  }
+  state.me = me; $("who").textContent = me.email;
+  const m = me.mfa || {};
+  if (m.enabled && m.verified) return showApp(me);
+  if (m.enabled) return showVerify();
+  return showSetup();
+}
+function showVerify(msg) {
+  showView("mfaVerifyView"); msgBox("verifyMsg", msg);
+  $("verifyCode").value = ""; $("verifyCode").focus();
+}
+async function showSetup() {
+  showView("mfaSetupView"); msgBox("setupMsg");
+  $("setupCode").value = ""; $("setupSecret").textContent = "…"; $("setupQr").removeAttribute("src");
+  try {
+    const r = await api("POST", "/api/auth/2fa/setup", {});
+    $("setupQr").src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.qr_svg);
+    $("setupSecret").textContent = r.secret.replace(/(.{4})/g, "$1 ").trim();
+    $("setupCode").focus();
+  } catch (e) { msgBox("setupMsg", e.message); }
+}
+function showCodes(codes, next) {
+  showView("mfaCodesView");
+  $("codesList").replaceChildren(...codes.map((c) => h("span", { class: "mono" }, c)));
+  $("codesCopy").onclick = () => copy(codes.join("\n"), $("codesCopy"));
+  $("codesDone").onclick = next;
 }
 $("loginForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   try {
     const me = await api("POST", "/api/auth/login", { email: $("email").value, password: $("password").value });
-    if (!me.admin) {
-      await api("POST", "/api/auth/logout", {});
-      return showLogin("Dieses Konto hat keine Administratorrechte.");
-    }
     $("password").value = "";
-    showApp(me);
+    afterLogin(me);
   } catch (e) { showLogin(e.message); }
+});
+$("verifyForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    const me = await api("POST", "/api/auth/2fa/verify", { code: $("verifyCode").value });
+    if (me.mfa && me.mfa.recovery_left <= 2) flash("Nur noch " + me.mfa.recovery_left + " Wiederherstellungscodes übrig. Erzeuge unter „Sicherheit“ neue.", "err");
+    showApp(me);
+  } catch (e) { showVerify(e.message); }
+});
+$("setupForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    const r = await api("POST", "/api/auth/2fa/enable", { code: $("setupCode").value });
+    showCodes(r.recovery_codes, async () => showApp(await api("GET", "/api/me")));
+  } catch (e) { msgBox("setupMsg", e.message); $("setupCode").value = ""; }
+});
+$("security").addEventListener("click", async () => {
+  const me = await api("GET", "/api/me").catch(() => state.me);
+  const code = h("input", { class: "otp", inputmode: "numeric", autocomplete: "one-time-code", maxLength: 6, required: true });
+  const ok = await dialog("Sicherheit", [
+    h("p", {}, "Die Zwei-Faktor-Anmeldung ist aktiv. Übrige Wiederherstellungscodes: " + ((me && me.mfa && me.mfa.recovery_left) ?? "–") + "."),
+    h("p", { class: "hint" }, "Neue Codes ersetzen alle bisherigen. Bestätige mit dem aktuellen Code aus der App."),
+    h("label", {}, "Code aus der App"), code,
+  ], "Neue Codes erzeugen");
+  if (!ok) return;
+  try {
+    const r = await api("POST", "/api/admin/2fa/recovery-codes", { code: code.value });
+    showCodes(r.recovery_codes, () => showApp(state.me));
+  } catch (e) { fail(e); }
 });
 $("logout").addEventListener("click", async () => { try { await api("POST", "/api/auth/logout", {}); } catch (e) { /* egal */ } showLogin(); });
 
@@ -556,7 +659,7 @@ $("uSave").addEventListener("click", async () => {
 (async () => {
   try {
     const me = await api("GET", "/api/me");
-    if (me.admin) showApp(me); else showLogin("Dieses Konto hat keine Administrator-Rechte. Bitte mit einem Admin-Konto anmelden.");
+    if (me.admin) afterLogin(me); else showLogin("Dieses Konto hat keine Administrator-Rechte. Bitte mit einem Admin-Konto anmelden.");
   } catch (e) { showLogin(); }
 })();
 </script>

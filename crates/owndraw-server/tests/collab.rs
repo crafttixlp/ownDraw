@@ -81,7 +81,14 @@ impl Srv {
         auth::create_admin(&self.state.db, "admin@example.org", "adminpasswort").await.unwrap();
         let (s, _, h) = self.json(Method::POST, "/api/auth/login", None, json!({"email": "admin@example.org", "password": "adminpasswort"})).await;
         assert_eq!(s, StatusCode::OK);
-        h.get(header::SET_COOKIE).unwrap().to_str().unwrap().split(';').next().unwrap().to_string()
+        let c = h.get(header::SET_COOKIE).unwrap().to_str().unwrap().split(';').next().unwrap().to_string();
+        // Admin-Routen brauchen die Zwei-Faktor-Anmeldung.
+        let (s, v, _) = self.json(Method::POST, "/api/auth/2fa/setup", Some(&c), json!({})).await;
+        assert_eq!(s, StatusCode::OK);
+        let code = owndraw_server::totp::code_now(v["secret"].as_str().unwrap());
+        let (s, _, _) = self.json(Method::POST, "/api/auth/2fa/enable", Some(&c), json!({"code": code})).await;
+        assert_eq!(s, StatusCode::OK);
+        c
     }
 
     async fn license(&self, admin: &str, user: &str) -> String {

@@ -50,6 +50,17 @@ impl RateLimiter {
         q.push_back(now);
         true
     }
+
+    /// Anzahl der Versuche im Fenster, ohne einen neuen zu zählen.
+    pub fn count(&self, key: &str, window: Duration) -> u32 {
+        let map = self.hits.lock().unwrap_or_else(|p| p.into_inner());
+        let now = Instant::now();
+        map.get(key).map_or(0, |q| q.iter().filter(|t| now.duration_since(**t) < window).count() as u32)
+    }
+
+    pub fn clear(&self, key: &str) {
+        self.hits.lock().unwrap_or_else(|p| p.into_inner()).remove(key);
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
-//! `owndraw-server`: Webserver. Unterbefehle: `admin create <email>` (Passwort per stdin), `--version`.
+//! `owndraw-server`: Webserver. Unterbefehle: `admin create <email>` (Passwort per stdin),
+//! `admin reset-2fa <email>` (Notfall-Reset der Zwei-Faktor-Anmeldung), `--version`.
 
 use owndraw_server::{build_app, config::Config, ensure_admin_from_env, open_state, update};
 use std::io::BufRead;
@@ -6,6 +7,9 @@ use std::io::BufRead;
 const USAGE: &str = "Verwendung:
   owndraw-server                       Server starten (Konfiguration über OWNDRAW_*-Umgebungsvariablen)
   owndraw-server admin create <email>  Admin anlegen oder befördern (Passwort wird von stdin gelesen)
+  owndraw-server admin reset-2fa <email>
+                                       Zwei-Faktor-Anmeldung eines Admins zurücksetzen (Notfall);
+                                       beim nächsten Login wird sie neu eingerichtet
   owndraw-server --version";
 
 #[tokio::main]
@@ -18,6 +22,7 @@ async fn main() {
         }
         [] | ["serve"] => run_server().await,
         ["admin", "create", email] => admin_create(email).await,
+        ["admin", "reset-2fa", email] => admin_reset_2fa(email).await,
         _ => {
             eprintln!("{USAGE}");
             2
@@ -45,6 +50,31 @@ async fn admin_create(email: &str) -> i32 {
         Ok(()) => {
             eprintln!("Admin {email} ist angelegt.");
             0
+        }
+        Err(e) => {
+            eprintln!("Fehler: {}", e.message);
+            1
+        }
+    }
+}
+
+async fn admin_reset_2fa(email: &str) -> i32 {
+    let state = match open_state(Config::from_env()) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{e}");
+            return 1;
+        }
+    };
+    match owndraw_server::totp::reset(&state.db, email).await {
+        Ok(true) => {
+            eprintln!("Zwei-Faktor-Anmeldung für {email} zurückgesetzt. Alle Sitzungen des Kontos sind beendet.");
+            eprintln!("Beim nächsten Login unter /admin wird sie neu eingerichtet.");
+            0
+        }
+        Ok(false) => {
+            eprintln!("Kein Admin-Konto mit der Adresse {email} gefunden.");
+            1
         }
         Err(e) => {
             eprintln!("Fehler: {}", e.message);

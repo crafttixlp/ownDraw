@@ -344,6 +344,7 @@ pub async fn put_state(State(s): State<AppState>, _a: AdminAuth, J(b): J<PutMain
 /// Anfragen, die im Wartungsmodus auch Nicht-Admins beantwortet werden (Pfad ohne `/api`).
 fn always_allowed(method: &Method, path: &str) -> bool {
     matches!(path, "/health" | "/notices" | "/maintenance" | "/auth/login" | "/auth/logout")
+        || path.starts_with("/auth/2fa/")
         || (method == Method::GET && path == "/me")
         || path.starts_with("/admin/")
 }

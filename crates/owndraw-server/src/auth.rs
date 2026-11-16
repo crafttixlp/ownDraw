@@ -244,6 +244,12 @@ impl FromRequestParts<AppState> for AdminAuth {
         if !a.user.admin {
             return Err(ApiError::forbidden("Nur für Administratoren."));
         }
+        // Admin-Rechte nur in einer Sitzung, die mit Passwort und 2FA-Code bestätigt ist.
+        let (uid, th) = (a.user.id.clone(), a.token_hash.clone());
+        let ok = state.db.call(move |c| Ok(crate::totp::row(c, &uid)?.enabled() && crate::totp::session_mfa(c, &th)?)).await?;
+        if !ok {
+            return Err(ApiError::mfa_required());
+        }
         Ok(AdminAuth(a))
     }
 }
@@ -340,7 +346,7 @@ pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: Maybe
                 Some(g) => adopt_guest(c, g, &u2.id)?.into_iter().map(|b| (b, g.clone())).collect(),
                 None => Vec::new(),
             };
-            Ok((db::me_json(c, &u2)?, moved))
+            Ok((me_full(c, &u2, None)?, moved))
         })
         .await?;
     for (board, g) in moved {
@@ -379,8 +385,17 @@ pub async fn logout(State(s): State<AppState>, headers: HeaderMap) -> ApiResult<
     Ok(with_cookie("", 0, json!({})))
 }
 
+/// `db::me_json` plus `mfa` (nur bei Admins, siehe `totp.rs`).
+fn me_full(c: &rusqlite::Connection, u: &UserRow, token_hash: Option<&str>) -> ApiResult<Value> {
+    let mut me = db::me_json(c, u)?;
+    if u.admin {
+        me["mfa"] = crate::totp::me_mfa(c, &u.id, token_hash)?;
+    }
+    Ok(me)
+}
+
 pub async fn me(State(s): State<AppState>, a: Auth) -> ApiResult<Json<Value>> {
-    Ok(Json(s.db.call(move |c| db::me_json(c, &a.user)).await?))
+    Ok(Json(s.db.call(move |c| me_full(c, &a.user, Some(&a.token_hash))).await?))
 }
 
 #[derive(Deserialize)]

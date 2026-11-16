@@ -102,7 +102,39 @@ selbst (`restart: unless-stopped`).
   (Ist der Container noch nicht gestartet: `docker compose run --rm -T --entrypoint /app/owndraw-server owndraw admin create …`.)
   Dabei läuft das mitgelieferte Binary; für diese Verwaltungsaufgabe genügt das.
 
-Dann `https://owndraw.thepepelex.at/admin` öffnen und anmelden. Im Panel:
+Dann `https://owndraw.thepepelex.at/admin` öffnen und anmelden.
+
+### Zwei-Faktor-Anmeldung (Pflicht ab 4.12.0)
+
+Die Verwaltung ist nur mit Passwort **und** Code aus einer Authenticator-App (TOTP, 6 Stellen, 30 s; z. B. Aegis,
+2FAS, Google Authenticator) erreichbar. Das Passwort allein gibt nie Admin-Rechte; normale Konten sind nicht betroffen.
+
+1. **Einrichten** (erster Login unter `/admin` nach dem Update, auch für jeden neuen Admin): E-Mail und Passwort
+   eingeben, QR-Code scannen (oder den Schlüssel abtippen), den angezeigten Code eingeben.
+2. Danach erscheinen **10 Wiederherstellungscodes** (`XXXXX-XXXXX`). Jeder gilt einmal, falls das Handy fehlt. Sie
+   werden nur jetzt angezeigt: ausdrucken oder im Passwortmanager speichern. Neue Codes gibt es unter **Sicherheit**
+   (oben rechts, bestätigt mit einem App-Code); die alten werden dabei ungültig.
+3. **Jede weitere Anmeldung**: Passwort, dann Code aus der App (oder ein Wiederherstellungscode).
+
+Schutz: Ein Code gilt nur einmal (auch nicht in derselben 30-s-Periode erneut), erlaubt ist ±30 s Zeitabweichung
+(Serveruhr per NTP synchron halten). Nach 5 falschen Codes ist das Konto für 15 Minuten gesperrt; zusätzlich gilt das
+IP-Limit wie beim Login. Das Geheimnis liegt verschlüsselt in `data/owndraw.db`, der Schlüssel in `data/secret.key`
+(Rechte 0600); Wiederherstellungscodes nur als Hash.
+
+**Notfall: ausgesperrt** (Handy weg, keine Wiederherstellungscodes). Auf dem Server:
+
+```bash
+cd /opt/owndraw/packaging/server
+docker compose exec owndraw sh -c 'B=/app/data/current/owndraw-server; [ -x "$B" ] || B=/app/owndraw-server; "$B" admin reset-2fa admin@example.org'
+```
+
+(Der Umweg über `data/current` nimmt die per Panel-Update installierte Version; das mitgelieferte Binary kann älter
+sein und kennt `reset-2fa` dann noch nicht.)
+
+Das löscht die 2FA des Kontos und beendet alle seine Sitzungen; beim nächsten Login unter `/admin` wird sie neu
+eingerichtet. Wer Zugriff auf den Server hat, kann das immer; also SSH gut schützen.
+
+Im Panel:
 
 - **Nutzer**: sperren/entsperren, Admin-Recht geben/entziehen, löschen (mit Bestätigung; löscht auch die Boards),
   Lizenz und Speicherverbrauch ansehen.
@@ -132,6 +164,7 @@ direkt ins Internet stellen (Port 8080 ist im Compose-Setup nur intern erreichba
 ```
 data/owndraw.db        Konten, Sitzungen, Lizenzen, Board-Metadaten, Update-Einstellungen (SQLite, WAL)
 data/boards/<id>.owndraw   Board-Dateien
+data/secret.key        Schlüssel für die 2FA-Geheimnisse der Admins (mitsichern; ohne ihn: reset-2fa)
 data/backups/          automatische DB-Sicherungen vor jedem Update
 data/versions/<v>/     per Self-Update installierte Versionen (Binary + web/)
 data/current           Symlink auf die aktive Version (data/previous = die vorige)
@@ -144,6 +177,7 @@ cd /opt/owndraw/packaging/server
 mkdir -p backup
 sqlite3 data/owndraw.db "VACUUM INTO '$PWD/backup/owndraw-$(date +%F).db'"     # (sqlite3 auf dem Host)
 rsync -a data/boards/ backup/boards/
+cp -p data/secret.key backup/
 ```
 
 Ohne `sqlite3` auf dem Host: `docker compose stop owndraw`, den ganzen Ordner `data/` kopieren

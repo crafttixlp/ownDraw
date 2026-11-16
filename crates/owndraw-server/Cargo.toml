@@ -15,6 +15,11 @@ path = "src/main.rs"
 
 [dependencies]
 argon2 = "0.6.0"
+chacha20poly1305 = "0.10.1"
+data-encoding = "2.11.1"
+hmac = "0.12.1"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+sha1 = "0.10.7"
 owndraw-core = { path = "../owndraw-core" }
 axum = { version = "0.8.9", features = ["ws"] }
 flate2 = "1.1.11"

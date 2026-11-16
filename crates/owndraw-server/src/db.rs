@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS recovery_codes (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    used_at INTEGER,
+    PRIMARY KEY (user_id, code_hash)
+);
 CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_user ON licenses(redeemed_by);
@@ -83,6 +89,19 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let has_guest = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='guest'")?.exists([])?;
     if !has_guest {
         conn.execute_batch("ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;")?;
+    }
+    // 4.12: Zwei-Faktor-Anmeldung für Admins (`totp.rs`).
+    let has_totp = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='totp_secret'")?.exists([])?;
+    if !has_totp {
+        conn.execute_batch(
+            "ALTER TABLE users ADD COLUMN totp_secret TEXT;
+             ALTER TABLE users ADD COLUMN totp_pending TEXT;
+             ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+    let has_mfa = conn.prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name='mfa'")?.exists([])?;
+    if !has_mfa {
+        conn.execute_batch("ALTER TABLE sessions ADD COLUMN mfa INTEGER NOT NULL DEFAULT 0;")?;
     }
     Ok(())
 }
@@ -298,7 +317,7 @@ pub fn me_json(conn: &Connection, u: &UserRow) -> ApiResult<Value> {
 }
 
 /// Ein kryptografisch zufälliges Zeichen aus `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (ohne 0/O/1/I).
-fn code_char() -> char {
+pub fn random_code_char() -> char {
     const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let mut buf = [0u8; 1];
     loop {
@@ -317,7 +336,7 @@ pub fn new_license_code() -> String {
         if i % 4 == 0 {
             out.push('-');
         }
-        out.push(code_char());
+        out.push(random_code_char());
     }
     out
 }
@@ -343,7 +362,7 @@ pub fn clean_guest_name(raw: &str) -> ApiResult<String> {
 /// Legt einen Gast an. Seine ID für die Anzeige ist `<Name>#<4 Zeichen>` (eindeutig unter allen Nutzern).
 pub fn insert_guest(conn: &Connection, name: &str) -> ApiResult<UserRow> {
     for _ in 0..50 {
-        let tag: String = (0..4).map(|_| code_char()).collect();
+        let tag: String = (0..4).map(|_| random_code_char()).collect();
         let display = format!("{name}#{tag}");
         let taken: bool = conn.prepare("SELECT 1 FROM users WHERE name=?1")?.exists([&display])?;
         if taken {

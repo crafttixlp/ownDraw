@@ -6,7 +6,7 @@ use axum::Router;
 use owndraw_server::config::Config;
 use owndraw_server::db::{now, Db};
 use owndraw_server::state::AppState;
-use owndraw_server::{auth, build_app};
+use owndraw_server::{auth, build_app, totp};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -108,11 +108,24 @@ impl App {
         self.post("/api/auth/login", None, json!({"email": email, "password": pw})).await
     }
 
+    /// Admin mit eingerichteter Zwei-Faktor-Anmeldung; liefert das bestätigte Sitzungs-Cookie.
     async fn admin(&self) -> String {
+        self.admin_full().await.0
+    }
+
+    /// Wie [`App::admin`], liefert zusätzlich Geheimnis (Base32) und Wiederherstellungscodes.
+    async fn admin_full(&self) -> (String, String, Vec<String>) {
         auth::create_admin(&self.state.db, "admin@example.org", "adminpasswort").await.unwrap();
         let r = self.login("admin@example.org", "adminpasswort").await;
         assert_eq!(r.status, StatusCode::OK);
-        cookie_of(&r)
+        let c = cookie_of(&r);
+        let r = self.post("/api/auth/2fa/setup", Some(&c), json!({})).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+        let secret = r.json()["secret"].as_str().unwrap().to_string();
+        let r = self.post("/api/auth/2fa/enable", Some(&c), json!({"code": totp::code_now(&secret)})).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+        let codes = r.json()["recovery_codes"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+        (c, secret, codes)
     }
 
     /// Erzeugt eine Lizenz (als Admin) und löst sie für das Konto ein.
@@ -494,7 +507,8 @@ async fn admin_rechte() {
     // Admin-Recht vergeben und entziehen
     let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"admin": true})).await;
     assert_eq!(r.json()["admin"], true);
-    assert_eq!(app.get("/api/admin/users", Some(&user)).await.status, StatusCode::OK);
+    // Neuer Admin: ohne eingerichtete 2FA keine Admin-Routen
+    assert_eq!(app.get("/api/admin/users", Some(&user)).await.code(), "mfa_required");
     app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"admin": false})).await;
     assert_eq!(app.get("/api/admin/users", Some(&user)).await.status, StatusCode::FORBIDDEN);
 
@@ -910,4 +924,103 @@ async fn wartungsmodus_endet_automatisch() {
     tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
     assert_eq!(app.get("/api/boards", Some(&user)).await.status, StatusCode::OK);
     assert_eq!(app.get("/api/maintenance", None).await.json()["active"], false);
+}
+
+async fn last_step(app: &App) -> i64 {
+    app.state.db.call(|c| Ok(c.query_row("SELECT totp_last_step FROM users WHERE email='admin@example.org'", [], |r| r.get::<_, i64>(0))?)).await.unwrap()
+}
+
+#[tokio::test]
+async fn admin_nur_mit_zwei_faktor() {
+    let app = App::new();
+    auth::create_admin(&app.state.db, "admin@example.org", "adminpasswort").await.unwrap();
+    let pw_only = cookie_of(&app.login("admin@example.org", "adminpasswort").await);
+    // Passwort allein: keine Admin-Routen
+    let r = app.get("/api/admin/users", Some(&pw_only)).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::FORBIDDEN, "mfa_required"));
+    let me = app.get("/api/me", Some(&pw_only)).await.json();
+    assert_eq!((me["mfa"]["enabled"].clone(), me["mfa"]["verified"].clone()), (json!(false), json!(false)));
+
+    // Normale Nutzer können 2FA nicht einrichten und haben kein mfa-Feld
+    let user = app.register("u@example.org").await;
+    assert_eq!(app.post("/api/auth/2fa/setup", Some(&user), json!({})).await.status, StatusCode::FORBIDDEN);
+    assert!(app.get("/api/me", Some(&user)).await.json().get("mfa").is_none());
+
+    // Einrichten: falscher Code abgelehnt, richtiger aktiviert und liefert 10 Wiederherstellungscodes
+    let r = app.post("/api/auth/2fa/setup", Some(&pw_only), json!({})).await.json();
+    let secret = r["secret"].as_str().unwrap().to_string();
+    assert!(r["uri"].as_str().unwrap().starts_with("otpauth://totp/OwnDraw%3Aadmin%40example%2Eorg?secret="));
+    assert!(r["qr_svg"].as_str().unwrap().contains("<svg"));
+    assert_eq!(app.post("/api/auth/2fa/enable", Some(&pw_only), json!({"code": "000000x"})).await.status, StatusCode::UNAUTHORIZED);
+    let r = app.post("/api/auth/2fa/enable", Some(&pw_only), json!({"code": totp::code_now(&secret)})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let codes: Vec<String> = r.json()["recovery_codes"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+    assert_eq!(codes.len(), 10);
+    assert_eq!(app.get("/api/admin/users", Some(&pw_only)).await.status, StatusCode::OK);
+    // Zweites Einrichten geht nicht
+    assert_eq!(app.post("/api/auth/2fa/setup", Some(&pw_only), json!({})).await.status, StatusCode::CONFLICT);
+
+    // Geheimnis liegt verschlüsselt in der DB, Codes nur gehasht
+    let (stored, hashes) = app
+        .state
+        .db
+        .call(|c| {
+            let s: String = c.query_row("SELECT totp_secret FROM users WHERE email='admin@example.org'", [], |r| r.get(0))?;
+            let h: Vec<String> = c.prepare("SELECT code_hash FROM recovery_codes")?.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+            Ok((s, h))
+        })
+        .await
+        .unwrap();
+    assert!(stored.starts_with("v1:") && !stored.contains(&secret));
+    assert!(codes.iter().all(|c| !hashes.iter().any(|h| h.contains(&c.replace('-', "")))));
+
+    // Neue Anmeldung: erst nach dem Code Admin-Rechte
+    let c = cookie_of(&app.login("admin@example.org", "adminpasswort").await);
+    let me = app.get("/api/me", Some(&c)).await.json();
+    assert_eq!((me["mfa"]["enabled"].clone(), me["mfa"]["verified"].clone()), (json!(true), json!(false)));
+    assert_eq!(app.get("/api/admin/licenses", Some(&c)).await.code(), "mfa_required");
+    let key = totp::decode_b32(&secret).unwrap();
+    // Wiederverwendung des Codes aus der Einrichtung: abgelehnt
+    let used = format!("{:06}", totp::code_at_step(&key, last_step(&app).await));
+    assert_eq!(app.post("/api/auth/2fa/verify", Some(&c), json!({"code": used})).await.status, StatusCode::UNAUTHORIZED);
+    // Nächster Schritt (liegt im ±1-Fenster): gültig, aber nur einmal
+    let next = format!("{:06}", totp::code_at_step(&key, last_step(&app).await + 1));
+    let r = app.post("/api/auth/2fa/verify", Some(&c), json!({"code": next})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    assert_eq!(r.json()["mfa"]["verified"], true);
+    assert_eq!(app.get("/api/admin/licenses", Some(&c)).await.status, StatusCode::OK);
+    let c2 = cookie_of(&app.login("admin@example.org", "adminpasswort").await);
+    assert_eq!(app.post("/api/auth/2fa/verify", Some(&c2), json!({"code": next})).await.status, StatusCode::UNAUTHORIZED);
+
+    // Wiederherstellungscode: Schreibweise egal, nur einmal gültig
+    let rc = codes[0].to_lowercase().replace('-', " ");
+    let r = app.post("/api/auth/2fa/verify", Some(&c2), json!({"code": rc})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["mfa"]["recovery_left"], 9);
+    let c3 = cookie_of(&app.login("admin@example.org", "adminpasswort").await);
+    assert_eq!(app.post("/api/auth/2fa/verify", Some(&c3), json!({"code": codes[0]})).await.status, StatusCode::UNAUTHORIZED);
+
+    // Neue Wiederherstellungscodes ersetzen die alten (Zeitablauf simuliert: letzter Schritt liegt zurück)
+    app.state.db.call(|c| Ok(c.execute("UPDATE users SET totp_last_step=?1 WHERE admin=1", [now() / totp::STEP - 1])?)).await.unwrap();
+    let r = app.post("/api/admin/2fa/recovery-codes", Some(&c), json!({"code": totp::code_now(&secret)})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let fresh = r.json()["recovery_codes"].as_array().unwrap()[0].as_str().unwrap().to_string();
+    assert_eq!(app.post("/api/auth/2fa/verify", Some(&c3), json!({"code": codes[1]})).await.status, StatusCode::UNAUTHORIZED);
+
+    // Sperre: nach 5 falschen Codes auch der richtige abgelehnt (429)
+    // (seit dem letzten Erfolg 2 Fehlversuche: verbrauchter und ersetzter Wiederherstellungscode, + diese 3 = 5)
+    for _ in 0..3 {
+        assert_eq!(app.post("/api/auth/2fa/verify", Some(&c3), json!({"code": "123456"})).await.status, StatusCode::UNAUTHORIZED);
+    }
+    let r = app.post("/api/auth/2fa/verify", Some(&c3), json!({"code": fresh})).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::TOO_MANY_REQUESTS, "rate_limited"));
+
+    // Notfall-Reset: Sitzungen weg, 2FA muss neu eingerichtet werden
+    assert!(totp::reset(&app.state.db, "Admin@Example.org").await.unwrap());
+    assert!(!totp::reset(&app.state.db, "u@example.org").await.unwrap(), "nur Admins");
+    assert_eq!(app.get("/api/me", Some(&c)).await.status, StatusCode::UNAUTHORIZED);
+    let c4 = cookie_of(&app.login("admin@example.org", "adminpasswort").await);
+    assert_eq!(app.get("/api/me", Some(&c4)).await.json()["mfa"]["enabled"], false);
+    assert_eq!(app.get("/api/admin/users", Some(&c4)).await.code(), "mfa_required");
+    assert_eq!(app.post("/api/auth/2fa/setup", Some(&c4), json!({})).await.status, StatusCode::OK);
 }

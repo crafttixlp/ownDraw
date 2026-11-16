@@ -2,3 +2,6 @@
 *.AppImage
 packaging/appimage/runtime
 /dist/
+packaging/server/.env
+packaging/server/.env.bak
+packaging/server/data/

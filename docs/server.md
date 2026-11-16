@@ -45,6 +45,18 @@ docker compose version
 
 ## 3. Installation (Schritt für Schritt)
 
+**Schnellweg: Installer.** `packaging/server/install.sh` erledigt alle Schritte unten (Docker, Repo nach
+`/opt/owndraw`, Web-App, `.env`, Rechte, Swap bei wenig RAM, Start, Prüfung) und ist mehrfach ausführbar:
+
+```bash
+# Skript und OwnDraw-Web-<v>-statisch.zip in denselben Ordner legen, dann:
+sudo bash install.sh            # fragt Domain, Admin-E-Mail und Passwort ab
+```
+
+Ohne Zip baut der Installer die Web-App in einem Docker-Container. Optionen: `bash install.sh --help`.
+
+**Von Hand:**
+
 1. **Repository holen** und die Web-App bauen (`dist/web/` wird vom Dockerfile kopiert, ohne sie schlägt der
    Image-Build fehl):
 

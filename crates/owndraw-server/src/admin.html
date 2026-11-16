@@ -61,6 +61,9 @@ header button.small { border-color: transparent; color: var(--muted); }
 .item .main b { word-break: break-all; font-weight: 600; }
 .item .meta { color: var(--muted); font-size: .86rem; }
 .item .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.grip { flex: 0 0 auto; width: 32px; height: 40px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); cursor: grab; touch-action: none; user-select: none; font-size: 1.2rem; }
+.grip:hover { background: var(--line); color: var(--text); }
+.item.dragging { opacity: .6; background: var(--panel); }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: .75rem; font-weight: 500; background: var(--chip); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
 .chip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
@@ -225,7 +228,7 @@ dialog .row { justify-content: flex-end; }
           <div class="row"><button class="primary" type="submit" id="nSubmit">Mitteilung anlegen</button><button type="button" id="nCancel" hidden>Abbrechen</button></div>
         </form>
       </div>
-      <div class="card"><h2>Alle Mitteilungen</h2><div id="nList"></div></div>
+      <div class="card"><h2>Alle Mitteilungen</h2><p class="hint" style="margin-top:0">Besucher sehen die Mitteilungen in dieser Reihenfolge, die oberste zuerst. Zum Verschieben am Griff ⠿ ziehen oder die Pfeile nutzen.</p><div id="nList"></div></div>
     </section>
 
     <section id="panel-bugs" role="tabpanel" hidden>
@@ -672,16 +675,56 @@ async function loadNotices() {
   list.replaceChildren(...state.notices.map((n) => {
     const [label, kind] = noticeStatus(n);
     const range = (n.starts_at != null ? "ab " + fmtDate(n.starts_at) : "") + (n.starts_at != null && n.ends_at != null ? " · " : "") + (n.ends_at != null ? "bis " + fmtDate(n.ends_at) : "");
-    return h("div", { class: "item" },
+    const i = state.notices.indexOf(n);
+    return h("div", { class: "item", "data-id": n.id },
+      h("div", { class: "grip", title: "Ziehen zum Verschieben", "aria-hidden": "true", onpointerdown: (ev) => dragNotice(ev) }, "⠿"),
       h("div", { class: "main" },
         h("div", {}, h("b", {}, n.title || "Ohne Titel"), h("span", { class: "chip " + kind }, label), n.kind === "warning" && h("span", { class: "chip warn" }, "Warnung")),
         n.body && h("div", { class: "meta", style: "white-space:pre-wrap" }, n.body.length > 240 ? n.body.slice(0, 240) + " …" : n.body),
         h("div", { class: "meta" }, "geändert " + fmtDate(n.updated), range ? " · " + range : "")),
       h("div", { class: "actions" },
+        h("button", { class: "small", disabled: i === 0, title: "Nach oben", "aria-label": "Nach oben", onclick: () => moveNotice(i, -1) }, "↑"),
+        h("button", { class: "small", disabled: i === state.notices.length - 1, title: "Nach unten", "aria-label": "Nach unten", onclick: () => moveNotice(i, 1) }, "↓"),
         h("button", { class: "small", onclick: () => patchNotice(n, { active: !n.active }) }, n.active ? "Deaktivieren" : "Aktivieren"),
         h("button", { class: "small", onclick: () => editNotice(n) }, "Bearbeiten"),
         h("button", { class: "small danger", onclick: () => deleteNotice(n) }, "Löschen")));
   }));
+}
+async function saveNoticeOrder(ids) {
+  try { await api("PUT", "/api/admin/notices/order", { ids }); flash("Reihenfolge gespeichert."); } catch (e) { fail(e); }
+  loadNotices();
+}
+function moveNotice(i, d) {
+  const ids = state.notices.map((n) => n.id);
+  const j = i + d;
+  if (j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  saveNoticeOrder(ids);
+}
+// Ziehen am Griff (Maus und Touch über Pointer-Events): Eintrag wandert live mit, gespeichert wird beim Loslassen.
+function dragNotice(ev) {
+  const item = ev.currentTarget.closest(".item");
+  const list = $("nList");
+  const before = [...list.children].map((el) => el.dataset.id).join(",");
+  ev.preventDefault();
+  ev.currentTarget.setPointerCapture(ev.pointerId);
+  item.classList.add("dragging");
+  const move = (e) => {
+    const others = [...list.children].filter((el) => el !== item);
+    const next = others.find((el) => { const r = el.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (next) { if (item.nextElementSibling !== next) list.insertBefore(item, next); } else if (list.lastElementChild !== item) list.appendChild(item);
+  };
+  const up = () => {
+    item.classList.remove("dragging");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
+    const ids = [...list.children].map((el) => el.dataset.id);
+    if (ids.join(",") !== before) saveNoticeOrder(ids);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
 }
 function resetNoticeForm() {
   state.editNotice = null;

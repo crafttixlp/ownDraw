@@ -262,7 +262,7 @@ Self-Update beendet sich der Prozess nur; einen Neustart muss dann ein Superviso
 
 **Mitteilungen und Wartung (ab 4.8.0).** Im Admin-Panel unter **Mitteilungen** lassen sich Hinweise (z. B. zu
 Updates) anlegen, bearbeiten, (de)aktivieren und löschen; Typ Info oder Warnung, optional mit Zeitraum. Jeder
-Besucher der Web-App, auch Gäste, sieht aktive Mitteilungen bei jedem Laden der Seite (Wegklicken gilt nur bis zum nächsten Neuladen). Unter **Wartung** schaltet
+Besucher der Web-App, auch Gäste, sieht aktive Mitteilungen bei jedem Laden der Seite (Wegklicken gilt nur bis zum nächsten Neuladen), in der Reihenfolge der Liste im Admin-Panel (verschieben per Griff ⠿ oder Pfeilen; neue kommen ans Ende). Unter **Wartung** schaltet
 man den Wartungsmodus ein (optional mit eigener Nachricht und Endzeit, danach endet er automatisch): Nutzer und Gäste
 sehen dann eine Wartungsseite, die API antwortet ihnen mit 503 `maintenance`, Live-Verbindungen werden getrennt.
 Admins arbeiten weiter; `/admin` und `/api/health` bleiben erreichbar. Details: [`web-api.md`](web-api.md).

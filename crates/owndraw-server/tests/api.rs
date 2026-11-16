@@ -1348,3 +1348,31 @@ async fn lizenz_loeschen() {
     assert!(app.get("/api/admin/licenses", Some(&admin)).await.json().as_array().unwrap().is_empty());
     assert_eq!(app.api(Method::DELETE, &format!("/api/admin/licenses/{code}"), Some(&admin), None).await.status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn mitteilungen_reihenfolge() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    let mut ids = Vec::new();
+    for t in ["A", "B", "C"] {
+        ids.push(app.post("/api/admin/notices", Some(&admin), json!({"title": t})).await.json()["id"].as_str().unwrap().to_string());
+    }
+    let titles = |v: Value| v.as_array().unwrap().iter().map(|n| n["title"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    // neue landen am Ende
+    assert_eq!(titles(app.get("/api/notices", None).await.json()), ["A", "B", "C"]);
+
+    let order = json!({"ids": [ids[2], ids[0], ids[1]]});
+    assert_eq!(app.api(Method::PUT, "/api/admin/notices/order", Some(&user), Some(order.clone())).await.status, StatusCode::FORBIDDEN);
+    let r = app.api(Method::PUT, "/api/admin/notices/order", Some(&admin), Some(order)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    assert_eq!(titles(r.json()), ["C", "A", "B"]);
+    assert_eq!(titles(app.get("/api/notices", None).await.json()), ["C", "A", "B"]);
+    app.post("/api/admin/notices", Some(&admin), json!({"title": "D"})).await;
+    assert_eq!(titles(app.get("/api/admin/notices", Some(&admin)).await.json()), ["C", "A", "B", "D"]);
+
+    // unvollständige oder fremde IDs: Konflikt, nichts geändert
+    let r = app.api(Method::PUT, "/api/admin/notices/order", Some(&admin), Some(json!({"ids": [ids[0], ids[1]]}))).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    assert_eq!(titles(app.get("/api/notices", None).await.json()), ["C", "A", "B", "D"]);
+}

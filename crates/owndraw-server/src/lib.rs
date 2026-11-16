@@ -139,6 +139,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/notices", get(notices::public_list))
         .route("/maintenance", get(notices::public_state))
         .route("/admin/notices", get(notices::admin_list).post(notices::create))
+        .route("/admin/notices/order", axum::routing::put(notices::reorder))
         .route("/admin/notices/{id}", patch(notices::patch).delete(notices::delete))
         .route("/admin/maintenance", get(notices::admin_state).put(notices::put_state))
         .route("/admin/update", get(update::get_state).patch(update::patch_state))

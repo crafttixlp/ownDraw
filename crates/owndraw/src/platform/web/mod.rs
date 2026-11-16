@@ -11,7 +11,7 @@
 //!   `paste`-Ereignis (kommen als Drop an). Drops über egui `dropped_files` (Bytes, asynchron gelesen).
 //! - Warnung beim Verlassen der Seite, solange es nicht heruntergeladene Änderungen gibt ([`set_unsaved`]).
 //!
-//! Server-Anbindung (Login, Boards am Server, siehe `docs/web-api.md`) folgt in [`api`].
+//! - Server-Boards: `FileRef::Uri("srv:<id>")` (Inhalt vorab geladen, Speichern per PUT), siehe [`api`].
 
 pub mod api;
 
@@ -403,6 +403,7 @@ impl Platform for WebPlatform {
 
     fn read(&self, f: &FileRef) -> io::Result<Vec<u8>> {
         match f {
+            FileRef::Uri(u) if u.starts_with(api::SRV) => api::with(|n| n.files.get(u).cloned()).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Board vom Server noch nicht geladen")),
             FileRef::Uri(u) => self.inner.borrow().files.get(u).cloned().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "nicht im Browser-Speicher")),
             FileRef::Path(p) => crate::kv::read(p),
         }
@@ -410,6 +411,14 @@ impl Platform for WebPlatform {
     fn write_atomic(&self, f: &FileRef, data: &[u8]) -> io::Result<()> {
         match f {
             FileRef::Uri(u) if u.starts_with(DOWNLOAD) => Self::download(&f.display_name(), data),
+            FileRef::Uri(u) if u.starts_with(api::SRV) => {
+                let id = &u[api::SRV.len()..];
+                // live verbunden: der Server speichert selbst; sonst Autosave per PUT (Ergebnis kommt asynchron)
+                if !api::with(|n| n.live.contains(id)) {
+                    api::put_board(id, data.to_vec());
+                }
+                Ok(())
+            }
             FileRef::Uri(u) if u.starts_with(MEM) => {
                 if !u.starts_with(UPLOAD) {
                     if let Some(db) = &self.db {
@@ -428,6 +437,7 @@ impl Platform for WebPlatform {
     }
     fn exists(&self, f: &FileRef) -> bool {
         match f {
+            FileRef::Uri(u) if u.starts_with(api::SRV) => true,
             FileRef::Uri(u) => self.inner.borrow().files.contains_key(u),
             FileRef::Path(p) => crate::kv::exists(p),
         }

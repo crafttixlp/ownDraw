@@ -156,6 +156,11 @@ impl App {
         }
     }
 
+    /// Server-Boards (Browser, `srv:<id>`) stehen in der Liste „Am Server“, nicht unter „Zuletzt geöffnet“.
+    fn in_recent(f: &FileRef) -> bool {
+        !matches!(f, FileRef::Uri(u) if crate::platform::WEB && u.starts_with("srv:"))
+    }
+
     fn recent_entry(f: FileRef, e: &Editor) -> RecentEntry {
         RecentEntry { file: f, name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board) }
     }
@@ -198,10 +203,21 @@ impl App {
     fn close_editor(&mut self, ctx: &egui::Context) {
         if let Some(mut e) = self.editor.take() {
             e.flush(&mut self.sh);
-            if let Some(f) = e.file().cloned() {
+            // Browser: zwischengespeicherte Bytes eines Server-Boards freigeben (beim Öffnen neu geladen)
+            #[cfg(target_arch = "wasm32")]
+            if let Some(FileRef::Uri(u)) = e.file().filter(|f| crate::platform::web::api::srv_id(f).is_some()) {
+                crate::platform::web::api::with(|n| n.files.remove(u));
+            }
+            if let Some(f) = e.file().cloned().filter(Self::in_recent) {
                 self.recent.add(Self::recent_entry(f.clone(), &e));
                 self.start.forget(&f);
             }
+        }
+        // Browser: Liste der Server-Boards und Speicherplatz auffrischen
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::platform::web::api::refresh_boards();
+            crate::platform::web::api::refresh_me();
         }
         self.screen = Screen::Start;
         self.title(ctx);
@@ -211,7 +227,7 @@ impl App {
         if self.editor.is_some() {
             self.close_editor(ctx);
         }
-        if let Some(f) = ed.file().cloned() {
+        if let Some(f) = ed.file().cloned().filter(Self::in_recent) {
             self.recent.add(Self::recent_entry(f, &ed));
         }
         self.editor = Some(ed);
@@ -294,6 +310,17 @@ impl App {
     }
 
     fn create(&mut self, ctx: &egui::Context, params: NewParams, custom: bool) {
+        // Browser mit gültiger Lizenz: neue Boards am Server anlegen (öffnet sich, sobald der Server antwortet)
+        #[cfg(target_arch = "wasm32")]
+        if crate::platform::web::api::licensed() {
+            let doc = session::new_document(&params);
+            match session::serialize(&doc) {
+                Ok(b) => crate::platform::web::api::create_board(&params.name, b),
+                Err(e) => self.sh.toast_for(&e, 4.0),
+            }
+            let _ = (ctx, custom);
+            return;
+        }
         let fname = format!("{}.owndraw", safe_file_name(&params.name));
         // Im Browser gibt es keinen Speicherort zum Wählen (Speichern unter = Download).
         if custom && !crate::platform::WEB {
@@ -410,6 +437,13 @@ impl App {
             Outcome::Rename(what, text) => {
                 let now = self.sh.now;
                 if let Some(e) = self.editor.as_mut() {
+                    // Browser: Server-Board auch in der Liste umbenennen (nur Besitzer)
+                    #[cfg(target_arch = "wasm32")]
+                    if let (crate::ui::dialogs::RenameWhat::Doc, Some(id)) = (&what, e.file().and_then(crate::platform::web::api::srv_id)) {
+                        if crate::platform::web::api::board(id).is_some_and(|b| b.role == "owner") {
+                            crate::platform::web::api::rename_board(id, &text);
+                        }
+                    }
                     e.apply_rename(what, text, now);
                     self.title(ctx);
                 }
@@ -480,6 +514,16 @@ impl eframe::App for App {
         if let Some(d) = self.demo.take() {
             crate::demo::setup(self, &ctx, &d);
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let (open, notes) = crate::platform::web::api::with(|n| (std::mem::take(&mut n.open), std::mem::take(&mut n.notices)));
+            for m in notes {
+                self.sh.toast_for(&m, 4.0);
+            }
+            for f in open {
+                self.open_ref(&ctx, f);
+            }
+        }
         for ev in self.sh.platform.poll() {
             match ev {
                 PlatformEvent::Picked { tag, file } => self.handle_pick(&ctx, tag, file),
@@ -549,7 +593,7 @@ impl App {
     /// Zuletzt-Liste pflegen: Eintrag nach jedem erfolgreichen Autosave aktualisieren, fehlende Dateien erkennen.
     fn recent_housekeeping(&mut self) {
         if let Some(e) = &self.editor {
-            if let (AutosaveStatus::Saved(t), Some(f)) = (e.autosave.status(), e.file()) {
+            if let (AutosaveStatus::Saved(t), Some(f)) = (e.autosave.status(), e.file().filter(|f| Self::in_recent(f))) {
                 if *t != self.last_saved {
                     self.last_saved = *t;
                     self.recent.add(Self::recent_entry(f.clone(), e));

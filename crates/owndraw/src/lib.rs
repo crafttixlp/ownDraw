@@ -126,7 +126,8 @@ pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
 }
 
 /// Browser-Start (aus `start` im Crate `owndraw-web`): gleiche App, Plattform = [`platform::web::WebPlatform`]
-/// (Gastmodus: Öffnen per Upload, Speichern als Download, Boards vorläufig in IndexedDB).
+/// (Gastmodus: Öffnen per Upload, Speichern als Download, Boards in IndexedDB; mit Server: Konto, Boards am
+/// Server, Live-Zusammenarbeit, siehe `platform/web/api.rs`).
 #[cfg(target_arch = "wasm32")]
 pub async fn run_web(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bindgen::JsValue> {
     let store = platform::web::Store::load().await;
@@ -138,6 +139,8 @@ pub async fn run_web(canvas: web_sys::HtmlCanvasElement) -> Result<(), wasm_bind
             eframe::WebOptions::default(),
             Box::new(move |cc| {
                 let platform: Box<dyn platform::Platform> = Box::new(platform::web::WebPlatform::new(cc.egui_ctx.clone(), store));
+                // Server-Anbindung: Anmeldung prüfen (ohne Server bleibt alles im Gastmodus)
+                platform::web::api::init(&cc.egui_ctx);
                 let settings = app::load_settings(&*platform);
                 style::apply(&cc.egui_ctx, &settings);
                 Ok(Box::new(app::App::new(platform, settings, None)))

@@ -1,5 +1,7 @@
 //! Oberfläche (WP6): drei Bildschirme – Start, Editor, Einstellungen – mit Formfaktor-abhängigem Layout.
 
+#[cfg(target_arch = "wasm32")]
+pub mod account;
 pub mod dialogs;
 pub mod editor;
 pub mod settings;

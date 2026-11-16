@@ -52,7 +52,7 @@ eframe = { version = "0.37", default-features = false, features = ["glow", "defa
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "HtmlAnchorElement", "HtmlCanvasElement", "FileList", "File", "Blob", "BlobPropertyBag", "Url", "Storage", "Event", "EventTarget", "BeforeUnloadEvent", "ClipboardEvent", "DataTransfer", "DataTransferItem", "DataTransferItemList", "Navigator", "IdbFactory", "IdbDatabase", "IdbOpenDbRequest", "IdbRequest", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "IdbCursorWithValue", "IdbVersionChangeEvent", "CssStyleDeclaration", "Location", "MouseEvent", "DragEvent", "MediaQueryList", "DomStringList", "console"] }
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "HtmlAnchorElement", "HtmlCanvasElement", "FileList", "File", "Blob", "BlobPropertyBag", "Url", "Storage", "Event", "EventTarget", "BeforeUnloadEvent", "ClipboardEvent", "DataTransfer", "DataTransferItem", "DataTransferItemList", "Navigator", "IdbFactory", "IdbDatabase", "IdbOpenDbRequest", "IdbRequest", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "IdbCursorWithValue", "IdbVersionChangeEvent", "CssStyleDeclaration", "Location", "MouseEvent", "DragEvent", "MediaQueryList", "DomStringList", "console", "Request", "RequestInit", "RequestCredentials", "Response", "Headers", "WebSocket", "MessageEvent", "CloseEvent"] }
 log = "0.4"
 
 [dev-dependencies]

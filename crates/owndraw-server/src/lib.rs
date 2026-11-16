@@ -8,6 +8,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod invites;
+pub mod notices;
 pub mod state;
 pub mod update;
 
@@ -60,7 +61,8 @@ pub async fn ensure_admin_from_env(state: &AppState) -> Result<(), String> {
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     // Version der ausgelieferten Web-App (von build-web.sh in version.txt geschrieben; fehlt bei alten Builds).
     let web = std::fs::read_to_string(state.cfg.web.join("version.txt")).map(|v| v.trim().to_string()).unwrap_or_else(|_| "unbekannt".into());
-    Json(json!({"ok": true, "version": update::CURRENT, "web": web}))
+    let maintenance = notices::current(&state).await.is_ok_and(|m| m.on(db::now()));
+    Json(json!({"ok": true, "version": update::CURRENT, "web": web, "maintenance": maintenance}))
 }
 
 /// Web-App-Dateien (index.html, .js, .wasm) haben feste Namen: der Browser muss sie bei jedem Laden
@@ -124,12 +126,18 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/users/{id}", patch(admin::patch_user).delete(admin::delete_user))
         .route("/admin/licenses", get(admin::licenses).post(admin::create_licenses))
         .route("/admin/licenses/{code}", patch(admin::patch_license))
+        .route("/notices", get(notices::public_list))
+        .route("/maintenance", get(notices::public_state))
+        .route("/admin/notices", get(notices::admin_list).post(notices::create))
+        .route("/admin/notices/{id}", patch(notices::patch).delete(notices::delete))
+        .route("/admin/maintenance", get(notices::admin_state).put(notices::put_state))
         .route("/admin/update", get(update::get_state).patch(update::patch_state))
         .route("/admin/update/check", post(update::post_check))
         .route("/admin/update/install", post(update::post_install))
         .route("/boards/{id}/images/{name}", get(collab::get_image).put(collab::put_image))
         .route("/collab/{board_id}", get(collab::ws))
         .fallback(api_not_found)
+        .layer(middleware::from_fn_with_state(state.clone(), notices::api_guard))
         .layer(middleware::from_fn(auth::csrf))
         .with_state(state.clone());
 
@@ -141,7 +149,8 @@ pub fn build_app(state: AppState) -> Router {
         .fallback_service(
             Router::new()
                 .fallback_service(ServeDir::new(&state.cfg.web).append_index_html_on_directories(true))
-                .layer(middleware::from_fn(static_no_cache)),
+                .layer(middleware::from_fn(static_no_cache))
+                .layer(middleware::from_fn_with_state(state.clone(), notices::static_guard)),
         )
         .layer(RequestBodyLimitLayer::new(body_limit))
         .layer(middleware::map_response(json_413))

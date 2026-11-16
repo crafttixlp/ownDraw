@@ -34,7 +34,7 @@ OwnDraw läuft als WebAssembly im Browser. Was man darf, hängt vom Konto ab:
 | Gast (ohne Konto) | voller Editor, Speichern nur als Download (`.owndraw`, PNG, PDF …) |
 | Konto ohne Lizenz | wie Gast, dazu Mitarbeit an Boards, zu denen man eingeladen ist |
 | Konto mit Lizenz | Boards am Server speichern (auf allen Geräten), teilen, Live-Zusammenarbeit starten |
-| Admin | Admin-Panel `/admin`: Nutzer, Lizenzcodes (Laufzeit und Speicher einstellbar), Server-Updates |
+| Admin | Admin-Panel `/admin`: Nutzer, Lizenzcodes (Laufzeit und Speicher einstellbar), Mitteilungen an alle Besucher, Wartungsmodus, Server-Updates |
 
 Bei der Live-Zusammenarbeit sehen alle Änderungen sofort, dazu die Zeiger der anderen mit Namen. Nur der Besitzer des Boards braucht
 eine Lizenz. Server-Updates kommen aus den GitHub-Releases, mit Signaturprüfung und Backup. Auf Knopfdruck oder automatisch
@@ -102,7 +102,7 @@ Laufzeit Linux: glibc ≥ 2.39, X11 oder Wayland, OpenGL. Eine Datei als Argumen
 
 ## Stand
 
-Version 4.7.1. Desktop und Web sind automatisiert getestet (Linux, Chromium; Web auch ohne WebGL). Android, Firefox/Safari und echte
+Version 4.8.0. Desktop und Web sind automatisiert getestet (Linux, Chromium; Web auch ohne WebGL). Android, Firefox/Safari und echte
 Touch-Geräte sind noch nicht auf Geräten geprüft.
 
 Lizenz: [MIT](LICENSE)

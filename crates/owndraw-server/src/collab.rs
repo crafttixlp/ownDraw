@@ -53,6 +53,8 @@ struct Peer {
     name: String,
     color: &'static str,
     role: String,
+    /// Admins bleiben im Wartungsmodus verbunden.
+    admin: bool,
     tx: mpsc::UnboundedSender<Out>,
 }
 
@@ -141,6 +143,19 @@ fn items_with_uids(board: &Value) -> Vec<Value> {
 }
 
 impl Hub {
+    /// Wartungsmodus: trennt alle Live-Verbindungen außer denen von Admins (Fehler `maintenance`, Close 4503).
+    pub fn kick_non_admins(&self, message: &str) {
+        let rooms: Vec<Arc<Room>> = lock(&self.rooms).values().cloned().collect();
+        let msg = json!({"t": "error", "code": "maintenance", "message": message});
+        for r in rooms {
+            let st = lock(&r.st);
+            for p in st.peers.iter().filter(|p| !p.admin) {
+                p.send(&msg);
+                let _ = p.tx.send(Out::Close(4503, "maintenance".into()));
+            }
+        }
+    }
+
     /// Offener Raum zu einem Board (für PUT/Bilder).
     pub fn get(&self, id: &str) -> Option<Arc<Room>> {
         lock(&self.rooms).get(id).cloned()
@@ -366,7 +381,7 @@ async fn session(s: AppState, sock: WebSocket, board_id: String, user: db::UserR
         st.set_write_ok(write_ok);
         let id = st.next_peer;
         st.next_peer += 1;
-        let peer = Peer { id, user_id: user.id.clone(), name: user.name.clone(), color: COLORS[(id as usize - 1) % COLORS.len()], role: role.clone(), tx };
+        let peer = Peer { id, user_id: user.id.clone(), name: user.name.clone(), color: COLORS[(id as usize - 1) % COLORS.len()], role: role.clone(), admin: user.admin, tx };
         let hello = json!({
             "t": "hello",
             "proto": PROTO,

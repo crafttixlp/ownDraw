@@ -346,3 +346,22 @@ async fn gast_per_einladungslink_zeichnet_live_mit() {
     srv.json(Method::POST, "/api/auth/logout", Some(&g), json!({})).await;
     assert_eq!(recv_t(&mut wg, "error").await["code"], "removed");
 }
+
+#[tokio::test]
+async fn wartungsmodus_trennt_live_nutzer() {
+    let srv = Srv::start().await;
+    let admin = srv.admin().await;
+    let a = srv.register("a@example.org", "Anna").await;
+    srv.license(&admin, &a).await;
+    let id = srv.board(&a).await;
+    let mut wa = srv.ws(&id, &a).await;
+    recv_t(&mut wa, "hello").await;
+    let (s, _, _) = srv.json(Method::PUT, "/api/admin/maintenance", Some(&admin), json!({"active": true, "message": "Gleich zurück"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let e = recv_t(&mut wa, "error").await;
+    assert_eq!((e["code"].clone(), e["message"].clone()), (json!("maintenance"), json!("Gleich zurück")));
+    // Neue Verbindung wird abgelehnt (503 vor dem Upgrade)
+    let mut req = format!("ws://{}/api/collab/{id}", srv.addr).into_client_request().unwrap();
+    req.headers_mut().insert("cookie", a.parse().unwrap());
+    assert!(tokio_tungstenite::connect_async(req).await.is_err());
+}

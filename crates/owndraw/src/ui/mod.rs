@@ -12,6 +12,27 @@ pub mod update;
 use egui::Color32;
 use std::path::Path;
 
+/// „Fehler melden“ gibt es nur in der Web-App mit Server (nicht am Desktop, auf Android oder in der
+/// statischen Web-App ohne `/api`).
+pub fn bug_report_available() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::platform::web::api::online()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+/// Öffnet den Dialog „Fehler melden“ (HTML über der App, siehe `crates/owndraw-web/index.html`).
+pub fn open_bug_report(_sh: &mut crate::app::Shared) {
+    #[cfg(target_arch = "wasm32")]
+    if !crate::platform::web::open_bug_report() {
+        _sh.toast("Fehler melden ist hier nicht verfügbar.");
+    }
+}
+
 /// Kürzt Text mit „…“ auf höchstens `max_w` Breite.
 pub fn elide(s: &str, size: f32, max_w: f32, ui: &egui::Ui) -> String {
     let font = egui::FontId::proportional(size);

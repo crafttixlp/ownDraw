@@ -436,6 +436,49 @@ pub fn menu_row(ui: &mut Ui, label: &str, danger: bool, min_h: f32) -> bool {
     r.clicked()
 }
 
+/// Eintrag eines kompakten Kontextmenüs (Board-Karten).
+pub struct MenuItem<'a> {
+    pub icon: i32,
+    pub label: &'a str,
+    /// Rot und durch eine Linie von den übrigen Einträgen getrennt.
+    pub danger: bool,
+}
+
+/// Kompaktes Kontextmenü mit fester Breite: Icon + Text je Zeile, Trennlinie vor dem ersten roten Eintrag.
+/// Liefert den Index des angeklickten Eintrags (das umgebende Popup schließt sich dann).
+pub fn card_menu(ui: &mut Ui, ic: &mut Icons, items: &[MenuItem]) -> Option<usize> {
+    let p = pal();
+    const W: f32 = 196.0;
+    const H: f32 = 34.0;
+    ui.set_width(W);
+    ui.spacing_mut().item_spacing = Vec2::new(0.0, 2.0);
+    let mut hit = None;
+    let mut sep_done = false;
+    for (i, it) in items.iter().enumerate() {
+        if it.danger && !sep_done && i > 0 {
+            let (r, _) = ui.allocate_exact_size(Vec2::new(W, 9.0), Sense::hover());
+            ui.painter().line_segment([egui::pos2(r.left() + 6.0, r.center().y), egui::pos2(r.right() - 6.0, r.center().y)], Stroke::new(1.0, c(p.line)));
+            sep_done = true;
+        }
+        let (r, resp) = ui.allocate_exact_size(Vec2::new(W, H), Sense::click());
+        let col = if it.danger { p.danger_text } else { p.text };
+        if resp.hovered() || resp.has_focus() {
+            let bg = if it.danger { with_alpha(p.danger, 0x22) } else { p.hover };
+            ui.painter().rect_filled(r, CornerRadius::same(6), c(bg));
+        }
+        let ir = egui::Rect::from_center_size(egui::pos2(r.left() + 18.0, r.center().y), Vec2::splat(20.0));
+        ic.paint(ui, ir, it.icon, if it.danger { p.danger_text } else { p.dim }, false, 16.0);
+        ui.painter().text(egui::pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, it.label, egui::FontId::proportional(14.0), c(col));
+        if resp.clicked() {
+            hit = Some(i);
+        }
+    }
+    if hit.is_some() {
+        ui.close();
+    }
+    hit
+}
+
 /// Kleine Abschnittsüberschrift in Menüs und Optionen.
 pub fn caption(ui: &mut Ui, text: &str) {
     ui.label(egui::RichText::new(text).size(12.0).strong().color(c(pal().dim)));

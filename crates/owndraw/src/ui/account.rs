@@ -181,30 +181,29 @@ fn tile(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi, b: &BoardInfo, t
     if resp.clicked() {
         api::open_board(&b.id);
     }
-    let menu = |ui: &mut egui::Ui, st: &mut AccountUi| {
-        if style::menu_row(ui, "Öffnen", false, 34.0) {
-            api::open_board(&b.id);
-            ui.close();
+    let owner = b.role == "owner";
+    let menu = |ui: &mut egui::Ui, st: &mut AccountUi, ic: &mut style::Icons| {
+        use owndraw_core::icons;
+        let mut items = vec![style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false }];
+        if owner {
+            items.push(style::MenuItem { icon: icons::TEXT, label: "Umbenennen", danger: false });
+            items.push(style::MenuItem { icon: icons::TRASH, label: "Löschen", danger: true });
         }
-        if b.role == "owner" {
-            if style::menu_row(ui, "Umbenennen …", false, 34.0) {
-                st.dlg = Some(Dlg::Rename { id: b.id.clone(), name: b.name.clone() });
-                ui.close();
-            }
-            if style::menu_row(ui, "Löschen …", true, 34.0) {
-                st.dlg = Some(Dlg::Delete { id: b.id.clone(), name: b.name.clone() });
-                ui.close();
-            }
+        match style::card_menu(ui, ic, &items) {
+            Some(0) => api::open_board(&b.id),
+            Some(1) => st.dlg = Some(Dlg::Rename { id: b.id.clone(), name: b.name.clone() }),
+            Some(2) => st.dlg = Some(Dlg::Delete { id: b.id.clone(), name: b.name.clone() }),
+            _ => {}
         }
     };
-    resp.context_menu(|ui| menu(ui, st));
+    resp.context_menu(|ui| menu(ui, st, &mut sh.icons));
     let mr = Rect::from_center_size(Pos2::new(r.right() - 22.0, r.top() + 72.0), Vec2::splat(36.0));
     let mresp = ui.interact(mr, resp.id.with("more"), Sense::click());
     if mresp.hovered() {
         ui.painter().circle_filled(mr.center(), 16.0, c(p.hover));
     }
     sh.icons.paint(ui, mr, owndraw_core::icons::MORE, p.dim, false, 18.0);
-    egui::Popup::menu(&mresp).align(egui::RectAlign::BOTTOM_END).show(|ui| menu(ui, st));
+    egui::Popup::menu(&mresp).align(egui::RectAlign::BOTTOM_END).show(|ui| menu(ui, st, &mut sh.icons));
 }
 
 fn field(ui: &mut egui::Ui, label: &str, text: &mut String, password: bool, focus: bool) -> egui::Response {
@@ -262,7 +261,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                             }
                         }
                     });
-                    close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
                     if busy {
                         ui.spinner();
                     }
@@ -291,7 +290,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                             api::redeem(code);
                         }
                     });
-                    close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
                 });
             }
             Dlg::Rename { id, name } => {
@@ -302,11 +301,11 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 ui.add_space(10.0);
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let valid = !name.trim().is_empty();
-                    if (style::primary_btn(ui, "OK", h).clicked() || enter) && valid {
+                    if (style::primary_btn(ui, "Umbenennen", h).clicked() || enter) && valid {
                         api::rename_board(id, name.trim());
                         close = true;
                     }
-                    close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
                 });
             }
             Dlg::LeaveGuest => {
@@ -318,7 +317,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                         api::logout();
                         close = true;
                     }
-                    close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
                 });
             }
             Dlg::Delete { id, name } => {
@@ -330,7 +329,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                         api::delete_board(id);
                         close = true;
                     }
-                    close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
                 });
             }
         }
@@ -389,7 +388,7 @@ fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                     login = style::plain_btn(ui, "Anmelden", h).clicked();
                 }
             }
-            close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+            close |= style::outline_btn(ui, "Abbrechen", h).clicked();
             if busy {
                 ui.spinner();
             }

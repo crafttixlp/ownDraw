@@ -20,7 +20,7 @@ erhalten, sind aber nur noch lesbar/herunterladbar (kein Speichern, kein Teilen)
 - `/` → Web-App (statischer Ordner `web/`: `index.html`, `owndraw_web.js`, `owndraw_web_bg.wasm`, Icons)
 - `/admin` → Admin-Panel (eigenes kleines HTML/JS, im Server-Binary eingebettet)
 - `/api/...` → JSON-API, unten
-- `/api/collab/{board_id}` → WebSocket (Phase 4, nicht Teil der ersten Server-Version)
+- `/api/collab/{board_id}` → WebSocket für Live-Zusammenarbeit (siehe „Kollaboration“)
 
 ## Allgemein
 
@@ -56,12 +56,14 @@ Board-Inhalt = die `.owndraw`-Datei (ZIP, Format wie Desktop/Java 2.x) als Binä
 | GET | `/api/boards` | → `[BoardInfo]` (eigene + geteilte) |
 | POST | `/api/boards` | Body: rohe `.owndraw`-Bytes (`application/octet-stream`), Header `X-Board-Name` (URL-kodiert) → `BoardInfo` |
 | GET | `/api/boards/{id}` | → rohe `.owndraw`-Bytes, Header `X-Board-Version` |
-| PUT | `/api/boards/{id}` | rohe Bytes, Header `If-Match: <version>` → `BoardInfo`; 409 bei Versionskonflikt |
+| PUT | `/api/boards/{id}` | rohe Bytes, Header `If-Match: <version>` → `BoardInfo`; 409 bei Versionskonflikt (`{…,"version":n}`), 409 mit `"live":true`, solange eine Live-Sitzung läuft |
 | PATCH | `/api/boards/{id}` | `{name}` → `BoardInfo` |
 | DELETE | `/api/boards/{id}` | nur Besitzer → `{}` |
 | GET | `/api/boards/{id}/members` | → `[{user_id,email,name,role}]` |
 | POST | `/api/boards/{id}/members` | `{email, role:"edit"\|"view"}` → Liste; nur Besitzer mit Lizenz |
 | DELETE | `/api/boards/{id}/members/{user_id}` | → Liste |
+| PUT | `/api/boards/{id}/images/{sha256}.{ext}` | rohe Bildbytes, nur während einer Live-Sitzung; `owner`/`edit`, Lizenz der Besitzerin/des Besitzers |
+| GET | `/api/boards/{id}/images/{sha256}.{ext}` | → Bild (aus der Live-Sitzung oder der gespeicherten Datei), 404 solange noch nicht hochgeladen |
 
 ```json
 BoardInfo = {"id":"…","name":"…","owner":{"id":"…","name":"…"},"role":"owner"|"edit"|"view",
@@ -69,6 +71,51 @@ BoardInfo = {"id":"…","name":"…","owner":{"id":"…","name":"…"},"role":"o
 ```
 
 Max. Größe pro Board 50 MB (einstellbar). Speicherquote der Lizenz zählt nur eigene Boards.
+
+## Kollaboration (WebSocket `GET /api/collab/{board_id}`)
+
+Voraussetzungen: angemeldet (Cookie), Board sichtbar (sonst 404), `Origin` gleich `Host` (sonst 403). Mitlesen darf
+jede Rolle; schreiben dürfen `owner`/`edit`, und nur solange die **Besitzerin/der Besitzer** eine gültige Lizenz hat
+(geprüft beim Verbinden und alle 30 s). Alle Nachrichten sind JSON-Textframes mit Feld `t`.
+
+**Objekt-IDs**: jedes Objekt hat in der `.owndraw`-Datei ein Feld `"uid"` (16 Hex-Zeichen, zufällig). Ältere
+Dateien ohne `uid` (oder mit doppelten) bekommen beim Laden neue. Andere Programme ignorieren das Feld.
+
+Client → Server:
+
+| `t` | Felder | |
+|---|---|---|
+| `ops` | `cid` (beliebig, vom Client), `ops: [Op]` | Änderungen; Antwort an alle (auch Absender) als `ops`, bei Fehler `nack` nur an den Absender |
+| `cursor` | `x`, `y` (Board-Koordinaten, `null` = ausblenden) | wird an die anderen weitergereicht |
+| `ping` | – | → `pong` |
+
+Server → Client:
+
+| `t` | Felder |
+|---|---|
+| `hello` | `proto:1`, `you:{peer,user_id,name,color,role}`, `can_write`, `seq`, `version`, `peers:[Peer]`, `board:{items,layers,bg,dark,…}` (wie `board.json`), `mode` (Seitenmodus wie im Manifest) |
+| `ops` | `seq` (fortlaufend), `peer`, `cid`, `ops` – in der Reihenfolge, in der der Server sie angewendet hat |
+| `nack` | `cid`, `code` (`forbidden`, `license_required`, `invalid`), `message` |
+| `join` / `leave` | `peer` (Objekt bzw. Nummer) |
+| `cursor` | `peer`, `x`, `y` |
+| `access` | `can_write` (z. B. Lizenz abgelaufen oder wieder gültig) |
+| `saved` | `version` (Board wurde gespeichert) |
+| `error` | `code`, `message`; danach ggf. Schließen mit Code `4000`, Grund `not_found` (Board gelöscht), `role_changed`, `removed` |
+| `pong` | – |
+
+```json
+Peer = {"peer":3,"user_id":"…","name":"Ben","color":"#3e63dd","role":"edit"}
+Op   = {"o":"up","item":{… Objekt-JSON mit "uid" …},"after":"<uid>"|null}   // einfügen/ersetzen, über "after" (null = ganz unten)
+     | {"o":"mv","uid":"…","after":"<uid>"|null}                            // Reihenfolge ändern
+     | {"o":"del","uid":"…"}
+     | {"o":"board","layers":[…],"mode":{…},"bg":"…","dark":false}         // Ebenen, Seiten, Hintergrund
+```
+
+Regeln: Der Server ist die Reihenfolge-Instanz; gleiches Objekt gleichzeitig bearbeitet → letzter gewinnt. Fehlt der
+Vorgänger von `after`, bleibt ein vorhandenes Objekt an seinem Platz bzw. kommt ein neues nach oben. Bilder
+(`image`-Objekte, Name `<sha256>.<ext>`) lädt der Client vor der Operation per `PUT …/images/…` hoch. Der Server
+speichert geänderte Räume höchstens alle 5 s, wenn der letzte Teilnehmer geht und beim Beenden/Update (neue
+`version`, Vorschaubild). Während eine Sitzung läuft, antwortet `PUT /api/boards/{id}` mit 409 `live:true`.
 
 ## Admin (`admin:true`)
 

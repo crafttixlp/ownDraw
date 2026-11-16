@@ -190,7 +190,15 @@ Self-Update beendet sich der Prozess nur; einen Neustart muss dann ein Superviso
 
 ## 9. Hinweise zum Vertrag (`web-api.md`)
 
-- Umgesetzt wie beschrieben. `/api/collab/{board_id}` (WebSocket, Phase 4) antwortet vorerst mit `501`.
+- Umgesetzt wie beschrieben, einschließlich Live-Zusammenarbeit über `/api/collab/{board_id}` (WebSocket).
+  Pro offenem Board hält der Server einen **Raum** im Speicher (`src/collab.rs`): Dokument, laufende `seq`,
+  Teilnehmer. Operationen werden in Ankunftsreihenfolge angewendet und an alle verteilt. Gespeichert wird ein
+  geänderter Raum höchstens alle 5 s, wenn der letzte Teilnehmer geht und beim Beenden bzw. vor einem Update
+  (`flush_all`); jede Speicherung erhöht `version` und erneuert das Vorschaubild. Schlägt Speichern fehl (Quote,
+  Lizenz), bleibt der Raum im Speicher und versucht es erneut; die Teilnehmer bekommen `error`.
+- Board löschen, Rolle ändern oder Einladung entfernen trennt betroffene Teilnehmer sofort (Close-Code 4000).
+  Die Lizenz der Besitzerin/des Besitzers wird alle 30 s neu geprüft (`access`).
+- Bilder in Live-Sitzungen: `PUT/GET /api/boards/{id}/images/{sha256}.{ext}` (inhaltsadressiert).
 - Zusätzliche Felder/Codes, die den Vertrag nicht verletzen: `GET /api/health`; `License` enthält zusätzlich
   `active`; die 409-Antwort bei Versionskonflikt enthält die aktuelle `version`; `GET /api/admin/update` enthält
   `installing`; Fehlercodes `internal` (500), `not_implemented` (501), `upstream_error` (502, GitHub nicht erreichbar).

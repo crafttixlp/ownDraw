@@ -33,6 +33,11 @@ owndraw (Desktop, egui/eframe)  ──►  owndraw-core (keine UI-Abhängigkeit)
   Interne Fehler führen zu „keine Form“ (`catch_unwind`).
 - **Speichern:** Board-JSON wie Java 2.x (Felder `t/c/w/h/v/sh/p/k/q/an/x/y/nw/mh/s/bg/tx/iw/ih/f/ly`, Farben als
   vorzeichenbehaftetes int). Schreiben atomar (`write_atomic`). Bilder unter `img/`, verkleinert auf ≤ 2048 px.
+  Zusätzlich hat jedes Objekt eine stabile `uid` (16 Hex-Zeichen; fehlt sie oder ist sie doppelt, wird beim Laden
+  eine neue vergeben).
+- **Zusammenarbeit:** `collab.rs` – Operationen (`up`/`mv`/`del`/`board`) über die `uid`, Diff zweier Stände,
+  Anwenden, `Sync` (Schatten des Server-Stands + ausstehende eigene Änderungen); fremde Änderungen werden auch in
+  die Undo-Schnappschüsse eingearbeitet (`Board::patch_history`). Genutzt von Web-App und Server.
 
 ## Desktop
 
@@ -50,5 +55,6 @@ owndraw (Desktop, egui/eframe)  ──►  owndraw-core (keine UI-Abhängigkeit)
 ## Browser (ab 4.6)
 
 `crates/owndraw-web` startet dieselbe App über `owndraw::run_web` im Canvas (eframe Web/WebGL). Plattform:
-`platform/web` (Gastmodus: Öffnen per Upload, Speichern als Download, Boards vorläufig in IndexedDB). Bauen mit
+`platform/web` (Gastmodus: Öffnen per Upload, Speichern als Download, Boards vorläufig in IndexedDB; mit
+`owndraw-server`: Konto, Boards am Server `srv:<id>`, Teilen, Live per WebSocket). Bauen mit
 `build-web.sh`, Details und Grenzen: [web.md](web.md).

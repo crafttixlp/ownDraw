@@ -42,15 +42,15 @@ eine Lizenz. Server-Updates kommen aus den GitHub-Releases, mit Signaturprüfung
 
 ### Web-Version auf dem eigenen Server
 
-Voraussetzungen: Debian 12 oder Ubuntu 24.04, mind. 1 vCPU / 1 GB RAM (empfohlen 2 vCPU / 2–4 GB), Ports 80 und 443
+Voraussetzungen: Linux-Server (empfohlen Debian 12 oder Ubuntu 24.04; Fedora/RHEL, openSUSE, Alpine und Arch werden auch unterstützt), mind. 1 vCPU / 1 GB RAM (empfohlen 2 vCPU / 2–4 GB), Ports 80 und 443
 offen, DNS-Eintrag (`A`, ggf. `AAAA`) der Domain auf den Server.
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/crafttixlp/ownDraw/main/packaging/server/install.sh
-sudo bash install.sh
+sudo sh install.sh
 ```
 
-Der Installer fragt Domain, Admin-E-Mail und Passwort ab. Er installiert Docker, holt das Repo nach `/opt/owndraw` und startet
+Der Installer fragt Domain, Admin-E-Mail und Passwort ab. Er installiert alle nötigen Pakete selbst ohne Rückfragen (git, curl, unzip, CA-Zertifikate, Docker mit Compose-Plugin …), holt das Repo nach `/opt/owndraw` und startet
 den Server mit Caddy (automatisches HTTPS). Liegt eine fertige `OwnDraw-Web-<version>-statisch.zip` im selben Ordner, wird
 sie verwendet. Sonst baut er die Web-App selbst. Erneut ausführen aktualisiert, Daten bleiben erhalten.
 Danach: `https://<domain>/admin` öffnen, anmelden, Lizenzcodes erzeugen.

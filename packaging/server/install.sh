@@ -1,12 +1,13 @@
 #!/bin/bash
-# OwnDraw-Server-Installer (Debian 12 / Ubuntu 24.04, als root).
+# OwnDraw-Server-Installer (als root). Gedacht für Debian 12 / Ubuntu 24.04; installiert alle nötigen Pakete selbst,
+# auch unter Fedora/RHEL (dnf/yum), openSUSE (zypper), Alpine (apk) und Arch (pacman).
 #
 # Installiert Docker, holt das Repo nach /opt/owndraw, legt die Web-App nach dist/web/, schreibt .env,
 # startet Server + Caddy (Auto-HTTPS) per docker compose und prüft den Start. Mehrfach ausführbar:
 # vorhandene Einstellungen (.env) und Daten (data/) bleiben erhalten, das Repo wird aktualisiert.
 #
 # Aufruf:
-#   sudo bash install.sh                                  # fragt Domain, Admin-E-Mail, Passwort ab
+#   sudo sh install.sh                                    # fragt Domain, Admin-E-Mail, Passwort ab
 #   sudo bash install.sh --web-zip OwnDraw-Web-4.6.0-statisch.zip
 #   sudo bash install.sh --domain owndraw.thepepelex.at --email ich@example.org --password '…' --yes
 #
@@ -20,6 +21,13 @@
 #   --password P      Admin-Passwort (leer = zufällig erzeugen und anzeigen)
 #   --yes             keine Rückfragen (Swap anlegen, vorhandene .env behalten)
 #   --rebuild-web     Web-App neu bauen/entpacken, auch wenn dist/web/ schon existiert
+
+# Ohne bash (z. B. Alpine, Aufruf mit "sh install.sh"): bash nachinstallieren und neu starten.
+if [ -z "${BASH_VERSION:-}" ]; then
+  if command -v apk >/dev/null 2>&1; then apk add --no-cache -q bash; fi
+  command -v bash >/dev/null 2>&1 || { echo "bash fehlt – bitte installieren." >&2; exit 1; }
+  exec bash "$0" "$@"
+fi
 set -euo pipefail
 
 REPO_URL="https://github.com/crafttixlp/ownDraw.git"
@@ -43,7 +51,7 @@ while [ $# -gt 0 ]; do
     --password) PASSWORD="${2-}"; shift 2 ;;
     --yes|-y) YES=1; shift ;;
     --rebuild-web) REBUILD_WEB=1; shift ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
     *) echo "Unbekannte Option: $1 (Hilfe: --help)" >&2; exit 2 ;;
   esac
 done
@@ -71,22 +79,95 @@ ja() { # ja "Frage" → 0 bei ja (Standard ja)
 # ---------------------------------------------------------------- Pakete + Docker
 schritt "Pakete und Docker"
 export DEBIAN_FRONTEND=noninteractive
+PM=""
+for c in apt-get dnf yum zypper apk pacman; do command -v "$c" >/dev/null 2>&1 && { PM=$c; break; }; done
+[ -n "$PM" ] || fehler "Kein unterstützter Paketmanager gefunden (apt, dnf, yum, zypper, apk, pacman)."
+pm_aktualisiert=0
+pm_install() { # pm_install paket … (still, ohne Rückfragen)
+  [ $# -gt 0 ] || return 0
+  echo "Installiere: $*"
+  case "$PM" in
+    apt-get)
+      [ "$pm_aktualisiert" = 1 ] || { apt-get update -qq; pm_aktualisiert=1; }
+      apt-get install -y -qq --no-install-recommends "$@" >/dev/null ;;
+    dnf|yum) "$PM" install -y -q "$@" >/dev/null ;;
+    zypper)  zypper --non-interactive --quiet install --no-recommends "$@" >/dev/null ;;
+    apk)     apk add --no-cache -q "$@" >/dev/null ;;
+    pacman)
+      [ "$pm_aktualisiert" = 1 ] || { pacman -Sy --noconfirm >/dev/null; pm_aktualisiert=1; }
+      pacman -S --noconfirm --needed "$@" >/dev/null ;;
+  esac
+}
+# Programm → Paketname je Paketmanager
+paket_fuer() {
+  case "$1:$PM" in
+    getent:apk) echo musl-utils ;;
+    getent:*) echo "" ;;                                  # gehört zu glibc, immer da
+    mkswap:*|fallocate:*) echo util-linux ;;
+    find:*) echo findutils ;;
+    realpath:*|mktemp:*) echo coreutils ;;
+    *) echo "$1" ;;
+  esac
+}
 need=()
-for p in git curl unzip openssl; do
-  command -v "$p" >/dev/null 2>&1 || need+=("$p")
+for prog in git curl unzip openssl awk sed find realpath mktemp getent fallocate mkswap; do
+  command -v "$prog" >/dev/null 2>&1 && continue
+  pk=$(paket_fuer "$prog"); [ -n "$pk" ] && need+=("$pk")
 done
-dpkg -s ca-certificates >/dev/null 2>&1 || need+=(ca-certificates)
+# CA-Zertifikate (für HTTPS-Downloads) und Hilfsprogramme, die manche Minimal-Images nicht haben
+[ -s /etc/ssl/certs/ca-certificates.crt ] || [ -s /etc/pki/tls/certs/ca-bundle.crt ] || need+=(ca-certificates)
 if [ ${#need[@]} -gt 0 ]; then
-  apt-get update -qq
-  apt-get install -y -qq "${need[@]}" >/dev/null
+  # Doppelte entfernen
+  mapfile -t need < <(printf '%s\n' "${need[@]}" | awk '!s[$0]++')
+  pm_install "${need[@]}" || fehler "Pakete konnten nicht installiert werden: ${need[*]}"
 fi
+ok "Grundpakete vorhanden"
+
+docker_dienst_starten() {
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    systemctl enable --now docker >/dev/null 2>&1 || true
+  elif command -v rc-update >/dev/null 2>&1; then
+    rc-update add docker default >/dev/null 2>&1 || true
+    rc-service docker start >/dev/null 2>&1 || true
+  else
+    service docker start >/dev/null 2>&1 || true
+  fi
+}
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker wird installiert (offizielles Skript get.docker.com) …"
-  curl -fsSL https://get.docker.com | sh >/dev/null
+  echo "Docker wird installiert …"
+  case "$PM" in
+    apk)    pm_install docker docker-cli-compose ;;
+    pacman) pm_install docker docker-compose ;;
+    zypper) pm_install docker docker-compose ;;
+    *)      curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 \
+              || { warn "get.docker.com fehlgeschlagen, versuche Pakete der Distribution."
+                   if [ "$PM" = apt-get ]; then pm_install docker.io docker-compose-v2 || pm_install docker.io docker-compose-plugin
+                   else pm_install docker docker-compose-plugin || pm_install moby-engine docker-compose; fi; } ;;
+  esac
+  command -v docker >/dev/null 2>&1 || fehler "Docker konnte nicht installiert werden."
 fi
-docker compose version >/dev/null 2>&1 || fehler "docker compose fehlt (Paket docker-compose-plugin installieren)."
-systemctl enable --now docker >/dev/null 2>&1 || true
-ok "$(docker --version)"
+docker_dienst_starten
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Compose-Plugin fehlt – wird installiert …"
+  case "$PM" in
+    apt-get) pm_install docker-compose-plugin || pm_install docker-compose-v2 || true ;;
+    dnf|yum) pm_install docker-compose-plugin || true ;;
+    apk)     pm_install docker-cli-compose || true ;;
+    pacman|zypper) pm_install docker-compose || true ;;
+  esac
+fi
+if ! docker compose version >/dev/null 2>&1; then
+  # Letzter Ausweg: Compose-Plugin direkt von GitHub
+  arch=$(uname -m); [ "$arch" = aarch64 ] || arch=x86_64
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$arch" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+docker compose version >/dev/null 2>&1 || fehler "docker compose ließ sich nicht installieren."
+for _ in $(seq 1 15); do docker info >/dev/null 2>&1 && break; sleep 1; done
+docker info >/dev/null 2>&1 || fehler "Docker-Dienst läuft nicht (Log: journalctl -u docker)."
+ok "$(docker --version), $(docker compose version --short 2>/dev/null || echo compose)"
 
 # ---------------------------------------------------------------- Swap bei wenig RAM
 mem_mb=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)

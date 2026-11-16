@@ -219,7 +219,7 @@ pub fn insert_clip(editor: &mut Editor, d: ClipData, at: Option<(f32, f32)>) -> 
 
 /// Fügt Items aus dem JSON ein und nimmt fehlende Bilder in das Dokument mit.
 pub fn insert_items_json(editor: &mut Editor, json: &str, at: Option<(f32, f32)>) -> Result<(), String> {
-    let (items, images) = parse_items(json).ok_or_else(|| "Keine einfügbaren Objekte in der Zwischenablage".to_string())?;
+    let (items, images) = parse_items(json).ok_or_else(|| "Die Zwischenablage enthält nichts zum Einfügen".to_string())?;
     for (name, bytes) in images {
         if editor.doc.images.files.contains_key(&name) {
             continue;
@@ -229,7 +229,7 @@ pub fn insert_items_json(editor: &mut Editor, json: &str, at: Option<(f32, f32)>
     }
     let n = editor.board.paste_items(&items, at);
     if n == 0 {
-        return Err("Die Ebene ist gesperrt".into());
+        return Err("Die Ebene ist gesperrt. Entsperre sie zum Einfügen.".into());
     }
     if n > 1 {
         notice(editor, &format!("{n} Objekte eingefügt"));
@@ -239,7 +239,7 @@ pub fn insert_items_json(editor: &mut Editor, json: &str, at: Option<(f32, f32)>
 
 /// RGBA8 (nicht vormultipliziert) als Bild einfügen.
 pub fn insert_image_rgba(editor: &mut Editor, w: u32, h: u32, rgba: &[u8], at: Option<(f32, f32)>) -> Result<(), String> {
-    let buf = image::RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or("Ungültige Bilddaten in der Zwischenablage")?;
+    let buf = image::RgbaImage::from_raw(w, h, rgba.to_vec()).ok_or("Die Bilddaten in der Zwischenablage sind ungültig")?;
     let mut png = Vec::new();
     image::DynamicImage::ImageRgba8(buf).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
     insert_image_bytes(editor, &png, at)
@@ -251,7 +251,7 @@ pub fn insert_image_bytes(editor: &mut Editor, bytes: &[u8], at: Option<(f32, f3
     if editor.board.add_image_at(&name, w, h, at) {
         Ok(())
     } else {
-        Err("Die Ebene ist gesperrt".into())
+        Err("Die Ebene ist gesperrt. Entsperre sie zum Einfügen.".into())
     }
 }
 

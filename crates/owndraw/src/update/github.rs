@@ -74,7 +74,7 @@ pub struct Api<'a> {
 impl Api<'_> {
     fn url(&self, tail: &str) -> Result<String, Error> {
         if self.repo.split('/').count() != 2 || self.repo.contains(char::is_whitespace) || self.repo.contains("..") {
-            return Err(Error::Other(format!("Ungültiges Repository „{}“ (erwartet owner/name)", self.repo)));
+            return Err(Error::Other(format!("Ungültiges Repository „{}“. Erwartet wird owner/name.", self.repo)));
         }
         Ok(format!("{}/repos/{}/releases{}", self.base.trim_end_matches('/'), self.repo, tail))
     }
@@ -88,20 +88,20 @@ impl Api<'_> {
                 let repo_url = format!("{}/repos/{}", self.base.trim_end_matches('/'), self.repo);
                 return match self.http.get_text(&repo_url) {
                     Ok(_) => Ok(None),
-                    Err(Error::Status(404)) => Err(Error::Other(format!("Das Repository „{}“ wurde auf GitHub nicht gefunden (oder ist nicht öffentlich).", self.repo))),
+                    Err(Error::Status(404)) => Err(Error::Other(format!("Das Repository „{}“ wurde auf GitHub nicht gefunden oder ist nicht öffentlich.", self.repo))),
                     Err(e) => Err(e),
                 };
             }
             Err(e) => return Err(e),
         };
-        let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
+        let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Die Antwort von GitHub ist nicht lesbar: {e}")))?;
         Ok(parse_release(&v))
     }
 
     /// `/releases` (Liste), neueste Version zuerst.
     pub fn list(&self) -> Result<Vec<Release>, Error> {
         let t = self.http.get_text(&self.url("?per_page=50")?)?;
-        let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Antwort von GitHub unlesbar: {e}")))?;
+        let v: Value = serde_json::from_str(&t).map_err(|e| Error::Other(format!("Die Antwort von GitHub ist nicht lesbar: {e}")))?;
         let mut r: Vec<Release> = v.as_array().map(|a| a.iter().filter_map(parse_release).collect()).unwrap_or_default();
         r.sort_by(|a, b| b.version.cmp(&a.version));
         Ok(r)

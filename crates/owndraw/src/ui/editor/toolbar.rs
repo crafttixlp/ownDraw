@@ -128,7 +128,7 @@ pub(super) struct Grip(egui::Response);
 pub(super) fn grip(ui: &mut Ui, btn: f32, horiz: bool) -> Grip {
     let size = if horiz { Vec2::new(14.0, btn) } else { Vec2::new(btn, 14.0) };
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
-    let resp = resp.on_hover_text("Ziehen zum Verschieben, Doppelklick: zurücksetzen");
+    let resp = resp.on_hover_text("Ziehen zum Verschieben, Doppelklick zum Zurücksetzen");
     if resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     } else if resp.hovered() {
@@ -411,7 +411,7 @@ impl Editor {
     fn tool_tip(&self, env: &crate::layout::Env, t: Tool) -> String {
         let mut s = env.tip(t.label(), t.key());
         if t.has_options() && self.active_tool() == t {
-            s.push_str(" · erneut tippen: Optionen");
+            s.push_str(" · erneut tippen für Optionen");
         }
         s
     }
@@ -529,7 +529,7 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                             let sc = ed.board.sc;
                             let mut v = s0 * sc;
                             ui.add_space(6.0);
-                            let r = ui.add(slider(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0), vert, "Größe")).on_hover_text(format!("Schriftgröße (bei aktuellem Zoom): {:.0}", s0 * sc));
+                            let r = ui.add(slider(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0), vert, "Größe")).on_hover_text(format!("Schriftgröße bei aktuellem Zoom: {:.0}", s0 * sc));
                             if r.drag_started() {
                                 ed.board.set_sel_note_size(s0, true);
                             }
@@ -654,7 +654,7 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                 for (i, (id, on)) in st.list.iter().enumerate() {
                     let Some(t) = Tool::from_id(id) else { continue };
                     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(btn), Sense::click_and_drag());
-                    let resp = resp.on_hover_text(format!("{} – ziehen: verschieben, tippen: {}", t.label(), if *on { "ausblenden" } else { "einblenden" }));
+                    let resp = resp.on_hover_text(format!("{}: Ziehen zum Verschieben, Tippen zum {}", t.label(), if *on { "Ausblenden" } else { "Einblenden" }));
                     rects.push((i, rect));
                     if resp.dragged() || resp.drag_started() {
                         dragged = Some((i, false));
@@ -694,7 +694,7 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
         if settings::toggle_visible(&mut st.list, i) {
             apply_edit(sh, &st.list);
         } else {
-            sh.toast("Mindestens ein Werkzeug bleibt sichtbar");
+            sh.toast("Mindestens ein Werkzeug muss sichtbar bleiben");
         }
     }
     // Ziehen: Ziel nach Mittelpunkten, Einfügemarke, Loslassen ordnet um
@@ -750,7 +750,7 @@ fn edit_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
             ui.set_max_width(maxw - 40.0);
             ui.vertical(|ui| {
                 ui.label(egui::RichText::new("Werkzeuge anpassen").strong().size(16.0));
-                ui.label(egui::RichText::new("Ziehen ordnet um, Tippen blendet ein oder aus (Auge).").size(13.0).color(c(p.dim)));
+                ui.label(egui::RichText::new("Ziehen ändert die Reihenfolge. Tippen auf das Auge blendet ein Werkzeug ein oder aus.").size(13.0).color(c(p.dim)));
                 ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| {
                     if style::plain_btn(ui, "Standard", lay.env.btn).clicked() {

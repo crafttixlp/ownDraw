@@ -90,10 +90,10 @@ impl From<Vec<u8>> for Job {
 pub fn describe_error(e: &io::Error, name: &str) -> String {
     match e.kind() {
         io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem => {
-            format!("Keine Schreibrechte für „{name}“. Das Board ist nicht gesichert – speichere eine Kopie an einem anderen Ort.")
+            format!("Keine Schreibrechte für „{name}“. Das Board ist nicht gesichert. Speichere eine Kopie an einem anderen Ort.")
         }
-        io::ErrorKind::NotFound => format!("Der Ordner von „{name}“ ist nicht mehr erreichbar (Laufwerk getrennt oder Ordner gelöscht?)."),
-        io::ErrorKind::StorageFull => format!("Auf dem Speicher ist kein Platz mehr frei („{name}“)."),
+        io::ErrorKind::NotFound => format!("Der Ordner von „{name}“ ist nicht erreichbar. Prüfe, ob das Laufwerk verbunden ist und der Ordner noch existiert."),
+        io::ErrorKind::StorageFull => format!("Der Speicher ist voll. „{name}“ konnte nicht gespeichert werden."),
         _ => format!("Speichern fehlgeschlagen: {e}"),
     }
 }
@@ -242,7 +242,7 @@ impl Autosave {
                 let bytes = (job.0)();
                 if bytes.is_empty() {
                     // Beim nächsten Versuch erneut, Fehler anzeigen.
-                    self.status = AutosaveStatus::Error("Speichern fehlgeschlagen (Format)".into());
+                    self.status = AutosaveStatus::Error("Speichern fehlgeschlagen. Das Board konnte nicht ins Dateiformat umgewandelt werden.".into());
                     self.dirty_since = Some(now);
                     return;
                 }

@@ -141,7 +141,7 @@ pub fn import_image(images: &mut ImageStore, dir: &Path, bytes: &[u8]) -> Result
     let img = image::load_from_memory(bytes).map_err(|e| format!("Bild konnte nicht geladen werden: {e}"))?;
     let (w, h) = (img.width(), img.height());
     if w == 0 || h == 0 {
-        return Err("Leeres Bild".into());
+        return Err("Das Bild ist leer".into());
     }
     let (mut ss, mx) = (1u32, w.max(h));
     while mx.div_ceil(ss) > 2048 {

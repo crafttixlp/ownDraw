@@ -239,7 +239,7 @@ fn recog(ui: &mut Ui, ed: &mut Editor, h: f32) {
             }
         }
     });
-    let hint = ["Am Ende des Strichs kurz halten, dann wird die Form geglättet.", "Jeder Strich wird, wenn möglich, zur Form.", "Striche bleiben, wie gezeichnet."][ed.board.recog.clamp(0, 2) as usize];
+    let hint = ["Halte am Strichende kurz an, dann wird die Form geglättet.", "Jeder Strich wird, wenn möglich, in eine Form umgewandelt.", "Striche bleiben, wie gezeichnet."][ed.board.recog.clamp(0, 2) as usize];
     ui.label(egui::RichText::new(hint).size(12.0).color(c(style::pal().dim)));
 }
 

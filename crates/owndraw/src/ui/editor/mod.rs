@@ -344,7 +344,7 @@ impl Editor {
             ConfirmAction::DeleteLayer(i) => self.board.remove_layer(i),
             ConfirmAction::DeletePage(i) => {
                 if !pages::delete_page(&mut self.board, i) {
-                    sh.toast("Seite löschen: folgt mit dem Seitenmodus (WP2)");
+                    sh.toast("Seiten löschen ist hier noch nicht verfügbar");
                 }
             }
         }
@@ -466,7 +466,7 @@ impl Editor {
             return;
         }
         if crate::platform::WEB {
-            sh.toast("Website-Vorschau gibt es im Browser nicht – exportiere die Website als ZIP");
+            sh.toast("Die Website-Vorschau ist im Browser nicht verfügbar. Exportiere die Website stattdessen als ZIP.");
             return;
         }
         match owndraw_core::export::build_preview(&sh.platform.cache_dir(), &self.board) {
@@ -543,6 +543,10 @@ impl Editor {
         let wr = 3.0 * btn + 64.0 + 2.0 * PAD;
         let fits_row = canvas.width() >= wl + length + wr + 6.0 * M;
         let mut tb = layout::toolbar_pos(env.ff, sh.settings.toolbar_pos);
+        // Modernes Design: am PC Werkzeuge standardmäßig links (wie auf dem Tablet), Platz für die Kopfzeile oben
+        if crate::style::modern() && sh.settings.toolbar_pos.is_none() && env.ff == crate::layout::FormFactor::Expanded {
+            tb = BarPos::Left;
+        }
         let mut tb_edge = Some(tb);
         // per Griff angedockte/verschobene Werkzeugleiste
         let key = toolbar::tile_key("bar-tools", env.ff);
@@ -1002,7 +1006,7 @@ impl Editor {
         match self.autosave.status() {
             AutosaveStatus::Error(_) => ("Speichern fehlgeschlagen", true),
             AutosaveStatus::Dirty | AutosaveStatus::Saving => ("Änderungen werden gespeichert …", false),
-            AutosaveStatus::Saved(_) if crate::platform::WEB => ("Im Browser zwischengespeichert – zum Sichern herunterladen (⋯)", false),
+            AutosaveStatus::Saved(_) if crate::platform::WEB => ("Im Browser gespeichert. Lade das Board herunter, um es zu sichern.", false),
             AutosaveStatus::Saved(_) => ("Gespeichert", false),
             AutosaveStatus::Idle => ("", false),
         }
@@ -1046,15 +1050,15 @@ impl Editor {
         }
         let (conflict, err) = api::with(|n| (n.conflicts.contains(id), n.save_errors.contains_key(id)));
         Some(if conflict {
-            ("Konflikt: Board wurde anderswo geändert", true)
+            ("Konflikt. Das Board wurde anderswo geändert", true)
         } else if err {
-            ("Speichern am Server fehlgeschlagen", true)
+            ("Speichern auf dem Server fehlgeschlagen", true)
         } else if api::saving(id) || matches!(self.autosave.status(), AutosaveStatus::Dirty | AutosaveStatus::Saving) {
             ("Änderungen werden gespeichert …", false)
         } else if let Some(l) = &self.live {
             l.status()
         } else {
-            ("Am Server gespeichert", false)
+            ("Auf dem Server gespeichert", false)
         })
     }
 }

@@ -28,7 +28,7 @@ pub fn check_writable(target: &Path) -> Result<(), Error> {
             Ok(())
         }
         Err(e) => Err(Error::NoAppImage(format!(
-            "Keine Schreibrechte im Ordner {} ({e}). Verschieben Sie das AppImage in einen beschreibbaren Ordner oder installieren Sie das Update von Hand.",
+            "Keine Schreibrechte im Ordner {} ({e}). Verschiebe das AppImage in einen beschreibbaren Ordner oder installiere das Update selbst.",
             dir.display()
         ))),
     }
@@ -37,7 +37,7 @@ pub fn check_writable(target: &Path) -> Result<(), Error> {
 /// Zielpfad prüfen: `$APPIMAGE` fehlt (z. B. `cargo run`) → verständlicher Hinweis.
 pub fn require_target(target: Option<&Path>) -> Result<PathBuf, Error> {
     let t = target.ok_or_else(|| {
-        Error::NoAppImage("OwnDraw läuft nicht als AppImage (z. B. direkt aus cargo). Automatisches Aktualisieren ist nur für das AppImage möglich.".into())
+        Error::NoAppImage("OwnDraw läuft nicht als AppImage, zum Beispiel direkt über cargo. Automatische Updates gibt es nur für das AppImage.".into())
     })?;
     check_writable(t)?;
     Ok(t.to_path_buf())

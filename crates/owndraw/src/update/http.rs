@@ -32,7 +32,7 @@ pub fn classify(msg: &str) -> Error {
     } else if OFFLINE.iter().any(|k| l.contains(k)) {
         Error::Offline
     } else if l.contains("certificate") || l.contains("sslhandshake") {
-        Error::Other(format!("Sichere Verbindung zu GitHub fehlgeschlagen (Zertifikat nicht vertrauenswürdig): {msg}"))
+        Error::Other(format!("Sichere Verbindung zu GitHub fehlgeschlagen. Das Zertifikat ist nicht vertrauenswürdig: {msg}"))
     } else {
         Error::Other(format!("Netzwerkfehler: {msg}"))
     }
@@ -147,14 +147,14 @@ mod android {
     impl Http for JavaHttp {
         fn get_text(&self, url: &str) -> Result<String, Error> {
             if !self.allow_http && !url.starts_with("https://") {
-                return Err(Error::Other("Nur HTTPS erlaubt".into()));
+                return Err(Error::Other("Es sind nur HTTPS-Verbindungen erlaubt.".into()));
             }
             crate::platform::android::http_get(url).map_err(|e| classify(&e.to_string()))
         }
 
         fn download(&self, url: &str, dest: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<(), Error> {
             if !self.allow_http && !url.starts_with("https://") {
-                return Err(Error::Other("Nur HTTPS erlaubt".into()));
+                return Err(Error::Other("Es sind nur HTTPS-Verbindungen erlaubt.".into()));
             }
             let r = crate::platform::android::http_download(url, dest, &|| cancel.load(Ordering::Relaxed), progress);
             if r.is_err() {

@@ -72,7 +72,7 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
     let width = (screen.width() - 24.0).clamp(240.0, 420.0);
     let default_dir = sh.platform.default_dir();
     let default_name = match &default_dir {
-        _ if crate::platform::WEB => "Nur in diesem Browser (Gastmodus) – zum Sichern über ⋯ herunterladen.".to_string(),
+        _ if crate::platform::WEB => "Wird nur in diesem Browser gespeichert. Lade das Board herunter, um es zu sichern.".to_string(),
         FileRef::Path(p) => p.display().to_string(),
         FileRef::Uri(u) => u.clone(),
     };
@@ -143,7 +143,7 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                 // Art: zwei Karten
                 ui.horizontal(|ui| {
                     let cw = (ui.available_width() - 8.0) / 2.0;
-                    for (pages, title, sub) in [(false, "Unendliches Board", "Frei zeichnen, beliebig groß"), (true, "Seiten", "Feste Blätter wie Papier")] {
+                    for (pages, title, sub) in [(false, "Unendliches Board", "Frei zeichnen, beliebig groß"), (true, "Seiten", "Feste Seiten wie Papier")] {
                         let (r, resp) = ui.allocate_exact_size(Vec2::new(cw, 92.0), Sense::click());
                         let sel = n.params.pages == pages;
                         let pt = ui.painter();
@@ -214,7 +214,7 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                         }
                     });
                 }
-                let hint = if n.custom { "Der Speicherdialog des Systems öffnet sich beim Erstellen.".to_string() } else { default_name.clone() };
+                let hint = if n.custom { "Beim Erstellen öffnet sich der Speicherdialog des Systems.".to_string() } else { default_name.clone() };
                 ui.label(egui::RichText::new(hint).size(11.5).color(c(p.dim)));
                 ui.add_space(10.0);
                 let valid = !n.params.name.trim().is_empty();

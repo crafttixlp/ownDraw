@@ -153,9 +153,9 @@ impl Live {
     pub fn status(&self) -> (&'static str, bool) {
         match self.conn {
             Conn::Live if !self.can_write => ("Live – nur ansehen", false),
-            Conn::Live => ("Live verbunden – wird am Server gespeichert", false),
+            Conn::Live => ("Live verbunden. Änderungen werden auf dem Server gespeichert", false),
             Conn::Connecting => ("Live-Verbindung wird aufgebaut …", false),
-            Conn::Retry(_) => ("Live-Verbindung getrennt – neuer Versuch …", false),
+            Conn::Retry(_) => ("Live-Verbindung getrennt. Neuer Versuch …", false),
             Conn::Gone => ("Kein Zugriff mehr auf dieses Board", true),
         }
     }
@@ -195,7 +195,7 @@ impl Live {
             _ => {}
         }
         if self.conn == Conn::Live {
-            sh.toast("Live-Verbindung getrennt – Änderungen werden weiter gespeichert");
+            sh.toast("Live-Verbindung getrennt. Änderungen werden weiter gespeichert.");
         }
         self.fails = (self.fails + 1).min(6);
         let wait = (1u32 << (self.fails - 1)).min(30) as f64;
@@ -353,7 +353,7 @@ impl Live {
                 self.can_write = v.get("can_write").and_then(Value::as_bool).unwrap_or(false);
                 ed.autosave.set_read_only(!self.can_write || ed.doc.meta.read_only);
                 if !self.can_write {
-                    sh.toast_for("Die Lizenz der Besitzerin/des Besitzers ist nicht mehr gültig – das Board ist nur noch lesbar.", 5.0);
+                    sh.toast_for("Die Lizenz für dieses Board ist nicht mehr gültig. Es ist nur noch lesbar.", 5.0);
                 }
             }
             "saved" => {
@@ -481,15 +481,15 @@ impl Live {
         let pos = Pos2::new(lay.canvas.right() - M, lay.y_below);
         let (col, tip) = match self.conn {
             Conn::Live => (0xFF30A46C, "Live verbunden"),
-            Conn::Connecting => (0xFFFFC53D, "Verbinde …"),
-            Conn::Retry(_) => (0xFFFFC53D, "Getrennt – neuer Versuch läuft"),
+            Conn::Connecting => (0xFFFFC53D, "Verbinden …"),
+            Conn::Retry(_) => (0xFFFFC53D, "Getrennt. Neuer Versuch läuft"),
             Conn::Gone => (pal.danger, "Kein Zugriff"),
         };
         let n = self.peers.len();
         let label = match self.conn {
             Conn::Live if n == 0 => "Live".to_string(),
             Conn::Live => format!("Live · {}", n + 1),
-            Conn::Connecting => "Verbinde …".into(),
+            Conn::Connecting => "Verbinden …".into(),
             Conn::Retry(_) => "Offline".into(),
             Conn::Gone => "Kein Zugriff".into(),
         };
@@ -587,7 +587,7 @@ impl Live {
         egui::Modal::new(egui::Id::unique("share-dlg")).frame(style::card()).show(ctx, |ui| {
             ui.set_width(width - 40.0);
             ui.label(egui::RichText::new("Board teilen").heading().strong());
-            ui.label(egui::RichText::new("Per E-Mail Eingeladene brauchen ein Konto (ohne eigene Lizenz); per Link geht es auch als Gast. Änderungen erscheinen bei allen sofort.").size(12.5).color(c(pal.dim)));
+            ui.label(egui::RichText::new("Per E-Mail Eingeladene brauchen ein Konto, aber keine Lizenz. Mit einem Link können auch Gäste teilnehmen. Änderungen erscheinen bei allen sofort.").size(12.5).color(c(pal.dim)));
             ui.add_space(8.0);
             style::caption(ui, "Mitglieder");
             match &members {
@@ -619,7 +619,7 @@ impl Live {
                 }
             }
             ui.add_space(8.0);
-            style::caption(ui, "Einladen (E-Mail des Kontos)");
+            style::caption(ui, "Per E-Mail einladen");
             let r = ui.add(egui::TextEdit::singleline(&mut d.email).hint_text("name@beispiel.de").desired_width(f32::INFINITY).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
             let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
@@ -644,7 +644,7 @@ impl Live {
                 });
             });
             ui.add_space(12.0);
-            style::caption(ui, "Einladungslink (auch für Gäste ohne Konto)");
+            style::caption(ui, "Per Link einladen, auch ohne Konto");
             ui.horizontal_wrapped(|ui| {
                 if style::chip(ui, "Darf bearbeiten", d.link_edit, h).clicked() {
                     d.link_edit = true;
@@ -677,7 +677,7 @@ impl Live {
             let time_ok = d.link_forever || (1..=max).contains(&n);
             if !time_ok {
                 let unit = if d.link_hours { "Stunden" } else { "Tage" };
-                ui.label(egui::RichText::new(format!("Bitte 1 bis {max} {unit} angeben (höchstens 365 Tage).")).size(12.0).color(c(pal.danger_text)));
+                ui.label(egui::RichText::new(format!("Gib 1 bis {max} {unit} ein. Maximal sind 365 Tage möglich.")).size(12.0).color(c(pal.danger_text)));
             }
             ui.add_space(4.0);
             ui.add_enabled_ui(time_ok, |ui| {
@@ -702,7 +702,7 @@ impl Live {
                         ui.ctx().copy_text(url.clone());
                     }
                 });
-                ui.label(egui::RichText::new("Der Link wird nur jetzt angezeigt – bitte kopieren.").size(11.5).color(c(pal.dim)));
+                ui.label(egui::RichText::new("Der Link wird nur einmal angezeigt. Kopiere ihn jetzt.").size(11.5).color(c(pal.dim)));
             }
             match &invites {
                 None => {
@@ -747,7 +747,7 @@ impl Live {
         egui::Modal::new(egui::Id::unique("conflict-dlg")).frame(style::card()).show(ctx, |ui| {
             ui.set_width(360.0);
             ui.label(egui::RichText::new("Board wurde anderswo geändert").heading().strong());
-            ui.label("Deine letzten Änderungen konnten nicht gespeichert werden, weil das Board inzwischen auf einem anderen Gerät oder von jemand anderem gespeichert wurde. Neu laden verwirft deine ungespeicherten Änderungen.");
+            ui.label("Deine letzten Änderungen wurden nicht gespeichert. Das Board wurde inzwischen auf einem anderen Gerät oder von jemand anderem geändert. Wenn du neu lädst, gehen deine ungespeicherten Änderungen verloren.");
             ui.add_space(10.0);
             ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 reload = style::danger_btn(ui, "Neu laden", h).clicked();

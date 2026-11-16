@@ -26,6 +26,8 @@ pub struct Pal {
     pub disabled: u32,
     /// Textfarbe auf Akzentflächen.
     pub on_accent: u32,
+    /// Vertiefte Fläche (Vorschaubilder, Eingabefelder) im modernen Design.
+    pub sunken: u32,
 }
 
 fn with_alpha(argb: u32, a: u8) -> u32 {
@@ -38,6 +40,62 @@ fn luminance(argb: u32) -> f32 {
 }
 
 pub fn palette(dark: bool, accent: u32) -> Pal {
+    if modern() {
+        palette_modern(dark, accent)
+    } else {
+        palette_classic(dark, accent)
+    }
+}
+
+/// Palette des modernen Designs: ruhigere Neutraltöne mit leichtem Blaustich, deckende Linien.
+pub fn palette_modern(dark: bool, accent: u32) -> Pal {
+    let accent = with_alpha(accent, 0xFF);
+    let on_accent = if luminance(accent) > 0.55 { 0xFF111116 } else { 0xFFFFFFFF };
+    if dark {
+        Pal {
+            dark,
+            bg: 0xFF111114,
+            card: 0xFF18181C,
+            pill: 0xFF1F1F24,
+            line: 0xFF2A2A31,
+            text: 0xFFECECF1,
+            dim: 0xFF9A9AA8,
+            accent,
+            active: with_alpha(accent, 0x33),
+            accent_soft: with_alpha(accent, 0x1C),
+            hover: 0x14FFFFFF,
+            press: 0x22FFFFFF,
+            danger: 0xFFF2555A,
+            danger_text: 0xFFFF8484,
+            disabled: 0xFF55555F,
+            on_accent,
+            sunken: 0xFF0C0C0F,
+        }
+    } else {
+        Pal {
+            dark,
+            bg: 0xFFF6F6F8,
+            card: 0xFFFFFFFF,
+            pill: 0xFFFFFFFF,
+            line: 0xFFE2E2E8,
+            text: 0xFF17171C,
+            dim: 0xFF6B6B78,
+            accent,
+            active: with_alpha(accent, 0x2E),
+            accent_soft: with_alpha(accent, 0x1A),
+            hover: 0x0F000000,
+            press: 0x1C000000,
+            danger: 0xFFD93F3F,
+            danger_text: 0xFFC22F2F,
+            disabled: 0xFFB0B0BA,
+            on_accent,
+            sunken: 0xFFEEEEF2,
+        }
+    }
+}
+
+/// Palette des klassischen Designs (bis 4.8).
+pub fn palette_classic(dark: bool, accent: u32) -> Pal {
     let accent = with_alpha(accent, 0xFF);
     let on_accent = if luminance(accent) > 0.55 { 0xFF16171B } else { 0xFFFFFFFF };
     if dark {
@@ -58,6 +116,7 @@ pub fn palette(dark: bool, accent: u32) -> Pal {
             danger_text: 0xFFFF8A8A,
             disabled: 0xFF55575F,
             on_accent,
+            sunken: 0xFF101114,
         }
     } else {
         Pal {
@@ -77,22 +136,72 @@ pub fn palette(dark: bool, accent: u32) -> Pal {
             danger_text: 0xFFC22F2F,
             disabled: 0xFFB0B2BB,
             on_accent,
+            sunken: 0xFFEDEDF0,
         }
     }
 }
 
 thread_local! {
+    /// Modernes Design aktiv (Einstellung „design“, Vorgabe modern).
+    static MODERN: Cell<bool> = const { Cell::new(true) };
     static PAL: Cell<Pal> = Cell::new(palette(true, 0xFF7C8CFF));
     /// Abrundung der Kacheln/Leisten in px (Einstellungen, Standard 26).
     static TILE_R: Cell<f32> = const { Cell::new(TILE_RADIUS_DEFAULT) };
 }
 
-/// Standard-Abrundung der Leisten (entspricht 4.1).
+/// Entwurfswert der Leisten-Abrundung (klassisches Design, entspricht 4.1); `pill(r)` skaliert relativ dazu.
 pub const TILE_RADIUS_DEFAULT: f32 = 26.0;
+/// Standard-Abrundung der Leisten im modernen Design.
+pub const TILE_RADIUS_MODERN: f32 = 12.0;
+
+/// Ist im Einstellungen-Objekt das moderne Design gewählt? (Vorgabe: ja)
+pub fn is_modern(s: &Settings) -> bool {
+    s.extra.get("design").and_then(|v| v.as_str()) != Some("classic")
+}
+
+/// Design umschalten (schreibt `extra["design"]`).
+pub fn set_modern(s: &mut Settings, on: bool) {
+    s.extra.insert("design".into(), serde_json::json!(if on { "modern" } else { "classic" }));
+}
+
+/// Aktuell aktives Design (gesetzt von `apply`).
+pub fn modern() -> bool {
+    MODERN.with(|m| m.get())
+}
+
+/// Schlüssel der Abrundung je Design (jedes Design merkt sich seinen eigenen Wert).
+fn tile_radius_key(s: &Settings) -> &'static str {
+    if is_modern(s) { "tile_radius_modern" } else { "tile_radius" }
+}
+
+/// Standard-Abrundung der Kacheln im gewählten Design.
+pub fn tile_radius_default(s: &Settings) -> f32 {
+    if is_modern(s) { TILE_RADIUS_MODERN } else { TILE_RADIUS_DEFAULT }
+}
 
 /// Eingestellte Abrundung der Kacheln aus den Einstellungen (0–40 px).
 pub fn tile_radius_setting(s: &Settings) -> f32 {
-    s.extra.get("tile_radius").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(TILE_RADIUS_DEFAULT).clamp(0.0, 40.0)
+    s.extra.get(tile_radius_key(s)).and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(tile_radius_default(s)).clamp(0.0, 40.0)
+}
+
+/// Abrundung der Kacheln setzen (für das gewählte Design).
+pub fn set_tile_radius(s: &mut Settings, v: f32) {
+    let k = tile_radius_key(s);
+    s.extra.insert(k.into(), serde_json::json!(v));
+}
+
+/// Abrundung von Knöpfen und Eingabefeldern.
+pub fn btn_r() -> u8 {
+    if modern() { 8 } else { 14 }
+}
+
+/// Schatten schwebender Leisten.
+fn float_shadow(dark: bool) -> Shadow {
+    if modern() {
+        Shadow { offset: [0, 4], blur: 18, spread: 0, color: Color32::from_black_alpha(if dark { 110 } else { 22 }) }
+    } else {
+        Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(if dark { 90 } else { 45 }) }
+    }
 }
 
 /// Aktuelle Palette (gesetzt von `apply`).
@@ -114,17 +223,35 @@ pub fn pill(radius: u8) -> Frame {
         .stroke(Stroke::new(1.0, c(p.line)))
         .corner_radius(CornerRadius::same(radius))
         .inner_margin(Margin::same(4))
-        .shadow(Shadow { offset: [0, 3], blur: 14, spread: 0, color: Color32::from_black_alpha(if p.dark { 90 } else { 45 }) })
+        .shadow(float_shadow(p.dark))
 }
 
 pub fn card() -> Frame {
     let p = pal();
+    if modern() {
+        return Frame::new()
+            .fill(c(p.card))
+            .stroke(Stroke::new(1.0, c(p.line)))
+            .corner_radius(CornerRadius::same(12))
+            .inner_margin(Margin { left: 18, right: 18, top: 14, bottom: 12 });
+    }
     Frame::new()
         .fill(c(p.card))
         .stroke(Stroke::new(1.0, c(p.line)))
         .corner_radius(CornerRadius::same(14))
         .inner_margin(Margin { left: 20, right: 20, top: 18, bottom: 14 })
         .shadow(Shadow { offset: [0, 4], blur: 20, spread: 0, color: Color32::from_black_alpha(if p.dark { 120 } else { 60 }) })
+}
+
+/// Dezenter Hinweis-Kasten (z. B. Gastmodus auf der Startseite).
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub fn notice() -> Frame {
+    let p = pal();
+    if modern() {
+        Frame::new().fill(c(p.card)).stroke(Stroke::new(1.0, c(p.line))).corner_radius(CornerRadius::same(10)).inner_margin(Margin::symmetric(14, 10))
+    } else {
+        Frame::new().fill(c(p.accent_soft)).corner_radius(CornerRadius::same(10)).inner_margin(Margin::symmetric(12, 8))
+    }
 }
 
 /// Fläche für Bottom-Sheets (oben abgerundet) und angedockte Panels.
@@ -145,6 +272,7 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
         Theme::Light => egui::ThemePreference::Light,
         Theme::Dark => egui::ThemePreference::Dark,
     });
+    MODERN.with(|m| m.set(is_modern(s)));
     let dark = ctx.theme() == egui::Theme::Dark;
     let p = palette(dark, s.accent);
     PAL.with(|x| x.set(p));
@@ -157,8 +285,20 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
         v.panel_fill = c(q.bg);
         v.window_fill = c(q.card);
         v.window_stroke = Stroke::new(1.0, c(q.line));
-        v.window_corner_radius = CornerRadius::same(14);
-        v.menu_corner_radius = CornerRadius::same(10);
+        let m = is_modern(s);
+        v.window_corner_radius = CornerRadius::same(if m { 12 } else { 14 });
+        v.menu_corner_radius = CornerRadius::same(if m { 8 } else { 10 });
+        if m {
+            v.window_shadow = Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if d { 140 } else { 40 }) };
+            v.popup_shadow = Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(if d { 120 } else { 30 }) };
+            for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open, &mut v.widgets.noninteractive] {
+                w.corner_radius = CornerRadius::same(8);
+            }
+            v.widgets.inactive.weak_bg_fill = c(q.hover);
+            v.widgets.inactive.bg_fill = c(q.line);
+            v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, c(q.line));
+            v.text_edit_bg_color = Some(c(q.card));
+        }
         v.extreme_bg_color = c(q.bg);
         v.selection.bg_fill = c(with_alpha(q.accent, 0x66));
         v.selection.stroke = Stroke::new(1.0, c(q.accent));
@@ -168,13 +308,14 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
         v.widgets.active.weak_bg_fill = c(with_alpha(q.accent, 0x4D));
         ctx.set_visuals_of(theme, v);
     }
+    let m = is_modern(s);
     ctx.all_styles_mut(|st| {
-        st.spacing.item_spacing = Vec2::new(6.0, 6.0);
+        st.spacing.item_spacing = if m { Vec2::new(8.0, 6.0) } else { Vec2::new(6.0, 6.0) };
         st.spacing.button_padding = Vec2::new(10.0, 6.0);
         st.spacing.interact_size.y = 30.0;
         st.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.5));
         st.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
-        st.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(17.0));
+        st.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(if m { 18.0 } else { 17.0 }));
     });
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }
@@ -221,7 +362,8 @@ pub fn btn_bg(ui: &Ui, rect: egui::Rect, resp: &Response, active: bool) {
         None
     };
     if let Some(b) = bg {
-        ui.painter().rect_filled(rect.shrink(2.0), CornerRadius::same(255), c(b));
+        let r = if modern() { CornerRadius::same(8) } else { CornerRadius::same(255) };
+        ui.painter().rect_filled(rect.shrink(2.0), r, c(b));
     }
 }
 
@@ -245,7 +387,7 @@ pub fn accent_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
         .fill(c(p.accent_soft))
         .stroke(Stroke::NONE)
         .min_size(Vec2::new(0.0, min_h))
-        .corner_radius(CornerRadius::same(14));
+        .corner_radius(CornerRadius::same(btn_r()));
     ui.add(b)
 }
 
@@ -255,12 +397,12 @@ pub fn primary_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
     let b = egui::Button::new(egui::RichText::new(label).color(c(p.on_accent)).strong())
         .fill(c(p.accent))
         .min_size(Vec2::new(0.0, min_h))
-        .corner_radius(CornerRadius::same(14));
+        .corner_radius(CornerRadius::same(btn_r()));
     ui.add(b)
 }
 
 pub fn plain_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
-    ui.add(egui::Button::new(label).fill(Color32::TRANSPARENT).min_size(Vec2::new(0.0, min_h)).corner_radius(CornerRadius::same(14)))
+    ui.add(egui::Button::new(label).fill(Color32::TRANSPARENT).min_size(Vec2::new(0.0, min_h)).corner_radius(CornerRadius::same(btn_r())))
 }
 
 pub fn danger_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
@@ -268,7 +410,7 @@ pub fn danger_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
     let b = egui::Button::new(egui::RichText::new(label).color(c(p.danger_text)).strong())
         .fill(c(with_alpha(p.danger, 0x33)))
         .min_size(Vec2::new(0.0, min_h))
-        .corner_radius(CornerRadius::same(14));
+        .corner_radius(CornerRadius::same(btn_r()));
     ui.add(b)
 }
 
@@ -281,7 +423,18 @@ pub fn chip(ui: &mut Ui, label: &str, selected: bool, min_h: f32) -> Response {
         .fill(c(if selected { p.active } else { p.hover }))
         .stroke(if selected { Stroke::new(1.0, c(p.accent)) } else { Stroke::NONE })
         .min_size(Vec2::new(0.0, min_h))
-        .corner_radius(CornerRadius::same(255));
+        .corner_radius(CornerRadius::same(if modern() { 8 } else { 255 }));
+    ui.add(b)
+}
+
+/// Knopf mit Rahmen (Nebenaktion im modernen Design).
+pub fn outline_btn(ui: &mut Ui, label: &str, min_h: f32) -> Response {
+    let p = pal();
+    let b = egui::Button::new(egui::RichText::new(label).color(c(p.text)))
+        .fill(c(p.card))
+        .stroke(Stroke::new(1.0, c(p.line)))
+        .min_size(Vec2::new(0.0, min_h))
+        .corner_radius(CornerRadius::same(btn_r()));
     ui.add(b)
 }
 

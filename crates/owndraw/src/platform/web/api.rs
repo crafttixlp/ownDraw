@@ -341,7 +341,7 @@ fn form_result(r: &Result<Resp, String>) -> bool {
     let err = match r {
         Ok(x) if x.ok() => None,
         Ok(x) => Some(x.message()),
-        Err(e) => Some(format!("Server nicht erreichbar: {e}")),
+        Err(e) => Some(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     };
     with(|n| {
         n.busy = false;
@@ -406,7 +406,7 @@ pub fn register(email: &str, password: &str, name: &str) {
         if form_result(&r) {
             if let Ok(r) = r {
                 set_me(&r.json());
-                notice("Konto angelegt – willkommen!");
+                notice("Konto erstellt. Willkommen!");
             }
         }
     });
@@ -429,7 +429,7 @@ pub fn redeem(code: &str) {
         if form_result(&r) {
             if let Ok(r) = r {
                 set_me(&r.json());
-                notice("Lizenz eingelöst – Boards werden jetzt am Server gespeichert");
+                notice("Lizenz eingelöst. Neue Boards werden jetzt auf dem Server gespeichert.");
             }
         }
     });
@@ -482,7 +482,7 @@ pub fn open_board(id: &str) {
             with(|n| n.opening = false);
             notice(match other {
                 Ok(r) => r.message(),
-                Err(e) => format!("Server nicht erreichbar: {e}"),
+                Err(e) => format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}"),
             });
         }
     });
@@ -509,8 +509,8 @@ pub fn create_board(name: &str, bytes: Vec<u8>) {
         other => {
             with(|n| n.opening = false);
             notice(match other {
-                Ok(r) => format!("Board konnte nicht am Server angelegt werden: {}", r.message()),
-                Err(e) => format!("Server nicht erreichbar: {e}"),
+                Ok(r) => format!("Board konnte nicht auf dem Server erstellt werden: {}", r.message()),
+                Err(e) => format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}"),
             });
         }
     });
@@ -538,7 +538,7 @@ fn send_put(id: String, bytes: Vec<u8>) {
     let Some(v) = with(|n| n.versions.get(&id).copied()) else {
         with(|n| {
             n.puts.remove(&id);
-            n.save_errors.insert(id.clone(), "Version des Boards unbekannt – bitte neu öffnen.".into());
+            n.save_errors.insert(id.clone(), "Die Version des Boards ist unbekannt. Öffne das Board neu.".into());
         });
         return;
     };
@@ -564,7 +564,7 @@ fn send_put(id: String, bytes: Vec<u8>) {
                     n.save_errors.insert(id.clone(), r.message());
                 }
                 Err(e) => {
-                    n.save_errors.insert(id.clone(), format!("Server nicht erreichbar: {e}"));
+                    n.save_errors.insert(id.clone(), format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}"));
                 }
             }
             let p = n.puts.entry(id.clone()).or_default();
@@ -599,7 +599,7 @@ pub fn rename_board(id: &str, name: &str) {
             }
         }
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 
@@ -615,7 +615,7 @@ pub fn delete_board(id: &str) {
             refresh_me();
         }
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 
@@ -642,7 +642,7 @@ pub fn load_members(id: &str) {
     request("GET", format!("/api/boards/{id}/members"), None, vec![], move |r| match r {
         Ok(r) if r.ok() => set_members(&id2, &r.json()),
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 
@@ -663,7 +663,7 @@ pub fn remove_member(id: &str, user_id: &str) {
     request("DELETE", format!("/api/boards/{id}/members/{user_id}"), None, vec![], move |r| match r {
         Ok(r) if r.ok() => set_members(&id2, &r.json()),
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 
@@ -701,7 +701,7 @@ pub fn invite_info(token: &str) {
                 }
                 Ok(r) if r.status == 404 => p.error = Some("Diese Einladung ist ungültig, abgelaufen oder wurde widerrufen.".into()),
                 Ok(r) => p.error = Some(r.message()),
-                Err(e) => p.error = Some(format!("Server nicht erreichbar: {e}")),
+                Err(e) => p.error = Some(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
             }
         });
     });
@@ -751,7 +751,7 @@ pub fn load_invites(board: &str) {
     request("GET", format!("/api/boards/{board}/invites"), None, vec![], move |r| match r {
         Ok(r) if r.ok() => set_invites(&id, &r.json()),
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 
@@ -788,7 +788,7 @@ pub fn create_invite(board: &str, role: &str, time: LinkTime) {
             });
         }
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 
@@ -800,7 +800,7 @@ pub fn delete_invite(board: &str, invite_id: &str) {
             with(|n| n.new_link = None);
         }
         Ok(r) => notice(r.message()),
-        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+        Err(e) => notice(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     });
 }
 

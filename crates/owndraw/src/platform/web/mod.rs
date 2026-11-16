@@ -63,7 +63,7 @@ pub fn install_page_hooks() {
     let cb = Closure::<dyn FnMut(web_sys::BeforeUnloadEvent)>::new(|e: web_sys::BeforeUnloadEvent| {
         if UNSAVED.load(Ordering::Relaxed) {
             e.prevent_default();
-            e.set_return_value("Ungespeicherte Änderungen: Das Board wurde noch nicht heruntergeladen.");
+            e.set_return_value("Dieses Board wurde noch nicht heruntergeladen. Es ist nur in diesem Browser gespeichert.");
         }
     });
     let _ = w.add_event_listener_with_callback("beforeunload", cb.as_ref().unchecked_ref());
@@ -405,8 +405,8 @@ impl Platform for WebPlatform {
 
     fn read(&self, f: &FileRef) -> io::Result<Vec<u8>> {
         match f {
-            FileRef::Uri(u) if u.starts_with(api::SRV) => api::with(|n| n.files.get(u).cloned()).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Board vom Server noch nicht geladen")),
-            FileRef::Uri(u) => self.inner.borrow().files.get(u).cloned().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "nicht im Browser-Speicher")),
+            FileRef::Uri(u) if u.starts_with(api::SRV) => api::with(|n| n.files.get(u).cloned()).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Das Board ist noch nicht vom Server geladen")),
+            FileRef::Uri(u) => self.inner.borrow().files.get(u).cloned().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Nicht im Browser-Speicher gefunden")),
             FileRef::Path(p) => crate::kv::read(p),
         }
     }
@@ -430,7 +430,7 @@ impl Platform for WebPlatform {
                 self.inner.borrow_mut().files.insert(u.clone(), data.to_vec());
                 Ok(())
             }
-            FileRef::Uri(_) => Err(io::Error::new(io::ErrorKind::Unsupported, "Adresse im Browser nicht unterstützt")),
+            FileRef::Uri(_) => Err(io::Error::new(io::ErrorKind::Unsupported, "Dieser Adresstyp wird im Browser nicht unterstützt")),
             FileRef::Path(p) => crate::kv::write(p, data),
         }
     }

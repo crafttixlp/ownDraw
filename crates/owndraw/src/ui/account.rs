@@ -66,6 +66,14 @@ fn server_text() -> String {
     String::new()
 }
 
+/// Demo/Screenshots: Dialog `login` oder `einladung` öffnen.
+pub fn demo_dialog(st: &mut AccountUi, which: &str) {
+    st.dlg = Some(match which {
+        "einladung" => Dlg::InviteLink { link: String::new(), focus: true },
+        _ => Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), server: server_text(), focus: true },
+    });
+}
+
 /// Zerlegt einen Einladungslink (`https://server/#invite=<token>`, auch nur das Token) in Server und Token.
 pub fn parse_invite_link(link: &str) -> Option<(Option<String>, String)> {
     let link = link.trim();
@@ -181,6 +189,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                     api::with(|n| n.form_error = None);
                     st.dlg = Some(login(false));
                 }
+                invite_btn(ui, st);
             });
         }
         _ => {
@@ -250,7 +259,9 @@ fn tile(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi, b: &BoardInfo, t
         _ => 0x228B8D98,
     };
     pt.rect_filled(head, CornerRadius { nw: 16, ne: 16, sw: 0, se: 0 }, c(col));
-    pt.text(head.left_center() + Vec2::new(14.0, 0.0), Align2::LEFT_CENTER, "☁", egui::FontId::proportional(20.0), c(p.accent));
+    // Wolken-Symbol als Icon (das Zeichen „☁“ fehlt in der Schrift)
+    sh.icons.paint(ui, Rect::from_center_size(head.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(24.0)), owndraw_core::icons::CLOUD, p.accent, false, 20.0);
+    let pt = ui.painter();
     let badge = match b.role.as_str() {
         "owner" => "Eigenes",
         "edit" => "Geteilt",

@@ -51,6 +51,7 @@ pub fn server_free_text() -> Option<String> {
 }
 
 /// Ort lokaler Boards im Satz: „in diesem Browser“ (Web-App) bzw. „auf diesem Computer“ (Desktop).
+#[cfg_attr(target_os = "android", allow(dead_code))]
 pub fn local_in() -> &'static str {
     if crate::platform::WEB {
         "in diesem Browser"
@@ -60,6 +61,7 @@ pub fn local_in() -> &'static str {
 }
 
 /// Text je nach Plattform: Web-App bzw. Desktop.
+#[cfg_attr(target_os = "android", allow(dead_code))]
 pub fn wd(web: &'static str, desktop: &'static str) -> &'static str {
     if crate::platform::WEB {
         web

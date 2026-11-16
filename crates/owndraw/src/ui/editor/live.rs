@@ -123,7 +123,7 @@ fn color_of(s: &str) -> Color32 {
 
 impl Live {
     pub fn new(board_id: &str, ed: &Editor) -> Live {
-        Live {
+        let mut lv = Live {
             board_id: board_id.to_string(),
             sock: None,
             conn: Conn::Retry(0.0),
@@ -143,7 +143,12 @@ impl Live {
             share: None,
             conflict_open: false,
             view_hint_at: -100.0,
+        };
+        // Demo `share`: Teilen-Dialog gleich öffnen (Screenshots)
+        if std::env::var("OWNDRAW_DEMO").is_ok_and(|d| d.split(',').any(|t| t.trim() == "share")) {
+            lv.open_share();
         }
+        lv
     }
 
     /// Schreibrecht (Rolle „Bearbeiten“/Eigentümer).

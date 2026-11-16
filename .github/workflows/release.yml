@@ -1,4 +1,5 @@
-# Release-CI: wird durch einen Tag `v*` ausgelöst.
+# Release-CI: wird durch einen Tag `v*` ausgelöst – oder automatisch durch einen Push auf `main`, wenn die
+# Version in Cargo.toml noch keinen Tag `v<version>` hat (Version anheben + PR mergen = Release).
 # Baut AppImage, APK und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an.
 # Ohne Signaturschlüssel (MINISIGN_KEY) gibt es kein Release. Ohne Android-Keystore (ANDROID_KEYSTORE_B64)
 # enthält das Release keine APK (AppImage, Server-Paket und Quellen trotzdem).
@@ -7,6 +8,11 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -21,14 +27,28 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
       has_apk: ${{ steps.ks.outputs.has_apk }}
+      skip: ${{ steps.ver.outputs.skip }}
+      tag: ${{ steps.ver.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Tag gegen Workspace-Version prüfen
         id: ver
         run: |
-          TAG_VER="${GITHUB_REF_NAME#v}"
           WS_VER=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml","rb"))["workspace"]["package"]["version"])')
+          if [ "$GITHUB_REF_TYPE" = branch ]; then
+            # Push auf main: nur releasen, wenn es den Tag dieser Version noch nicht gibt
+            if git ls-remote --exit-code --tags origin "refs/tags/v$WS_VER" >/dev/null; then
+              echo "Tag v$WS_VER existiert schon – kein neues Release."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            TAG_VER="$WS_VER"
+          else
+            TAG_VER="${GITHUB_REF_NAME#v}"
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=v$TAG_VER" >> "$GITHUB_OUTPUT"
           if [ "$TAG_VER" != "$WS_VER" ]; then
             echo "::error title=Versionskonflikt::Tag v$TAG_VER passt nicht zur Workspace-Version $WS_VER in Cargo.toml."
             exit 1
@@ -37,6 +57,7 @@ jobs:
           echo "Version $TAG_VER"
 
       - name: Signierschlüssel prüfen
+        if: steps.ver.outputs.skip != 'true'
         env:
           MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
         run: |
@@ -47,6 +68,7 @@ jobs:
 
       - name: Android-Keystore prüfen
         id: ks
+        if: steps.ver.outputs.skip != 'true'
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
@@ -60,6 +82,7 @@ jobs:
   appimage:
     name: AppImage bauen
     needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +111,7 @@ jobs:
   apk:
     name: APK bauen (Release-Schlüssel)
     needs: check
-    if: needs.check.outputs.has_apk == 'true'
+    if: needs.check.outputs.skip != 'true' && needs.check.outputs.has_apk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,6 +166,7 @@ jobs:
   server:
     name: Server-Paket bauen (Binary + Web-App)
     needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +206,7 @@ jobs:
     needs: [check, appimage, apk, server]
     # APK darf fehlen (kein Keystore), alles andere muss gebaut sein.
     if: >-
-      always() && needs.check.result == 'success' && needs.appimage.result == 'success' &&
+      always() && needs.check.result == 'success' && needs.check.outputs.skip != 'true' && needs.appimage.result == 'success' &&
       needs.server.result == 'success' && (needs.apk.result == 'success' || needs.apk.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -273,6 +297,9 @@ jobs:
         if: steps.notes.outputs.has == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.check.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: OwnDraw ${{ needs.check.outputs.version }}
           files: |
             dist/*
           body_path: ${{ runner.temp }}/notes.md
@@ -282,6 +309,9 @@ jobs:
         if: steps.notes.outputs.has != 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.check.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: OwnDraw ${{ needs.check.outputs.version }}
           files: |
             dist/*
           generate_release_notes: true

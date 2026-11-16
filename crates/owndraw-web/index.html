@@ -54,6 +54,20 @@
   </div>
 </div>
 <noscript>OwnDraw braucht JavaScript und WebAssembly.</noscript>
+<script>
+  // Mittlere Maustaste: Unter Linux fügt der Browser bei Mittelklick die markierte Auswahl ein
+  // (Primary Selection) und löst dabei ein `paste`-Ereignis aus. OwnDraw würde daraus einen
+  // Textblock machen. Außerdem startet Mittelklick sonst das Auto-Scrollen. Beides abfangen,
+  // bevor egui (horcht auf `document`) es sieht; Strg+V bleibt unberührt.
+  (() => {
+    let mitte = -1e9;
+    const merke = (e) => { if (e.button === 1) { mitte = performance.now(); e.preventDefault(); } };
+    for (const t of ["mousedown", "mouseup", "auxclick"]) window.addEventListener(t, merke, true);
+    window.addEventListener("paste", (e) => {
+      if (performance.now() - mitte < 800) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+  })();
+</script>
 <script type="module">
   import init, { start } from "./owndraw_web.js";
   const lade = document.getElementById("lade");

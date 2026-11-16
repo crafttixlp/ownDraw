@@ -1,6 +1,6 @@
 # Release-Anleitung
 
-Releases entstehen automatisch: Ein Tag `v*` startet `.github/workflows/release.yml`. Die Action baut AppImage, APK und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an. Ohne Signaturschlüssel oder Android-Keystore bricht der Lauf sofort ab; es entstehen keine unsignierten Releases.
+Releases entstehen automatisch: Ein Tag `v*` startet `.github/workflows/release.yml`. Die Action baut AppImage, APK, Server-Paket (`owndraw-server-<v>-x86_64-linux.tar.gz`, Binary + Web-App, für das Self-Update im Admin-Panel) und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an. Ohne Signaturschlüssel bricht der Lauf sofort ab; es entstehen keine unsignierten Releases. Ohne Android-Keystore entsteht das Release ohne APK (Warnung im Log).
 
 ## 1. minisign-Schlüssel erzeugen (einmalig)
 
@@ -54,7 +54,8 @@ base64 -w0 owndraw-release.jks > owndraw-release.jks.b64   # Inhalt als Secret A
 | `OwnDraw-<v>-x86_64.AppImage` | Linux-Desktop |
 | `OwnDraw-<v>.apk` | Android (mit Release-Schlüssel signiert) |
 | `OwnDraw-<v>-src.tar.gz` | Quellcode für „Aus Quellcode bauen“ |
-| `<datei>.minisig` | minisign-Signatur zu jedem der drei Assets |
+| `owndraw-server-<v>-x86_64-linux.tar.gz` | Server-Self-Update (Admin-Panel → Updates) |
+| `<datei>.minisig` | minisign-Signatur zu jedem Asset |
 
 Die App prüft die Signatur gegen den einkompilierten öffentlichen Schlüssel, bevor sie etwas installiert.
 

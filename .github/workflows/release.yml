@@ -1,6 +1,7 @@
 # Release-CI: wird durch einen Tag `v*` ausgelöst.
 # Baut AppImage, APK und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an.
-# Ohne Signaturschlüssel (MINISIGN_KEY) oder Android-Keystore (ANDROID_KEYSTORE_B64) gibt es kein Release.
+# Ohne Signaturschlüssel (MINISIGN_KEY) gibt es kein Release. Ohne Android-Keystore (ANDROID_KEYSTORE_B64)
+# enthält das Release keine APK (AppImage, Server-Paket und Quellen trotzdem).
 name: Release
 
 on:
@@ -19,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      has_apk: ${{ steps.ks.outputs.has_apk }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,12 +46,15 @@ jobs:
           fi
 
       - name: Android-Keystore prüfen
+        id: ks
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
           if [ -z "$KS_B64" ]; then
-            echo "::error title=ANDROID_KEYSTORE_B64 fehlt::Ohne Release-Keystore würde die APK mit dem Debug-Schlüssel gebaut; Updates wären dann nicht installierbar. Kein Release (siehe docs/release.md)."
-            exit 1
+            echo "::warning title=ANDROID_KEYSTORE_B64 fehlt::Ohne Release-Keystore wird keine APK gebaut (Debug-Schlüssel wäre für Updates unbrauchbar). Das Release enthält dann keine APK (siehe docs/release.md)."
+            echo "has_apk=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_apk=true" >> "$GITHUB_OUTPUT"
           fi
 
   appimage:
@@ -83,6 +88,7 @@ jobs:
   apk:
     name: APK bauen (Release-Schlüssel)
     needs: check
+    if: needs.check.outputs.has_apk == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -134,9 +140,50 @@ jobs:
           path: target/apk/*.apk
           if-no-files-found: error
 
+  server:
+    name: Server-Paket bauen (Binary + Web-App)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-web
+
+      - name: wasm-bindgen-CLI passend zu Cargo.lock
+        run: |
+          WB_VER=$(awk '/^name = "wasm-bindgen"$/{getline; gsub(/version = |"/,""); print; exit}' Cargo.lock)
+          cargo install wasm-bindgen-cli --version "$WB_VER" --locked
+
+      - name: binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Web-App bauen
+        run: ./build-web.sh
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Server-Paket bauen (Binary im Debian-12-Stage, passend zum Laufzeit-Image)
+        run: packaging/server/release-server.sh --docker -o dist/server
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owndraw-server
+          path: dist/server/owndraw-server-*-x86_64-linux.tar.gz
+          if-no-files-found: error
+
   release:
     name: Signieren und Release anlegen
-    needs: [check, appimage, apk]
+    needs: [check, appimage, apk, server]
+    # APK darf fehlen (kein Keystore), alles andere muss gebaut sein.
+    if: >-
+      always() && needs.check.result == 'success' && needs.appimage.result == 'success' &&
+      needs.server.result == 'success' && (needs.apk.result == 'success' || needs.apk.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -156,8 +203,13 @@ jobs:
           name: owndraw-appimage
           path: dist
       - uses: actions/download-artifact@v4
+        if: needs.check.outputs.has_apk == 'true'
         with:
           name: owndraw-apk
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: owndraw-server
           path: dist
 
       - name: minisign installieren

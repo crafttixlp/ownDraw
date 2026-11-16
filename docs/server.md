@@ -105,9 +105,14 @@ selbst (`restart: unless-stopped`).
 Dann `https://owndraw.thepepelex.at/admin` öffnen und anmelden. Im Panel:
 
 - **Nutzer**: sperren/entsperren, Admin-Recht geben/entziehen, löschen (mit Bestätigung; löscht auch die Boards),
-  Lizenz und Speicherverbrauch ansehen.
+  Lizenz und Speicherverbrauch ansehen. **Sperren löscht sofort und unwiderruflich alle Boards des Nutzers am Server**
+  (samt Freigaben, Einladungslinks und laufenden Live-Sitzungen; vorher kommt eine Bestätigungsabfrage). Entsperren
+  bringt sie nicht zurück.
+- **Lizenz aktivieren/deaktivieren** (Nutzer-Tab): Deaktivieren nimmt die Lizenzrechte (Speichern am Server, Teilen,
+  Live), Boards bleiben erhalten. Aktivieren schaltet eine deaktivierte Lizenz wieder ein; hat der Nutzer keine oder nur
+  eine abgelaufene, wählst du einen freien Code oder lässt einen neuen erzeugen (Laufzeit, Speicherplatz).
 - **Lizenzen**: mehrere Codes `OWND-XXXX-XXXX-XXXX` erzeugen (Laufzeit in Tagen ab Einlösen oder unbegrenzt,
-  Speicherplatz pro Nutzer in MB, Notiz), kopieren, widerrufen, Ablauf ändern. Die Codes gibst du den Kundinnen und Kunden; sie lösen
+  Speicherplatz pro Nutzer in MB, Notiz), kopieren, einem Nutzer zuweisen (sofort aktiv), deaktivieren/aktivieren, Ablauf ändern. Die Codes gibst du den Kundinnen und Kunden; sie lösen
   sie in der Web-App ein.
 - **Updates**: siehe Abschnitt 7.
 
@@ -206,7 +211,7 @@ Self-Update beendet sich der Prozess nur; einen Neustart muss dann ein Superviso
 
 **Mitteilungen und Wartung (ab 4.8.0).** Im Admin-Panel unter **Mitteilungen** lassen sich Hinweise (z. B. zu
 Updates) anlegen, bearbeiten, (de)aktivieren und löschen; Typ Info oder Warnung, optional mit Zeitraum. Jeder
-Besucher der Web-App, auch Gäste, sieht aktive Mitteilungen beim Start einmal pro Browser. Unter **Wartung** schaltet
+Besucher der Web-App, auch Gäste, sieht aktive Mitteilungen bei jedem Laden der Seite (Wegklicken gilt nur bis zum nächsten Neuladen). Unter **Wartung** schaltet
 man den Wartungsmodus ein (optional mit eigener Nachricht und Endzeit, danach endet er automatisch): Nutzer und Gäste
 sehen dann eine Wartungsseite, die API antwortet ihnen mit 503 `maintenance`, Live-Verbindungen werden getrennt.
 Admins arbeiten weiter; `/admin` und `/api/health` bleiben erreichbar. Details: [`web-api.md`](web-api.md).

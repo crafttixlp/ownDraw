@@ -1,6 +1,7 @@
 //! Admin-API: Nutzer und Lizenzen (`/api/admin/users`, `/api/admin/licenses`).
 
 use crate::auth::{AdminAuth, J};
+use crate::boards::board_path;
 use crate::db::{self, now, UserRow};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -52,51 +53,82 @@ pub struct PatchUser {
 
 pub async fn patch_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<String>, J(b): J<PatchUser>) -> ApiResult<Json<Value>> {
     let me = a.0.user.id;
-    let v =
+    let dir = s.cfg.boards_dir();
+    let (v, kicked) =
         s.db.call(move |c| {
             let u = db::user_by_id(c, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
             if u.id == me && (b.disabled == Some(true) || b.admin == Some(false)) {
                 return Err(ApiError::invalid("Du kannst dich nicht selbst sperren oder deine Admin-Rechte entziehen."));
             }
-            if let Some(d) = b.disabled {
-                c.execute("UPDATE users SET disabled=?2 WHERE id=?1", params![id, d as i64])?;
-                if d {
-                    c.execute("DELETE FROM sessions WHERE user_id=?1", [&id])?;
-                }
-            }
             if u.guest && b.admin == Some(true) {
                 return Err(ApiError::invalid("Gäste können keine Admins werden."));
             }
-            if let Some(ad) = b.admin {
-                c.execute("UPDATE users SET admin=?2 WHERE id=?1", params![id, ad as i64])?;
+            let tx = c.transaction()?;
+            let mut kicked = None;
+            if let Some(d) = b.disabled {
+                tx.execute("UPDATE users SET disabled=?2 WHERE id=?1", params![id, d as i64])?;
+                if d {
+                    tx.execute("DELETE FROM sessions WHERE user_id=?1", [&id])?;
+                    // Sperren löscht alle Boards am Server sofort (Mitglieder und Einladungen fallen per CASCADE weg).
+                    let boards = owned_boards(&tx, &id)?;
+                    tx.execute("DELETE FROM boards WHERE owner_id=?1", [&id])?;
+                    kicked = Some(boards);
+                }
             }
-            let u = db::user_by_id(c, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
-            user_json(c, &u)
+            if let Some(ad) = b.admin {
+                tx.execute("UPDATE users SET admin=?2 WHERE id=?1", params![id, ad as i64])?;
+            }
+            let u = db::user_by_id(&tx, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
+            let v = user_json(&tx, &u)?;
+            tx.commit()?;
+            if let Some(boards) = &kicked {
+                for b in boards {
+                    let _ = std::fs::remove_file(board_path(&dir, b));
+                }
+            }
+            Ok((v, kicked.map(|bs| (u.id, bs))))
         })
         .await?;
+    if let Some((uid, boards)) = kicked {
+        for b in &boards {
+            s.hub.kick(b, None, "not_found", "Das Board wurde gelöscht.");
+        }
+        s.hub.kick_user(&uid, "unauthorized", "Dein Konto wurde gesperrt.");
+    }
     Ok(Json(v))
+}
+
+fn owned_boards(c: &Connection, user_id: &str) -> rusqlite::Result<Vec<String>> {
+    let mut st = c.prepare("SELECT id FROM boards WHERE owner_id=?1")?;
+    let ids = st.query_map([user_id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
 }
 
 pub async fn delete_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let me = a.0.user.id;
     let dir = s.cfg.boards_dir();
-    s.db.call(move |c| {
-        if id == me {
-            return Err(ApiError::invalid("Du kannst dein eigenes Konto nicht löschen."));
-        }
-        db::user_by_id(c, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
-        let mut st = c.prepare("SELECT id FROM boards WHERE owner_id=?1")?;
-        let boards = st.query_map([&id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
-        drop(st);
-        // Lizenzen des Nutzers werden widerrufen (Code bleibt zur Nachvollziehbarkeit erhalten).
-        c.execute("UPDATE licenses SET revoked=1, note=note || ' (Nutzer gelöscht)' WHERE redeemed_by=?1", [&id])?;
-        c.execute("DELETE FROM users WHERE id=?1", [&id])?;
-        for b in boards {
-            let _ = std::fs::remove_file(dir.join(format!("{b}.owndraw")));
-        }
-        Ok(())
-    })
-    .await?;
+    let uid = id.clone();
+    let boards = s
+        .db
+        .call(move |c| {
+            if id == me {
+                return Err(ApiError::invalid("Du kannst dein eigenes Konto nicht löschen."));
+            }
+            db::user_by_id(c, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
+            let boards = owned_boards(c, &id)?;
+            // Lizenzen des Nutzers werden widerrufen (Code bleibt zur Nachvollziehbarkeit erhalten).
+            c.execute("UPDATE licenses SET revoked=1, note=note || ' (Nutzer gelöscht)' WHERE redeemed_by=?1", [&id])?;
+            c.execute("DELETE FROM users WHERE id=?1", [&id])?;
+            for b in &boards {
+                let _ = std::fs::remove_file(board_path(&dir, b));
+            }
+            Ok(boards)
+        })
+        .await?;
+    for b in &boards {
+        s.hub.kick(b, None, "not_found", "Das Board wurde gelöscht.");
+    }
+    s.hub.kick_user(&uid, "unauthorized", "Dein Konto wurde gelöscht.");
     Ok(Json(json!({})))
 }
 
@@ -216,6 +248,112 @@ pub async fn patch_license(
             }
             let l = db::license_by_code(c, &code)?.ok_or_else(|| ApiError::not_found("Lizenz nicht gefunden."))?;
             Ok(l.to_json(now()))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+#[derive(Deserialize)]
+pub struct UserLicenseBody {
+    /// `true` = Lizenz aktivieren (vorhandene reaktivieren, freien Code zuweisen oder neuen erzeugen), `false` = deaktivieren.
+    active: bool,
+    /// Freier Code, der dem Nutzer zugewiesen wird (nur beim Aktivieren).
+    #[serde(default)]
+    code: Option<String>,
+    /// Laufzeit eines neu erzeugten Codes; fehlt/`null` = unbegrenzt.
+    #[serde(default)]
+    days: Option<i64>,
+    #[serde(default = "default_quota")]
+    quota_mb: i64,
+}
+
+/// Weist eine freie Lizenz einem Nutzer zu (wie Einlösen, nur durch den Admin).
+fn assign_license(c: &Connection, l: &db::LicenseRow, user_id: &str, t: i64) -> ApiResult<()> {
+    let expires = match l.days {
+        Some(d) => Some(t + d * 86400),
+        None => l.expires_at,
+    };
+    c.execute(
+        "UPDATE licenses SET redeemed_by=?2, redeemed_at=?3, expires_at=?4, revoked=0 WHERE code=?1",
+        params![l.code, user_id, t, expires],
+    )?;
+    Ok(())
+}
+
+/// `POST /api/admin/users/{id}/license`: Lizenz eines Nutzers aktivieren oder deaktivieren. Deaktivieren nimmt
+/// die Lizenzrechte (Speichern am Server, Teilen, Live), Boards bleiben erhalten; Aktivieren stellt sie wieder her.
+pub async fn user_license(
+    State(s): State<AppState>,
+    _a: AdminAuth,
+    Path(id): Path<String>,
+    J(b): J<UserLicenseBody>,
+) -> ApiResult<Json<Value>> {
+    if b.days.is_some_and(|d| !(1..=36_500).contains(&d)) {
+        return Err(ApiError::invalid("Die Laufzeit muss zwischen 1 und 36500 Tagen liegen (oder leer für unbegrenzt)."));
+    }
+    if !(1..=10_000_000).contains(&b.quota_mb) {
+        return Err(ApiError::invalid("Der Speicherplatz muss mindestens 1 MB betragen."));
+    }
+    let v =
+        s.db.call(move |c| {
+            let t = now();
+            let tx = c.transaction()?;
+            let u = db::user_by_id(&tx, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
+            if u.guest {
+                return Err(ApiError::invalid("Gäste können keine Lizenz haben."));
+            }
+            let current = db::license_of(&tx, &id)?;
+            if !b.active {
+                let l = current.filter(|l| !l.revoked).ok_or_else(|| ApiError::invalid("Dieser Nutzer hat keine aktive Lizenz."))?;
+                tx.execute("UPDATE licenses SET revoked=1 WHERE code=?1", [&l.code])?;
+            } else if let Some(code) = b.code.as_deref().map(|c| c.trim().to_uppercase()).filter(|c| !c.is_empty()) {
+                let l = db::license_by_code(&tx, &code)?.ok_or_else(|| ApiError::not_found("Diesen Lizenzcode gibt es nicht."))?;
+                match &l.redeemed_by {
+                    Some((uid, _)) if *uid == id => {
+                        tx.execute("UPDATE licenses SET revoked=0 WHERE code=?1", [&code])?;
+                    }
+                    Some(_) => return Err(ApiError::conflict("Dieser Lizenzcode gehört schon einem anderen Nutzer.")),
+                    None => {
+                        if l.expires_at.is_some_and(|e| e <= t) {
+                            return Err(ApiError::invalid("Dieser Lizenzcode ist abgelaufen."));
+                        }
+                        if let Some(old) = current.filter(|o| o.active(t)) {
+                            tx.execute("UPDATE licenses SET revoked=1 WHERE code=?1", [&old.code])?;
+                        }
+                        assign_license(&tx, &l, &id, t)?;
+                    }
+                }
+            } else {
+                match current {
+                    Some(l) if l.active(t) => {}
+                    // deaktivierte, nicht abgelaufene Lizenz wieder einschalten
+                    Some(l) if l.expires_at.is_none_or(|e| e > t) => {
+                        tx.execute("UPDATE licenses SET revoked=0 WHERE code=?1", [&l.code])?;
+                    }
+                    // keine oder abgelaufene Lizenz: neuen Code erzeugen und zuweisen
+                    _ => {
+                        let mut made = None;
+                        for _ in 0..5 {
+                            let code = db::new_license_code();
+                            let n = tx.execute(
+                                "INSERT OR IGNORE INTO licenses(code,created,days,expires_at,quota_mb,note,revoked) VALUES(?1,?2,?3,NULL,?4,'Vom Admin vergeben',0)",
+                                params![code, t, b.days, b.quota_mb],
+                            )?;
+                            if n == 1 {
+                                made = Some(code);
+                                break;
+                            }
+                        }
+                        let code = made.ok_or_else(|| ApiError::internal("Kein freier Lizenzcode gefunden"))?;
+                        let l = db::license_by_code(&tx, &code)?.ok_or_else(|| ApiError::internal("Lizenz fehlt"))?;
+                        assign_license(&tx, &l, &id, t)?;
+                    }
+                }
+            }
+            let u = db::user_by_id(&tx, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
+            let v = user_json(&tx, &u)?;
+            tx.commit()?;
+            Ok(v)
         })
         .await?;
     Ok(Json(v))

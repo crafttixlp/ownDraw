@@ -126,6 +126,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/invites/{token}/join", post(invites::join))
         .route("/admin/users", get(admin::users))
         .route("/admin/users/{id}", patch(admin::patch_user).delete(admin::delete_user))
+        .route("/admin/users/{id}/license", post(admin::user_license))
         .route("/admin/licenses", get(admin::licenses).post(admin::create_licenses))
         .route("/admin/licenses/{code}", patch(admin::patch_license))
         .route("/admin/stats", get(stats::get))

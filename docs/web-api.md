@@ -83,7 +83,7 @@ in der DB nur sein SHA-256). Verwalten nur Besitzer mit gültiger Lizenz, höchs
 | Methode | Pfad | |
 |---|---|---|
 | GET | `/api/boards/{id}/invites` | → `[Invite]` (ohne Token) |
-| POST | `/api/boards/{id}/invites` | `{role:"edit"\|"view", days}` → `Invite` mit `token` (nur hier). `days` fehlt → 7, `null` → unbefristet, sonst 1–365 |
+| POST | `/api/boards/{id}/invites` | `{role:"edit"\|"view", days}` oder `{role, hours}` → `Invite` mit `token` (nur hier). `days` fehlt → 7, `null` → unbefristet, sonst 1–365; `hours` 1–8760 (hat Vorrang) |
 | DELETE | `/api/boards/{id}/invites/{invite_id}` | → `[Invite]` (Link ungültig; schon Beigetretene bleiben Mitglied) |
 | GET | `/api/invites/{token}` | ohne Anmeldung → `{board:{id,name}, owner:{name}, role}`; 404 wenn ungültig/abgelaufen |
 | POST | `/api/invites/{token}/join` | `{name}` → `{me: Me, board: BoardInfo}`. Angemeldet: wird Mitglied (eine `edit`-Rolle wird nicht herabgestuft). Nicht angemeldet: neuer Gast, `name` 1–24 Zeichen (ohne `#`), ID `<name>#XXXX` (eindeutig), setzt Cookie (30 Tage). 403 `license_required`, wenn die Lizenz der Besitzerin/des Besitzers abgelaufen ist |

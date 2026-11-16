@@ -8,6 +8,7 @@
 //!   Eigene Operationen kommen als Bestätigung zurück (`cid`) und werden nicht erneut angewendet (kein Echo).
 //! - Bilder: vor dem Senden per HTTP hochladen; fremde Bilder werden nachgeladen (bei 404 mit Wiederholung).
 //! - Präsenz: Teilnehmerliste mit Farben, fremde Mauszeiger mit Namen (eigener Zeiger höchstens alle 60 ms).
+//! - Laserpointer: eigene Spur als `laser` (höchstens alle 40 ms), fremde Spuren verblassen nach 1,5 s.
 
 use super::{toolbar, Editor, Lay, M};
 use crate::app::Shared;
@@ -145,6 +146,11 @@ impl Live {
         }
     }
 
+    /// Schreibrecht (Rolle „Bearbeiten“/Eigentümer).
+    pub fn can_write(&self) -> bool {
+        self.can_write
+    }
+
     pub fn is_live(&self) -> bool {
         self.conn == Conn::Live
     }
@@ -242,6 +248,12 @@ impl Live {
             self.push_local(ed, sh);
         }
         self.send_cursor(ed, now);
+        // Laserpointer (auch mit Leserecht; der Server reicht ihn nur weiter)
+        for tr in ed.ext.take_laser_out(now) {
+            for ch in tr.chunks(oc::LaserMsg::MAX_PTS) {
+                self.send(oc::LaserMsg { peer: None, color: ed.ext.laser.color, pts: ch.to_vec() }.to_json());
+            }
+        }
         // verblassende fremde Zeiger
         if self.peers.iter().any(|p| p.cursor.is_some()) {
             ctx.request_repaint_after(std::time::Duration::from_secs(1));
@@ -347,6 +359,13 @@ impl Live {
                     let f = |k: &str| v.get(k).and_then(Value::as_f64).map(|x| x as f32);
                     p.cursor = f("x").zip(f("y"));
                     p.seen = now;
+                }
+            }
+            "laser" => {
+                if let Some(m) = oc::LaserMsg::from_json(&v) {
+                    if m.peer != self.me || m.peer.is_none() {
+                        ed.ext.laser_in(m.peer.unwrap_or(0), m.color, &m.pts, now);
+                    }
                 }
             }
             "access" => {

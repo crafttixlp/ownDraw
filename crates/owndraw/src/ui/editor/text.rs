@@ -4,7 +4,7 @@
 
 use super::Editor;
 use crate::style::{self, c};
-use egui::{CornerRadius, Key, Stroke, Vec2};
+use egui::{CornerRadius, Stroke, Vec2};
 use owndraw_core::{board, item};
 use std::sync::Arc;
 
@@ -20,6 +20,8 @@ pub struct TextEdState {
     pub bg: u32,
     /// Danebengetippt: im nächsten Frame übernehmen.
     pub commit: bool,
+    /// Tabellenzelle (id, Zeile, Spalte) statt Text/Notiz (table.rs).
+    pub cell: Option<(u64, usize, usize)>,
 }
 
 /// Zeilenhöhe wie beim Zeichnen auf dem Blatt (TextLayout, Faktor 1,15).
@@ -31,7 +33,7 @@ impl Editor {
         let b = &self.board;
         let r = b.new_note_rect(wx, wy, note);
         let bg = if note { board::note_bg(b.color) } else { 0 };
-        self.text = Some(TextEdState { r, note, edit: None, text: String::new(), focus: true, color: b.color, bg, commit: false });
+        self.text = Some(TextEdState { r, note, edit: None, text: String::new(), focus: true, color: b.color, bg, commit: false, cell: None });
     }
 
     /// Abnahme-Hilfe (demo.rs): neuer Text mit Inhalt.
@@ -52,12 +54,12 @@ impl Editor {
     pub fn edit_note(&mut self, id: u64) {
         let Some(it) = self.board.items.iter().find(|it| it.id == id) else { return };
         let Some(n) = it.as_note() else { return };
-        let st = TextEdState { r: (n.x, n.y, n.size, n.w, n.mh), note: n.bg != 0, edit: Some(id), text: n.text.clone(), focus: true, color: it.color, bg: n.bg, commit: false };
+        let st = TextEdState { r: (n.x, n.y, n.size, n.w, n.mh), note: n.bg != 0, edit: Some(id), text: n.text.clone(), focus: true, color: it.color, bg: n.bg, commit: false, cell: None };
         self.text = Some(st);
         self.board.set_hidden(Some(id));
     }
 
-    pub(super) fn text_editor(&mut self, ctx: &egui::Context) {
+    pub(super) fn text_editor(&mut self, ctx: &egui::Context, keymap: &crate::settings::Settings) {
         let Some(te) = self.text.as_mut() else { return };
         let b = &self.board;
         let canvas = self.canvas;
@@ -67,17 +69,21 @@ impl Editor {
         let pad = if te.note { size * 0.7 * sc } else { 0.0 };
         let pos = canvas.min + Vec2::new(x * sc + b.tx, y * sc + b.ty);
         let fg = if te.note { 0xFF1B1B1Fu32 } else { item::ink(te.color, b.dark) };
-        let inner_w = if te.note {
+        let cell = te.cell.is_some();
+        let paper = b.bg_color();
+        let inner_w = if cell {
+            (w * sc).max(fpx)
+        } else if te.note {
             ((w * sc) - 2.0 * pad).max(fpx)
         } else {
             // freier Text wächst mit der längsten Zeile (wie auf dem Blatt)
             let mw = te.text.split('\n').map(|l| owndraw_core::text::measure(l, fpx)).fold(0.0f32, f32::max);
             mw.max(fpx * 4.0) + fpx
         };
-        let min_h = if te.note { mh * sc } else { 0.0 };
-        let mut done = te.commit || ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::Enter) || i.consume_key(egui::Modifiers::CTRL, Key::Enter) || i.consume_key(egui::Modifiers::NONE, Key::Escape));
+        let min_h = if te.note || cell { mh * sc } else { 0.0 };
+        let mut done = te.commit || ctx.input_mut(|i| super::keys::consume(i, keymap, "text_done"));
         let pal = style::pal();
-        let hint = if te.note { "Notiz schreiben …" } else { "Text schreiben …" };
+        let hint = if cell { "Zelle …" } else if te.note { "Notiz schreiben …" } else { "Text schreiben …" };
         let hint_col = if te.note { 0x801F2025u32 } else { (pal.dim & 0x00FF_FFFF) | 0x9900_0000 };
         let accent = pal.accent;
         let (note, bg) = (te.note, te.bg);
@@ -95,6 +101,9 @@ impl Editor {
                     .corner_radius(CornerRadius::same((size * 0.4 * sc).clamp(0.0, 255.0) as u8))
                     .inner_margin(egui::Margin::same(pad.round().clamp(0.0, 127.0) as i8))
                     .shadow(egui::Shadow { offset: [0, 3], blur: 10, spread: 0, color: egui::Color32::from_black_alpha(60) })
+            } else if cell {
+                // Zelle: Blatt-Hintergrund deckt den gezeichneten Zelltext ab
+                egui::Frame::new().fill(c(paper)).stroke(Stroke::new(1.0, c((accent & 0x00FF_FFFF) | 0x8800_0000)))
             } else {
                 // dezenter Rahmen, damit man sieht, wo geschrieben wird
                 egui::Frame::new().stroke(Stroke::new(1.0, c((accent & 0x00FF_FFFF) | 0x8800_0000))).outer_margin(egui::Margin::same(0)).inner_margin(egui::Margin::ZERO)
@@ -137,6 +146,11 @@ impl Editor {
         self.board.set_hidden(None);
         let t = te.text.trim_end();
         let t = t.trim_start_matches('\n');
+        if let Some((id, r, cc)) = te.cell {
+            self.board.set_cell_text(id, r, cc, t);
+            self.board.invalidate();
+            return;
+        }
         match te.edit {
             Some(id) if t.trim().is_empty() => self.board.delete_item(id),
             Some(id) => {

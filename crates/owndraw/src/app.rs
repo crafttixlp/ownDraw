@@ -602,7 +602,7 @@ impl App {
             (Screen::Editor, Some(e)) => e.ui(ui, &mut self.sh),
             (Screen::Settings, _) => {
                 let sh = &mut self.sh;
-                match crate::ui::settings::show(ui, &mut sh.settings, &*sh.platform) {
+                match crate::ui::settings::show(ui, &mut sh.settings, &*sh.platform, &mut sh.icons) {
                     SettingsAction::Back => {
                         self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
                     }
@@ -615,7 +615,7 @@ impl App {
                 }
             }
             (Screen::Tutorial, _) => {
-                if crate::ui::tutorial::show(ui, &self.sh.env, &mut self.tutorial) {
+                if crate::ui::tutorial::show(ui, &self.sh.env, &mut self.tutorial, &self.sh.settings) {
                     self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
                 }
             }

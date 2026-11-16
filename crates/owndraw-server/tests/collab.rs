@@ -262,6 +262,10 @@ async fn view_darf_nicht_schreiben() {
     send(&mut wv, json!({"t": "ops", "cid": 1, "ops": ops})).await;
     let n = recv_t(&mut wv, "nack").await;
     assert_eq!(n["code"], "forbidden");
+    // Laserpointer darf auch view: geht an die anderen (mit Absender), nie gespeichert
+    send(&mut wv, json!({"t": "laser", "c": -50373, "p": [1.0, 2.0, 3.5, 4.0]})).await;
+    let l = recv_t(&mut wa, "laser").await;
+    assert_eq!((l["p"].clone(), l["c"].clone(), l["peer"].clone()), (json!([1.0, 2.0, 3.5, 4.0]), json!(-50373), h["you"]["peer"].clone()));
     // Besitzer schreibt: view empfängt
     let (_, ops) = upsert(2.0);
     send(&mut wa, json!({"t": "ops", "cid": 1, "ops": ops})).await;

@@ -116,6 +116,7 @@ Client → Server:
 |---|---|---|
 | `ops` | `cid` (beliebig, vom Client), `ops: [Op]` | Änderungen; Antwort an alle (auch Absender) als `ops`, bei Fehler `nack` nur an den Absender |
 | `cursor` | `x`, `y` (Board-Koordinaten, `null` = ausblenden) | wird an die anderen weitergereicht |
+| `laser` | `c` (Farbe ARGB als Zahl), `p: [x0,y0,x1,y1,…]` (Board-Koordinaten, höchstens 256 Punkte, eine zusammenhängende Spur) | Laserpointer, wird an die anderen weitergereicht (nie gespeichert, kein Undo, auch mit Leserecht erlaubt) |
 | `ping` | – | → `pong` |
 
 Server → Client:
@@ -127,6 +128,7 @@ Server → Client:
 | `nack` | `cid`, `code` (`forbidden`, `license_required`, `invalid`), `message` |
 | `join` / `leave` | `peer` (Objekt bzw. Nummer) |
 | `cursor` | `peer`, `x`, `y` |
+| `laser` | `peer`, `c`, `p` (wie oben); Spur verblasst beim Empfänger nach 1,5 s |
 | `access` | `can_write` (z. B. Lizenz abgelaufen oder wieder gültig) |
 | `saved` | `version` (Board wurde gespeichert) |
 | `error` | `code`, `message`; danach ggf. Schließen mit Code `4000`, Grund `not_found` (Board gelöscht), `role_changed`, `removed` |

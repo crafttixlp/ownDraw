@@ -1,5 +1,5 @@
 {
-  "_hinweis": "Zentrale Quelle der Anleitung (Startseite → Anleitung, Editor-Menü → Anleitung & Tipps, F1, /tutorial). Jedes neue Editor-Feature MUSS hier eingetragen werden. Feld covers: Kennungen, die der Test tutorial_deckt_editor_ab mit dem Code abgleicht (tool:, key:, menu:, setting:); extra: für Funktionen ohne prüfbares Gegenstück. Siehe CONTRIBUTING.md.",
+  "_hinweis": "Zentrale Quelle der Anleitung (Startseite → Anleitung, Editor-Menü → Anleitung & Tipps, F1, /tutorial). Jedes neue Editor-Feature MUSS hier eingetragen werden. Feld covers: Kennungen, die der Test tutorial_deckt_editor_ab mit dem Code abgleicht (tool:, action:, menu:, setting:); Feld action: Aktionen, deren aktuelle Belegung die Seite anzeigt; extra: für Funktionen ohne prüfbares Gegenstück. Siehe CONTRIBUTING.md.",
   "categories": [
     {
       "id": "start",
@@ -24,15 +24,15 @@
           "id": "start-speichern",
           "title": "Speichern",
           "text": "OwnDraw speichert automatisch, du musst nichts tun. Mit Strg+S speicherst du sofort. In der Web-App ohne Server-Board lädt Strg+S das Board als .owndraw-Datei herunter.",
-          "keys": ["Strg+S"],
-          "covers": ["key:S", "extra:autosave"]
+          "action": ["save"],
+          "covers": ["action:save", "extra:autosave"]
         },
         {
           "id": "start-anleitung",
           "title": "Diese Anleitung öffnen",
           "text": "Die Anleitung erreichst du jederzeit: auf der Startseite über „Anleitung“, im Editor über „⋯“ → „Anleitung & Tipps“ oder mit F1. In der Web-App führt auch die Adresse /tutorial direkt hierher.",
-          "keys": ["F1"],
-          "covers": ["key:F1", "menu:Anleitung & Tipps"]
+          "action": ["help"],
+          "covers": ["action:help", "menu:Anleitung & Tipps"]
         },
         {
           "id": "start-schliessen",
@@ -52,61 +52,172 @@
           "title": "Stift",
           "text": "Zeichnet freie Linien. Mit einem druckempfindlichen Stift wird die Linie je nach Druck dicker oder dünner.",
           "how": ["Optionen: 8 Farben, 4 Breiten, Formerkennung und Pfeilstil.", "„Mit dem Finger zeichnen“ (Touch): Ist es aus, verschiebt ein Finger die Ansicht und nur der Stift zeichnet."],
-          "keys": ["P"],
-          "covers": ["tool:Stift", "key:P"]
+          "action": ["tool.pen"],
+          "covers": ["tool:Stift", "action:tool.pen"]
         },
         {
           "id": "tool-marker",
           "title": "Marker",
           "text": "Breiter, halbdurchsichtiger Textmarker zum Hervorheben. Er hat dieselben Optionen wie der Stift.",
-          "keys": ["M"],
-          "covers": ["tool:Marker", "key:M"]
+          "action": ["tool.marker"],
+          "covers": ["tool:Marker", "action:tool.marker"]
         },
         {
           "id": "tool-radierer",
           "title": "Radierer",
           "text": "Entfernt Gezeichnetes. Unter „Modus“ wählst du zwischen zwei Arten.",
           "how": ["„Ganze Objekte“: Alles, was du überstreichst, wird komplett gelöscht.", "„Nur überstrichene Stellen“: radiert nur dort, wo du entlangfährst. Die Größe ist einstellbar.", "Die Radierseite oder die Seitentaste eines Stifts radiert immer, egal welches Werkzeug aktiv ist."],
-          "keys": ["E"],
-          "covers": ["tool:Radierer", "key:E"]
+          "action": ["tool.eraser"],
+          "covers": ["tool:Radierer", "action:tool.eraser"]
         },
         {
           "id": "tool-auswahl",
           "title": "Auswahl",
           "text": "Wählt Objekte aus, um sie zu verschieben, zu drehen, zu skalieren oder zu bearbeiten. Ein Tipp auf ein Objekt wählt es aus. Ziehen auf freier Fläche zieht ein Lasso oder ein Rechteck auf.",
           "how": ["Modus „Lasso“ oder „Rechteck“ in den Optionen.", "Mit der mittleren Maustaste wählst du ein Objekt aus jedem Werkzeug heraus aus (auch innerhalb leerer Formen). Danach geht es zurück zum vorigen Werkzeug."],
-          "keys": ["S"],
-          "covers": ["tool:Auswahl"]
+          "action": ["tool.select"],
+          "covers": ["tool:Auswahl", "action:tool.select"]
         },
         {
           "id": "tool-form",
           "title": "Form",
           "text": "Zeichnet saubere Formen durch Ziehen von Ecke zu Ecke: Rechteck, Ellipse, Linie, Pfeil und Maschinenbau-Pfeil (15°, gefüllte Spitze).",
           "how": ["Farbe, Linienbreite und beim Pfeil der Pfeilstil sind einstellbar.", "Das Symbol in der Leiste zeigt die gewählte Form."],
-          "keys": ["R"],
-          "covers": ["tool:Form", "key:R"]
+          "action": ["tool.shape"],
+          "covers": ["tool:Form", "action:tool.shape"]
         },
         {
           "id": "tool-text",
           "title": "Text und Haftnotiz",
           "text": "Tippe auf eine freie Stelle und schreibe direkt auf dem Blatt. Unter „Art“ wählst du „Text“ (freier Text) oder „Haftnotiz“ (farbiger Zettel).",
           "how": ["T wählt Text, N wählt Haftnotiz.", "Ein Tipp auf vorhandenen Text wählt ihn aus, ein zweiter Tipp bearbeitet ihn."],
-          "keys": ["T", "N"],
-          "covers": ["tool:Text", "key:T", "key:N"]
+          "action": ["tool.text", "tool.note"],
+          "covers": ["tool:Text", "tool:Haftnotiz", "action:tool.text", "action:tool.note"]
         },
         {
           "id": "tool-bild",
           "title": "Bild",
           "text": "Fügt ein Bild ein (PNG, JPG, WebP, GIF, BMP). Große Bilder werden auf höchstens 2048 Pixel verkleinert.",
           "how": ["Bilder lassen sich auch per Drag & Drop oder aus der Zwischenablage einfügen."],
-          "keys": ["I"],
-          "covers": ["tool:Bild", "key:I"]
+          "action": ["tool.image"],
+          "covers": ["tool:Bild", "action:tool.image"]
+        },
+        {
+          "id": "tool-fuellen",
+          "title": "Füllen",
+          "text": "Tippe auf eine geschlossene Form (Rechteck, Ellipse, Dreieck, Stern, …), um sie mit der aktuellen Farbe zu füllen.",
+          "how": ["Unter „Modus“ wählst du „Füllung entfernen“: Ein Tipp auf eine gefüllte Form nimmt die Füllung wieder weg.", "Bei ausgewählten Formen setzt die Auswahlleiste die Füllfarbe (erster Punkt: keine Füllung)."],
+          "action": ["tool.fill"],
+          "covers": ["tool:Füllen", "action:tool.fill", "extra:fuellung-entfernen", "extra:auswahl-fuellfarbe"]
+        },
+        {
+          "id": "tool-pipette",
+          "title": "Pipette",
+          "text": "Tippe auf eine Stelle des Blatts: Ihre Farbe wird zur aktuellen Farbe von Stift, Marker und Form. Danach geht es zurück zum vorherigen Werkzeug.",
+          "how": ["Bei Bildern zählt der Farbwert des angetippten Pixels, bei gefüllten Formen die Füllfarbe, sonst die Linienfarbe."],
+          "action": ["tool.picker"],
+          "covers": ["tool:Pipette", "action:tool.picker"]
+        },
+        {
+          "id": "tool-masslinie",
+          "title": "Maßlinie",
+          "text": "Zieht eine Linie mit Maßpfeilen an beiden Enden; die Länge in Millimetern steht in der Mitte.",
+          "how": ["Das Werkzeug ist das Form-Werkzeug mit der Form „Maßlinie“, die du auch im Form-Popover wählen kannst."],
+          "action": ["tool.dim"],
+          "covers": ["tool:Maßlinie", "action:tool.dim", "extra:form-masslinie"]
+        },
+        {
+          "id": "tool-stempel",
+          "title": "Stempel",
+          "text": "Setzt mit einem Tipp einen Haken, ein Kreuz, einen Stern, ein Fragezeichen oder ein Ausrufezeichen in der aktuellen Farbe.",
+          "how": ["In den Optionen wählst du den Stempel, die Größe (klein, mittel, groß) und die Farbe.", "Ein Stempel ist eine Gruppe von Linien und lässt sich wie jedes Objekt auswählen und verschieben."],
+          "action": ["tool.stamp"],
+          "covers": ["tool:Stempel", "action:tool.stamp", "extra:stempel-optionen"]
+        },
+        {
+          "id": "tool-formen-neu",
+          "title": "Weitere Formen",
+          "text": "Das Form-Werkzeug zeichnet auch Dreieck, Raute, Stern, Sechseck, Sprechblase, Bogen und Maßlinie.",
+          "how": ["Option „Gefüllt“ füllt neue geschlossene Formen; darunter wählst du die Füllfarbe."],
+          "covers": ["extra:neue-formen", "extra:form-gefuellt"]
+        },
+        {
+          "id": "tool-stiftarten",
+          "title": "Stiftarten",
+          "text": "In den Stift-Optionen wählst du zwischen Normal, Füller (Breite folgt der Strichrichtung), Bleistift (rau), gestrichelt und gepunktet. OwnDraw merkt sich die Wahl.",
+          "how": ["Bei ausgewählten Strichen ändert die Auswahlleiste die Stiftart nachträglich."],
+          "covers": ["extra:stiftarten", "extra:auswahl-stiftart"]
+        },
+        {
+          "id": "tool-verbinder",
+          "title": "Verbinder",
+          "text": "Zeichnet eine Linie oder einen Pfeil, der an Formen, Texten und Bildern andockt. Verschiebst du ein Objekt, gehen angedockte Verbinder mit.",
+          "how": ["Beginne und ende das Ziehen auf einem Objekt. Das Ziel, an dem angedockt wird, ist hervorgehoben.", "Im Popover wählst du Pfeil, Linie oder Doppelpfeil.", "Mit der Auswahl ziehst du ein Ende auf ein anderes Objekt. „Lösen“ in der Auswahlleiste hängt den Verbinder ab.", "Neues Werkzeug: in den Einstellungen unter „Werkzeuge“ einschalten."],
+          "action": ["tool.connector"],
+          "covers": ["tool:Verbinder", "action:tool.connector", "extra:verbinder-loesen"]
+        },
+        {
+          "id": "tool-tabelle",
+          "title": "Tabelle",
+          "text": "Setzt mit einem Tippen eine Tabelle. Zeilen und Spalten stellst du im Popover ein (Standard 3 × 3).",
+          "how": ["Tippe mit der Auswahl in eine Zelle der ausgewählten Tabelle (oder doppelt in die Tabelle), um sie direkt zu beschriften. Die Zeile wächst mit dem Text.", "In der Auswahlleiste fügst du an der aktuellen Zelle Zeilen und Spalten hinzu oder entfernst sie.", "Neues Werkzeug: in den Einstellungen unter „Werkzeuge“ einschalten."],
+          "action": ["tool.table"],
+          "covers": ["tool:Tabelle", "action:tool.table", "extra:tabelle-zellen"]
+        },
+        {
+          "id": "tool-kommentar",
+          "title": "Kommentar",
+          "text": "Tippen setzt eine Stecknadel und öffnet ein kleines Fenster für deinen Kommentar. Andere können antworten; Kommentare laufen bei der Live-Zusammenarbeit mit und erscheinen nicht im Export.",
+          "how": ["Ein Tipp auf eine Stecknadel öffnet den Kommentar mit jedem Werkzeug.", "Als Autor steht dein Kontoname, ohne Anmeldung „Ich“.", "Mit dem Recht „Nur ansehen“ kannst du Kommentare lesen, aber nicht schreiben.", "Neues Werkzeug: in den Einstellungen unter „Werkzeuge“ einschalten."],
+          "action": ["tool.pin"],
+          "covers": ["tool:Kommentar", "action:tool.pin", "extra:kommentar-antworten"]
+        },
+        {
+          "id": "tool-formel",
+          "title": "Formel",
+          "text": "Setzt Mathe-Formeln in LaTeX-Schreibweise. Tippe aufs Blatt, schreibe die Formel und sieh sie live in der Vorschau. Fehlerhafte Stellen erscheinen rot. Einschalten unter Einstellungen → Werkzeuge (Extras).",
+          "how": [
+            "Schnellknöpfe fügen Bruch, Wurzel, Hoch-/Tiefstellung, Summe, Integral, Klammern, griechische Buchstaben und Zeichen ein; markierter Text wird eingepackt.",
+            "Brüche und Wurzeln: \\frac{a}{b}, \\sqrt{x}, \\sqrt[3]{x}. Hoch/tief: x^2, a_{n+1}.",
+            "Klammern, die mitwachsen: \\left( \\frac{1}{2} \\right). Summe/Integral mit Grenzen: \\sum_{k=1}^{n} k, \\int_0^\\infty e^{-x}\\,dx, \\lim_{x \\to 0}.",
+            "Griechisch und Zeichen: \\alpha \\beta \\pi \\Omega, \\cdot \\times \\pm \\le \\ge \\ne \\approx \\infty \\rightarrow \\Rightarrow \\in.",
+            "Text und Akzente: \\text{Fläche}, \\vec{v}, \\bar{x}, \\hat{y}. Matrizen: \\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix}, auch bmatrix, vmatrix und cases.",
+            "Bearbeiten: mit dem Werkzeug auf die Formel tippen oder eine ausgewählte Formel erneut antippen. Strg+Enter übernimmt, Esc bricht ab, leerer Text löscht die Formel.",
+            "Formeln lassen sich wie Text verschieben, skalieren, drehen und einfärben; PNG/PDF zeigen sie exakt, Xournal++ bekommt Texte und Linien."
+          ],
+          "keys": ["Y"],
+          "action": ["tool.math"],
+          "covers": ["tool:Formel", "action:tool.math"]
         },
         {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",
           "covers": ["extra:farben"]
+        },
+        {
+          "id": "tool-lineal",
+          "title": "Lineal und Geodreieck",
+          "text": "Blendet ein Lineal über dem Blatt ein (nur Ansicht, wird nicht gespeichert). Zeichne mit Stift, Marker oder Linie weiter: Striche, die an einer Kante beginnen, werden schnurgerade entlang der Kante. Das Lineal zeigt den Winkel und beim Zeichnen die Länge in cm (A4-Maßstab).",
+          "how": ["Schalte es unter Einstellungen → Werkzeuge ein. Das Werkzeug blendet das Lineal ein oder aus, du zeichnest danach mit dem vorigen Werkzeug weiter.", "Ein zweiter Tipp auf den Knopf öffnet die Optionen: „Lineal“ oder „Geodreieck“ (90°- und 45°-Kanten, Winkelskala) und „Ausblenden“.", "Verschieben: auf dem Lineal ziehen. Drehen: mit zwei Fingern oder am runden Griff. Der Winkel rastet wie Griffe ein (Einstellungen → Einrasten, Umschalt hält frei)."],
+          "action": ["tool.ruler"],
+          "covers": ["tool:Lineal", "action:tool.ruler", "extra:lineal"]
+        },
+        {
+          "id": "tool-laser",
+          "title": "Laserpointer",
+          "text": "Zeigt mit einer roten Leuchtspur auf etwas. Die Spur verblasst nach 1,5 Sekunden, wird nicht gespeichert und landet nicht im Rückgängig.",
+          "how": ["In der Live-Zusammenarbeit sehen alle anderen deine Spur, auch wenn du das Board nur ansehen darfst."],
+          "action": ["tool.laser"],
+          "covers": ["tool:Laserpointer", "action:tool.laser", "extra:laser-live"]
+        },
+        {
+          "id": "tool-platz",
+          "title": "Platz schaffen",
+          "text": "Zieh an einer Stelle senkrecht nach unten: alles darunter rückt nach unten. Nach oben ziehen entfernt Platz. Eine Linie und eine Markierung zeigen vorher, was sich verschiebt.",
+          "how": ["Im Seitenmodus wirkt es nur auf der Seite, auf der du ziehst. Gesperrte Ebenen bleiben stehen.", "Ein Schritt im Rückgängig."],
+          "action": ["tool.space"],
+          "covers": ["tool:Platz schaffen", "action:tool.space"]
         }
       ]
     },
@@ -146,16 +257,31 @@
           "id": "sel-leiste",
           "title": "Auswahlleiste",
           "text": "Kopieren, Ausschneiden, Einfügen, Duplizieren, um 90° drehen, ganz nach vorne oder hinten, Text bearbeiten und Löschen. Dazu Farbpunkte für die Auswahl sowie Regler für Dicke (Striche, Formen) oder Schriftgröße (Text).",
-          "keys": ["Strg+D", "Entf", "Rücktaste"],
-          "covers": ["key:D", "key:Delete", "key:Backspace"]
+          "action": ["duplicate", "delete"],
+          "covers": ["action:duplicate", "action:delete"]
         },
         {
           "id": "sel-clip",
           "title": "Kopieren und Einfügen",
           "text": "Kopierte Objekte landen als Bild und als OwnDraw-Objekte in der Zwischenablage. So kannst du sie in andere Programme als Bild oder in ein anderes Board als bearbeitbare Objekte einfügen. Auch Bilder und Text aus anderen Programmen lassen sich einfügen.",
           "how": ["Strg+V fügt an der Mausposition ein, der Knopf in der Mitte der Ansicht.", "Rechtsklick oder langes Tippen auf die Fläche öffnet ein Menü mit Kopieren, Ausschneiden und Einfügen."],
-          "keys": ["Strg+C", "Strg+X", "Strg+V"],
-          "covers": ["key:C", "key:X", "key:V"]
+          "action": ["copy", "cut", "paste"],
+          "covers": ["action:copy", "action:cut", "action:paste"]
+        },
+        {
+          "id": "sel-gruppen",
+          "title": "Gruppieren, ausrichten, verteilen",
+          "text": "Mehrere ausgewählte Objekte fasst du zu einer Gruppe zusammen; ein Tipp auf ein Mitglied wählt dann die ganze Gruppe. Ab zwei Objekten richtest du sie links, mittig, rechts, oben, in der Mitte oder unten aus, ab drei verteilst du sie waagerecht oder senkrecht mit gleichen Abständen.",
+          "how": ["Knöpfe in der Auswahlleiste oder Rechtsklick/langes Tippen auf die Auswahl.", "Gruppen zählen beim Ausrichten und Verteilen als ein Objekt."],
+          "action": ["group", "ungroup"],
+          "covers": ["action:group", "action:ungroup", "extra:ausrichten", "extra:verteilen"]
+        },
+        {
+          "id": "sel-zuschneiden",
+          "title": "Bild zuschneiden",
+          "text": "Wähle ein Bild aus und tippe in der Auswahlleiste auf „Zuschneiden“ (oder tippe doppelt auf das Bild). Ziehe die Kanten- und Eckgriffe; der abgeschnittene Teil wird abgedunkelt, den Ausschnitt kannst du verschieben.",
+          "how": ["„Fertig“ (Enter) übernimmt, „Abbrechen“ (Esc) verwirft, „Zurücksetzen“ zeigt wieder das ganze Bild.", "Der Zuschnitt lässt sich jederzeit ändern oder zurücksetzen, das Original bleibt erhalten."],
+          "covers": ["extra:zuschneiden"]
         }
       ]
     },
@@ -168,8 +294,9 @@
           "title": "Eingabe direkt auf dem Blatt",
           "text": "Der Text erscheint dort, wo du getippt hast. Enter beginnt eine neue Zeile. Leerst du einen Text vollständig, wird er gelöscht.",
           "how": ["Fertig: Strg+Enter, Esc oder ein Klick daneben."],
-          "keys": ["Enter", "Strg+Enter", "Esc"],
-          "covers": ["key:Enter", "key:Escape"]
+          "keys": ["Enter"],
+          "action": ["text_done"],
+          "covers": ["action:text_done"]
         }
       ]
     },
@@ -181,23 +308,24 @@
           "id": "view-zoom",
           "title": "Zoomen",
           "text": "Strg+Mausrad zoomt um den Mauszeiger, am Trackpad und am Touchscreen zoomst du mit zwei Fingern. Die Prozentanzeige oben rechts zeigt den Zoom, ein Klick darauf zeigt alles.",
-          "keys": ["+", "=", "−", "Strg+Mausrad"],
-          "covers": ["key:Plus", "key:Equals", "key:Minus"]
+          "keys": ["Strg+Mausrad"],
+          "action": ["zoom_in", "zoom_out"],
+          "covers": ["action:zoom_in", "action:zoom_out"]
         },
         {
           "id": "view-pan",
           "title": "Verschieben",
           "text": "Mausrad verschiebt die Ansicht. Außerdem: Leertaste gedrückt halten und ziehen, mit der mittleren oder rechten Maustaste ziehen oder mit zwei Fingern wischen. Ohne „Mit dem Finger zeichnen“ verschiebt auch ein Finger.",
-          "keys": ["Leertaste + Ziehen"],
-          "covers": ["key:Space"]
+          "action": ["pan"],
+          "covers": ["action:pan"]
         },
         {
           "id": "view-fit",
           "title": "Alles zeigen",
           "text": "Passt die Ansicht so an, dass alles zu sehen ist. Im Seitenmodus wird die Seitenbreite eingepasst.",
           "how": ["„⋯“ → „Alles zeigen“, Taste 0 oder Klick auf die Zoomanzeige."],
-          "keys": ["0"],
-          "covers": ["key:Num0", "menu:Alles zeigen"]
+          "action": ["fit"],
+          "covers": ["action:fit", "menu:Alles zeigen"]
         },
         {
           "id": "view-hintergrund",
@@ -267,8 +395,22 @@
         {
           "id": "bars-werkzeuge",
           "title": "Werkzeuge bearbeiten",
-          "text": "Einstellungen → „Werkzeuge bearbeiten …“: Reihenfolge per Ziehen ändern und Werkzeuge über das Auge ein- oder ausblenden. „Standard“ setzt zurück, „Fertig“ oder Esc beendet.",
+          "text": "Einstellungen → „Leiste anordnen …“: Reihenfolge per Ziehen ändern und Werkzeuge über das Auge ein- oder ausschalten. „Standard“ setzt zurück, „Fertig“ oder Esc beendet. Es ist dieselbe Einstellung wie auf der Seite „Werkzeuge“.",
           "covers": ["setting:Werkzeuge"]
+        },
+        {
+          "id": "einst-werkzeuge",
+          "title": "Werkzeuge ein- und ausschalten",
+          "text": "Einstellungen → „Werkzeuge …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
+          "how": ["Mindestens ein Werkzeug bleibt eingeschaltet.", "Ist „Text“ aus, bekommt die Haftnotiz einen eigenen Knopf.", "„Standard“ schaltet alles auf die Vorgabe zurück."],
+          "covers": ["setting:Werkzeuge", "extra:werkzeuge-seite"]
+        },
+        {
+          "id": "einst-kuerzel",
+          "title": "Tastenkürzel anpassen",
+          "text": "Einstellungen → „Tastenkürzel …“ listet alle Aktionen und Werkzeuge mit ihrer Belegung. Tippe auf ein Kürzel und drücke die neue Taste oder Kombination (mit Strg, Alt oder Umschalt). „+“ fügt ein weiteres Kürzel hinzu.",
+          "how": ["Esc bricht die Aufnahme ab, Entf entfernt das Kürzel.", "Ist die Kombination schon vergeben, zeigt OwnDraw die andere Aktion und fragt, ob sie dort entfernt werden soll.", "„Standard“ setzt eine Zeile zurück, „Alle zurücksetzen …“ alle.", "Mit der Suche findest du eine Aktion nach Name oder Kürzel.", "In der Web-App lassen sich Kürzel des Browsers (z. B. Strg+W, Strg+T, Strg+N, Tab, F5) nicht belegen.", "Die Anleitung zeigt immer deine aktuelle Belegung."],
+          "covers": ["setting:Tastenkürzel", "extra:tastenkuerzel"]
         },
         {
           "id": "bars-pos",
@@ -305,9 +447,9 @@
           "id": "snap-taste",
           "title": "Taste gegen das Einrasten",
           "text": "Solange du die Taste gedrückt hältst, gilt das Gegenteil der Einstellung: Ist Einrasten an, zeichnest du frei, ist es aus, rastet es ein. Wählbar sind Umschalt (Vorgabe), Alt, Strg oder Keine.",
-          "keys": ["Umschalt halten"],
           "only": "Nur mit Tastatur",
-          "covers": ["setting:Taste"]
+          "action": ["snap"],
+          "covers": ["setting:Taste", "action:snap"]
         }
       ]
     },
@@ -319,8 +461,8 @@
           "id": "undo",
           "title": "Rückgängig und Wiederholen",
           "text": "Die Pfeile oben rechts machen Schritte rückgängig oder wiederholen sie. Das gilt auch für Seiten- und Ebenenänderungen.",
-          "keys": ["Strg+Z", "Strg+Y", "Strg+Umschalt+Z"],
-          "covers": ["key:Z", "key:Y"]
+          "action": ["undo", "redo"],
+          "covers": ["action:undo", "action:redo"]
         }
       ]
     },
@@ -333,8 +475,8 @@
           "id": "menu-oeffnen",
           "title": "Menü per Tastatur",
           "text": "Strg+E öffnet das Menü „⋯“. Esc schließt Menüs und Optionen.",
-          "keys": ["Strg+E", "Esc"],
-          "covers": ["key:E"]
+          "action": ["menu", "cancel"],
+          "covers": ["action:menu", "action:cancel"]
         },
         {
           "id": "export-bild",
@@ -438,27 +580,27 @@
     {
       "id": "kuerzel",
       "title": "Tastenkürzel",
-      "intro": "Alle Kürzel auf einen Blick. Am Mac gilt Cmd statt Strg.",
+      "intro": "Alle Kürzel auf einen Blick, mit deiner aktuellen Belegung. Ändern kannst du sie unter Einstellungen → „Tastenkürzel …“. Am Mac gilt Cmd statt Strg.",
       "entries": [
         {
           "id": "keys-werkzeuge",
           "title": "Werkzeuge",
-          "text": "P Stift · M Marker · E Radierer · S Auswahl · R Form · T Text · N Haftnotiz · I Bild",
-          "keys": ["P", "M", "E", "S", "R", "T", "N", "I"],
+          "text": "Stift, Marker, Radierer, Auswahl, Form, Text, Haftnotiz, Bild, Füllen, Pipette, Maßlinie und Stempel (nur eingeschaltete Werkzeuge).",
+          "action": ["tool.pen", "tool.marker", "tool.eraser", "tool.select", "tool.shape", "tool.text", "tool.note", "tool.image", "tool.fill", "tool.picker", "tool.dim", "tool.stamp"],
           "covers": []
         },
         {
           "id": "keys-bearbeiten",
           "title": "Bearbeiten",
-          "text": "Strg+Z rückgängig · Strg+Y oder Strg+Umschalt+Z wiederholen · Strg+C/X/V kopieren, ausschneiden, einfügen · Strg+D duplizieren · Entf löschen · Strg+S speichern",
-          "keys": ["Strg+Z", "Strg+Y", "Strg+C", "Strg+X", "Strg+V", "Strg+D", "Entf", "Strg+S"],
+          "text": "Rückgängig, Wiederholen, Kopieren, Ausschneiden, Einfügen, Duplizieren, Löschen und Speichern.",
+          "action": ["undo", "redo", "copy", "cut", "paste", "duplicate", "delete", "save"],
           "covers": []
         },
         {
           "id": "keys-ansicht",
           "title": "Ansicht und Menüs",
-          "text": "0 alles zeigen · + / − zoomen · Leertaste halten zum Verschieben · Strg+E Menü · Esc schließen · F1 Anleitung",
-          "keys": ["0", "+", "−", "Leertaste", "Strg+E", "Esc", "F1"],
+          "text": "Alles zeigen, Vergrößern, Verkleinern, Verschieben (halten), Menü öffnen, Menüs schließen und diese Anleitung.",
+          "action": ["fit", "zoom_in", "zoom_out", "pan", "menu", "cancel", "help"],
           "covers": []
         }
       ]
@@ -513,6 +655,12 @@
           "id": "tipp-alles",
           "title": "Verloren auf dem Board?",
           "text": "Drück 0 oder klick auf die Prozentanzeige, dann siehst du wieder alles.",
+          "covers": []
+        },
+        {
+          "id": "tipp-lineal",
+          "title": "Lineal geschickt nutzen",
+          "text": "Beginne den Strich knapp neben der Linealkante, dann wird er gerade. Zum Verschieben greif das Lineal in der Mitte. Mit dem Geodreieck zeichnest du rechte Winkel und 45° direkt an den Kanten; die Winkelskala misst Winkel vom Nullpunkt aus.",
           "covers": []
         }
       ]

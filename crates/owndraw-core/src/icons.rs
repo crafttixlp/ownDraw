@@ -42,6 +42,23 @@ pub const DUPLICATE: i32 = 35;
 pub const ERASER_PART: i32 = 36;
 /// Maschinenbau-Pfeil: schmaler gefuellter Pfeil (Form-Menue).
 pub const MACHINE_ARROW: i32 = 37;
+// Lineal, Laserpointer, Platz schaffen (eigener Nummernblock, damit parallel neue Icons nicht kollidieren)
+pub const RULER: i32 = 70;
+pub const LASER: i32 = 71;
+pub const SPACE: i32 = 72;
+// Werkzeuge Verbinder, Tabelle, Kommentar, Zuschnitt, Gruppen (eigener Nummernblock ab 60)
+pub const CONNECTOR: i32 = 60;
+pub const TABLE: i32 = 61;
+pub const PIN: i32 = 62;
+pub const CROP: i32 = 63;
+pub const GROUP: i32 = 64;
+pub const UNGROUP: i32 = 65;
+pub const ALIGN: i32 = 66;
+pub const DISTRIBUTE: i32 = 67;
+/// Icons ab 60 (für Tests).
+pub const BLOCK60: [i32; 8] = [CONNECTOR, TABLE, PIN, CROP, GROUP, UNGROUP, ALIGN, DISTRIBUTE];
+/// Mathe-Formel (Wurzelzeichen mit x). Hohe Nummer, damit parallel ergänzte Icons nicht kollidieren.
+pub const FORMULA: i32 = 80;
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -286,6 +303,77 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             poly(&mut pb, false, &[12.5, 14.75, 17.0, 14.75]);
             poly(&mut pb, false, &[14.5, 9.5, 14.5, 4.0, 4.0, 4.0, 4.0, 14.5, 9.5, 14.5]);
         }
+        RULER => {
+            poly(&mut pb, true, &[2.5, 15.5, 15.5, 2.5, 21.5, 8.5, 8.5, 21.5]);
+            for (i, t) in [0.2f32, 0.35, 0.5, 0.65, 0.8].iter().enumerate() {
+                let (x, y) = (2.5 + 13.0 * t, 15.5 - 13.0 * t);
+                let l = if i % 2 == 0 { 3.2 } else { 1.9 };
+                poly(&mut pb, false, &[x, y, x + l, y + l]);
+            }
+        }
+        LASER => {
+            poly(&mut pb, false, &[4.0, 20.0, 13.0, 11.0]);
+            pb.push_circle(16.5, 7.5, 2.3);
+            for v in [[16.5, 3.0, 16.5, 1.5], [21.0, 7.5, 22.5, 7.5], [19.7, 4.3, 20.8, 3.2], [13.3, 4.3, 12.2, 3.2], [19.7, 10.7, 20.8, 11.8]] {
+                poly(&mut pb, false, &v);
+            }
+        }
+        SPACE => {
+            poly(&mut pb, false, &[3.0, 12.0, 21.0, 12.0]);
+            poly(&mut pb, false, &[12.0, 9.5, 12.0, 3.0]);
+            poly(&mut pb, false, &[8.5, 6.5, 12.0, 3.0, 15.5, 6.5]);
+            poly(&mut pb, false, &[12.0, 14.5, 12.0, 21.0]);
+            poly(&mut pb, false, &[8.5, 17.5, 12.0, 21.0, 15.5, 17.5]);
+        }
+        CONNECTOR => {
+            rect(&mut pb, 3.5, 3.5, 9.5, 9.5);
+            rect(&mut pb, 14.5, 14.5, 20.5, 20.5);
+            poly(&mut pb, false, &[9.5, 6.5, 13.0, 6.5, 13.0, 17.5, 14.5, 17.5]);
+        }
+        TABLE => {
+            rect(&mut pb, 4.0, 5.0, 20.0, 19.0);
+            poly(&mut pb, false, &[4.0, 9.7, 20.0, 9.7]);
+            poly(&mut pb, false, &[4.0, 14.3, 20.0, 14.3]);
+            poly(&mut pb, false, &[9.3, 5.0, 9.3, 19.0]);
+            poly(&mut pb, false, &[14.7, 5.0, 14.7, 19.0]);
+        }
+        PIN => {
+            pb.push_circle(12.0, 8.5, 4.5);
+            poly(&mut pb, false, &[12.0, 13.0, 12.0, 21.0]);
+        }
+        CROP => {
+            poly(&mut pb, false, &[7.0, 3.0, 7.0, 17.0, 21.0, 17.0]);
+            poly(&mut pb, false, &[3.0, 7.0, 17.0, 7.0, 17.0, 21.0]);
+        }
+        GROUP | UNGROUP => {
+            if id == GROUP {
+                p.dash = DASH_SEL;
+                rect(&mut pb, 3.5, 3.5, 20.5, 20.5);
+                flush(c, pb, &p, false);
+                p.dash = None;
+                pb = PathBuilder::new();
+                rect(&mut pb, 7.0, 7.0, 13.0, 13.0);
+                rect(&mut pb, 11.0, 11.0, 17.0, 17.0);
+            } else {
+                rect(&mut pb, 4.0, 4.0, 11.0, 11.0);
+                rect(&mut pb, 13.0, 13.0, 20.0, 20.0);
+            }
+        }
+        ALIGN => {
+            poly(&mut pb, false, &[5.0, 4.0, 5.0, 20.0]);
+            rect(&mut pb, 8.0, 6.5, 19.0, 10.5);
+            rect(&mut pb, 8.0, 13.5, 15.0, 17.5);
+        }
+        DISTRIBUTE => {
+            poly(&mut pb, false, &[3.5, 4.0, 3.5, 20.0]);
+            poly(&mut pb, false, &[20.5, 4.0, 20.5, 20.0]);
+            rect(&mut pb, 9.0, 7.0, 15.0, 17.0);
+        }
+        FORMULA => {
+            poly(&mut pb, false, &[2.5, 13.0, 5.0, 11.5, 8.5, 20.0, 12.5, 4.0, 21.5, 4.0]);
+            poly(&mut pb, false, &[14.0, 9.0, 20.0, 17.0]);
+            poly(&mut pb, false, &[20.0, 9.0, 14.0, 17.0]);
+        }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
             poly(&mut pb, false, &[5.0, 12.0, 19.0, 12.0]);
@@ -313,12 +401,20 @@ mod tests {
 
     #[test]
     fn alle_icons_sichtbar() {
-        for id in 0..=37 {
+        for id in (0..=37).chain(BLOCK60).chain([FORMULA]) {
             for filled in [false, true] {
                 let pm = render(id, 48, 0xFFFFFFFF, filled).expect("pixmap");
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();
                 assert!(n >= 20, "icon {id} filled={filled}: nur {n} Pixel");
             }
+        }
+    }
+
+    #[test]
+    fn lineal_laser_platz_sichtbar() {
+        for id in [RULER, LASER, SPACE] {
+            let pm = render(id, 48, 0xFFFFFFFF, false).expect("pixmap");
+            assert!(pm.pixels().iter().filter(|p| p.alpha() > 0).count() >= 20, "icon {id}");
         }
     }
 

@@ -100,6 +100,13 @@ Beim Start fragt die App `GET /api/me` (gleiche Origin, `credentials: include`, 
   auf der Zeichenfläche. Bei Abbruch verbindet die App automatisch neu (Abstand 1, 2, 4 … bis 30 s) und gleicht dann ab;
   ist keine Live-Verbindung möglich, speichert sie wie oben per `PUT`. Gespeichert wird bei Live-Boards vom Server.
   Rolle „Ansehen“ oder abgelaufene Lizenz der Besitzerin/des Besitzers → nur lesen.
+- **Fehler melden** (ab 4.10.0, nur mit Server): Startseite oben „Fehler melden“ bzw. Board ⋯ → „Fehler melden …“.
+  Der Dialog liegt als HTML über der App (`index.html`, `window.owndrawFehlerMelden`, geöffnet über
+  `platform::web::open_bug_report`): Beschreibung, bis zu 5 Screenshots (Datei wählen, Strg+V, Ziehen und Ablegen;
+  zu große Bilder oder GIF/BMP verkleinert der Browser als JPEG), Häkchen „Technische Angaben mitsenden“ (Version,
+  Browser, Fenstergröße, Pfad ohne `#…`). Solange er offen ist, bekommt die App keine Tasten-, Einfüge- oder
+  Ablege-Ereignisse. Auch Gäste ohne Konto können melden. Desktop, Android und die statische Web-App ohne Server
+  zeigen den Menüpunkt nicht.
 
 ## Grenzen
 

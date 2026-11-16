@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod bugreports;
 pub mod boards;
 pub mod collab;
 pub mod config;
@@ -12,7 +13,7 @@ pub mod notices;
 pub mod state;
 pub mod update;
 
-use axum::extract::{Request, State};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE};
 use axum::http::HeaderValue;
 use axum::middleware::{self, Next};
@@ -83,7 +84,7 @@ async fn admin_page() -> Response {
     h.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     h.insert(
         CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
+        HeaderValue::from_static("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data: 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
     );
     r
 }
@@ -134,6 +135,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/update", get(update::get_state).patch(update::patch_state))
         .route("/admin/update/check", post(update::post_check))
         .route("/admin/update/install", post(update::post_install))
+        .route("/bugreports", post(bugreports::create).layer(DefaultBodyLimit::max(bugreports::MAX_REQUEST_BYTES)))
+        .route("/admin/bugreports", get(bugreports::admin_list))
+        .route("/admin/bugreports/{id}", patch(bugreports::patch).delete(bugreports::delete))
+        .route("/admin/bugreports/{id}/images/{n}", get(bugreports::image))
         .route("/boards/{id}/images/{name}", get(collab::get_image).put(collab::put_image))
         .route("/collab/{board_id}", get(collab::ws))
         .fallback(api_not_found)
@@ -141,7 +146,7 @@ pub fn build_app(state: AppState) -> Router {
         .layer(middleware::from_fn(auth::csrf))
         .with_state(state.clone());
 
-    let body_limit = state.cfg.max_board_bytes as usize + 1024 * 1024;
+    let body_limit = (state.cfg.max_board_bytes as usize + 1024 * 1024).max(bugreports::MAX_REQUEST_BYTES);
     Router::new()
         .nest("/api", api)
         .route("/admin", get(admin_page))

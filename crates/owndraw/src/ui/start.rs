@@ -82,6 +82,9 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     if style::plain_btn(ui, "Einstellungen", h).clicked() {
                         sh.reqs.push(Req::OpenSettings);
                     }
+                    if style::plain_btn(ui, "Anleitung", h).on_hover_text("Alle Funktionen, Tastenkürzel und Tipps").clicked() {
+                        sh.reqs.push(Req::OpenTutorial);
+                    }
                     if super::bug_report_available() && style::plain_btn(ui, "Fehler melden", h).clicked() {
                         super::open_bug_report(sh);
                     }
@@ -390,6 +393,9 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if style::outline_btn(ui, "Einstellungen", h).clicked() {
                         sh.reqs.push(Req::OpenSettings);
+                    }
+                    if style::outline_btn(ui, "Anleitung", h).on_hover_text("Alle Funktionen, Tastenkürzel und Tipps").clicked() {
+                        sh.reqs.push(Req::OpenTutorial);
                     }
                     if super::bug_report_available() && style::outline_btn(ui, "Fehler melden", h).clicked() {
                         super::open_bug_report(sh);

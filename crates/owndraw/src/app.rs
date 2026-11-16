@@ -38,6 +38,8 @@ pub enum Req {
     /// Zurück zum Start (Dokument wird gespeichert).
     Back,
     OpenSettings,
+    /// Anleitung & Tipps öffnen (Startseite, Editor-Menü, F1).
+    OpenTutorial,
     /// Bearbeiten-Modus der Werkzeugleiste beendet (zurück zu den Einstellungen).
     ToolsEdited,
     NewDialog,
@@ -74,6 +76,7 @@ pub enum Screen {
     Start,
     Editor,
     Settings,
+    Tutorial,
 }
 
 /// Dateiname ohne verbotene Zeichen.
@@ -98,6 +101,7 @@ pub struct App {
     back_screen: Screen,
     editor: Option<Editor>,
     start: StartState,
+    tutorial: crate::ui::tutorial::TutorialState,
     recent: Recent,
     pending: HashMap<Tag, (PickPurpose, Option<NewParams>)>,
     /// Importiertes Dokument, das auf die Wahl seines Speicherorts wartet (Tag des Speichern-Dialogs).
@@ -123,10 +127,11 @@ impl App {
         let recent = Recent::load(&platform.config_dir());
         App {
             sh: Shared { platform, settings, icons: Icons::default(), env: Env::new(1000.0, false), now: 0.0, toast: None, dialog: None, reqs: Vec::new() },
-            screen: Screen::Start,
+            screen: if crate::ui::tutorial::requested_by_url() { Screen::Tutorial } else { Screen::Start },
             back_screen: Screen::Start,
             editor: None,
             start: StartState::default(),
+            tutorial: Default::default(),
             recent,
             pending: HashMap::new(),
             pending_docs: HashMap::new(),
@@ -398,6 +403,12 @@ impl App {
                         self.screen = Screen::Settings;
                     }
                 }
+                Req::OpenTutorial => {
+                    if self.screen != Screen::Tutorial {
+                        self.back_screen = self.screen;
+                        self.screen = Screen::Tutorial;
+                    }
+                }
                 Req::ToolsEdited => {
                     if let Some(e) = self.editor.as_mut() {
                         e.st.edit_tools = None;
@@ -567,6 +578,11 @@ impl App {
                     }
                     SettingsAction::EditTools => edit_tools = true,
                     SettingsAction::Changed | SettingsAction::None => {}
+                }
+            }
+            (Screen::Tutorial, _) => {
+                if crate::ui::tutorial::show(ui, &self.sh.env, &mut self.tutorial) {
+                    self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
                 }
             }
             _ => {

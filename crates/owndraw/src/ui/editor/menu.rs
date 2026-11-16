@@ -127,6 +127,10 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         sh.reqs.push(Req::OpenSettings);
         close = true;
     }
+    if style::menu_row(ui, "Anleitung & Tipps", false, h) {
+        sh.reqs.push(Req::OpenTutorial);
+        close = true;
+    }
     if crate::ui::bug_report_available() && style::menu_row(ui, "Fehler melden …", false, h) {
         crate::ui::open_bug_report(sh);
         close = true;

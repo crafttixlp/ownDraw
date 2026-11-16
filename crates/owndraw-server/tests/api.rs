@@ -1320,3 +1320,31 @@ async fn download_seite() {
     assert_eq!(app.get("/download/OwnDraw-9.1.0-x86_64.AppImage", None).await.status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(app.get("/download", Some(&admin)).await.status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn lizenz_loeschen() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let user = app.register("u@example.org").await;
+    let code = app.give_license(&admin, &user, json!(null), 10).await;
+    let bid = app.upload(&user, "b", zip_bytes(1)).await.json()["id"].as_str().unwrap().to_string();
+    let free = app.post("/api/admin/licenses", Some(&admin), json!({"count": 1, "days": 7, "quota_mb": 5})).await.json()[0]["code"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // nur für Admins
+    let r = app.api(Method::DELETE, &format!("/api/admin/licenses/{free}"), Some(&user), None).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    // freie Lizenz direkt weg, danach nicht mehr einlösbar
+    let r = app.api(Method::DELETE, &format!("/api/admin/licenses/{}", free.to_lowercase()), Some(&admin), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(app.post("/api/license/redeem", Some(&user), json!({"code": free})).await.status, StatusCode::NOT_FOUND);
+    // zugewiesene: Rechte weg, Board bleibt
+    assert_eq!(app.api(Method::DELETE, &format!("/api/admin/licenses/{code}"), Some(&admin), None).await.status, StatusCode::OK);
+    assert!(app.get("/api/me", Some(&user)).await.json()["license"].is_null());
+    assert_eq!(app.upload(&user, "c", zip_bytes(1)).await.code(), "license_required");
+    assert_eq!(app.get(&format!("/api/boards/{bid}"), Some(&user)).await.status, StatusCode::OK);
+    assert!(app.get("/api/admin/licenses", Some(&admin)).await.json().as_array().unwrap().is_empty());
+    assert_eq!(app.api(Method::DELETE, &format!("/api/admin/licenses/{code}"), Some(&admin), None).await.status, StatusCode::NOT_FOUND);
+}

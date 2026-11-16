@@ -134,7 +134,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/users/{id}", patch(admin::patch_user).delete(admin::delete_user))
         .route("/admin/users/{id}/license", post(admin::user_license))
         .route("/admin/licenses", get(admin::licenses).post(admin::create_licenses))
-        .route("/admin/licenses/{code}", patch(admin::patch_license))
+        .route("/admin/licenses/{code}", patch(admin::patch_license).delete(admin::delete_license))
         .route("/admin/stats", get(stats::get))
         .route("/notices", get(notices::public_list))
         .route("/maintenance", get(notices::public_state))

@@ -610,7 +610,8 @@ async function loadLicenses() {
         h("button", { class: "small", onclick: (ev) => copy(l.code, ev.currentTarget) }, "Kopieren"),
         h("button", { class: "small", onclick: () => editExpiry(l) }, "Ablauf ändern"),
         !l.redeemed_by && !l.revoked && h("button", { class: "small", onclick: () => assignLicense(l) }, "Nutzer zuweisen"),
-        h("button", { class: "small " + (l.revoked ? "" : "danger"), onclick: () => revoke(l) }, l.revoked ? "Aktivieren" : "Deaktivieren")));
+        h("button", { class: "small " + (l.revoked ? "" : "danger"), onclick: () => revoke(l) }, l.revoked ? "Aktivieren" : "Deaktivieren"),
+        h("button", { class: "small danger", onclick: () => deleteLicense(l) }, "Löschen")));
   }));
 }
 $("lunlimited").addEventListener("change", () => { $("ldays").disabled = $("lunlimited").checked; });
@@ -629,6 +630,12 @@ $("licForm").addEventListener("submit", async (ev) => {
     loadLicenses();
   } catch (e) { fail(e); }
 });
+async function deleteLicense(l) {
+  const who = l.redeemed_by ? " Sie gehört " + l.redeemed_by.email + ": die Lizenz wird deaktiviert, die Lizenzrechte fallen sofort weg, die Boards bleiben erhalten." : "";
+  const ok = await confirmDialog("Lizenz löschen?", "Der Code " + l.code + " wird endgültig gelöscht und kann nicht mehr eingelöst werden." + who, "Endgültig löschen");
+  if (!ok) return;
+  try { await api("DELETE", "/api/admin/licenses/" + encodeURIComponent(l.code)); flash("Lizenz gelöscht."); loadLicenses(); } catch (e) { fail(e); }
+}
 async function revoke(l) {
   try { await api("PATCH", "/api/admin/licenses/" + encodeURIComponent(l.code), { revoked: !l.revoked }); loadLicenses(); } catch (e) { fail(e); }
 }

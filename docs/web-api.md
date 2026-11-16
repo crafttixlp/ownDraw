@@ -162,6 +162,7 @@ Ein TOTP-Code gilt nur einmal (Fenster ±1 Schritt à 30 s). Notfall-Reset: `own
 | GET | `/api/admin/licenses` | → `[License]` |
 | POST | `/api/admin/licenses` | `{count, days:null\|n, quota_mb, note}` → `[License]` (neu erzeugte Codes) |
 | PATCH | `/api/admin/licenses/{code}` | `{revoked?, expires_at?, quota_mb?, note?}` |
+| DELETE | `/api/admin/licenses/{code}` | löscht die Lizenz endgültig; eine zugewiesene wird vorher deaktiviert (Nutzer verliert Lizenzrechte, Boards bleiben) |
 | GET | `/api/admin/stats` | → `{time, online_minutes, online:{account,guest}, users:{account,guest}, boards_created:{account,guest,total_ever}, boards_active:{account,guest,list:[{id,name,owner,accounts,guests}]}, stored:{boards,bytes}}` (Definitionen: `server.md` → Übersicht) |
 | GET | `/api/admin/update` | → `{current, latest, available, auto:false, auto_hour:3, last_check, log:[…]}` |
 | POST | `/api/admin/update/check` | sucht neue Version |

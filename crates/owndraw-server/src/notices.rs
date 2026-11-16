@@ -76,7 +76,7 @@ impl Notice {
 }
 
 fn all_notices(c: &Connection) -> rusqlite::Result<Vec<Notice>> {
-    let mut st = c.prepare(&format!("SELECT {COLS} FROM notices ORDER BY created DESC, id"))?;
+    let mut st = c.prepare(&format!("SELECT {COLS} FROM notices ORDER BY position, created DESC, id"))?;
     let v = st.query_map([], Notice::from_row)?.collect();
     v
 }
@@ -106,7 +106,7 @@ fn check_range(s: Option<i64>, e: Option<i64>) -> ApiResult<()> {
     Ok(())
 }
 
-/// Öffentlich: alle gerade sichtbaren Mitteilungen (neueste zuerst). Auch im Wartungsmodus erreichbar.
+/// Öffentlich: alle gerade sichtbaren Mitteilungen (in der vom Admin festgelegten Reihenfolge). Auch im Wartungsmodus erreichbar.
 pub async fn public_list(State(s): State<AppState>) -> ApiResult<Response> {
     let v = s.db.call(|c| {
         let t = now();
@@ -166,10 +166,39 @@ pub async fn create(State(s): State<AppState>, _a: AdminAuth, J(b): J<CreateNoti
         let t = now();
         let id = uuid::Uuid::new_v4().to_string();
         c.execute(
-            "INSERT INTO notices(id,title,body,kind,active,starts_at,ends_at,created,updated) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8)",
+            "INSERT INTO notices(id,title,body,kind,active,starts_at,ends_at,created,updated,position)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8,(SELECT COALESCE(MAX(position),-1)+1 FROM notices))",
             params![id, title, body, b.kind, b.active as i64, b.starts_at, b.ends_at, t],
         )?;
         Ok(notice_by_id(c, &id)?.ok_or_else(|| ApiError::internal("Mitteilung fehlt"))?.admin_json(t))
+    })
+    .await?;
+    Ok(Json(v))
+}
+
+#[derive(Deserialize)]
+pub struct OrderBody {
+    ids: Vec<String>,
+}
+
+/// `PUT /api/admin/notices/order`: neue Reihenfolge (alle IDs, erste = wird zuerst angezeigt).
+pub async fn reorder(State(s): State<AppState>, _a: AdminAuth, J(b): J<OrderBody>) -> ApiResult<Json<Value>> {
+    let v = s.db.call(move |c| {
+        let tx = c.transaction()?;
+        let mut have: Vec<String> = all_notices(&tx)?.into_iter().map(|n| n.id).collect();
+        let mut want = b.ids.clone();
+        have.sort();
+        want.sort();
+        if have != want {
+            return Err(ApiError::conflict("Die Liste der Mitteilungen hat sich geändert. Bitte neu laden."));
+        }
+        for (i, id) in b.ids.iter().enumerate() {
+            tx.execute("UPDATE notices SET position=?2 WHERE id=?1", params![id, i as i64])?;
+        }
+        let t = now();
+        let v = Value::Array(all_notices(&tx)?.iter().map(|n| n.admin_json(t)).collect());
+        tx.commit()?;
+        Ok(v)
     })
     .await?;
     Ok(Json(v))

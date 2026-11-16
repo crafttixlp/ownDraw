@@ -105,6 +105,15 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if !has_guest {
         conn.execute_batch("ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;")?;
     }
+    // 4.19: Reihenfolge der Mitteilungen (bestehende behalten ihre bisherige Anzeige: neueste zuerst).
+    let has_pos = conn.prepare("SELECT 1 FROM pragma_table_info('notices') WHERE name='position'")?.exists([])?;
+    if !has_pos {
+        conn.execute_batch(
+            "ALTER TABLE notices ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+             UPDATE notices SET position=(SELECT COUNT(*) FROM notices n2
+                 WHERE n2.created > notices.created OR (n2.created = notices.created AND n2.id < notices.id));",
+        )?;
+    }
     // 4.16: Zwei-Faktor-Anmeldung für Admins (`totp.rs`).
     let has_totp = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='totp_secret'")?.exists([])?;
     if !has_totp {
@@ -428,6 +437,23 @@ mod tests {
         assert!(clean_guest_name(&"x".repeat(GUEST_NAME_MAX + 1)).is_err());
         // ohne Sitzung: wird aufgeräumt
         assert_eq!(purge_guests(&c, now()).unwrap(), 2);
+    }
+
+    #[test]
+    fn migration_reihenfolge_der_mitteilungen() {
+        // Datenbank von vor 4.19: Tabelle ohne `position`
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE notices (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'info',
+                active INTEGER NOT NULL DEFAULT 1, starts_at INTEGER, ends_at INTEGER, created INTEGER NOT NULL, updated INTEGER NOT NULL);
+             INSERT INTO notices(id,title,body,created,updated) VALUES('a','alt','',100,100),('b','neu','',300,300),('c','mitte','',200,200);",
+        )
+        .unwrap();
+        let db = Db::init(c).unwrap();
+        let c = db.conn.lock().unwrap();
+        let mut st = c.prepare("SELECT title FROM notices ORDER BY position").unwrap();
+        let t: Vec<String> = st.query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap();
+        assert_eq!(t, ["neu", "mitte", "alt"]);
     }
 
     #[test]

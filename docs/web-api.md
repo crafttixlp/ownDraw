@@ -168,8 +168,9 @@ Ein TOTP-Code gilt nur einmal (Fenster ±1 Schritt à 30 s). Notfall-Reset: `own
 | POST | `/api/admin/update/check` | sucht neue Version |
 | POST | `/api/admin/update/install` | installiert neueste Version (Backup, Austausch, Neustart) |
 | PATCH | `/api/admin/update` | `{auto, auto_hour}` |
-| GET | `/api/admin/notices` | → `[Notice]` (alle, neueste zuerst) |
+| GET | `/api/admin/notices` | → `[Notice]` (alle, in Anzeige-Reihenfolge; neue kommen ans Ende) |
 | POST | `/api/admin/notices` | `{title, body, kind:"info"\|"warning", active:true, starts_at?:…\|null, ends_at?:…\|null}` → `Notice` |
+| PUT | `/api/admin/notices/order` | `{ids:[…]}` alle IDs in neuer Reihenfolge (erste wird zuerst gezeigt) → `[Notice]`; 409, wenn die Liste nicht mehr passt |
 | PATCH | `/api/admin/notices/{id}` | Felder wie POST, alle optional (`null` bei `starts_at`/`ends_at` = ohne Grenze) |
 | DELETE | `/api/admin/notices/{id}` | löscht die Mitteilung |
 | GET | `/api/admin/maintenance` | → `{active, enabled, message, until, since, default_message}` |
@@ -191,7 +192,7 @@ Laufzeit `days` beginnt beim Einlösen. Erster Admin: Umgebungsvariablen `OWNDRA
 ## Mitteilungen (ab 4.8.0)
 
 `GET /api/notices` (ohne Anmeldung, auch im Wartungsmodus) → `[{id,title,body,kind,updated}]`: alle aktiven
-Mitteilungen im Zeitraum `starts_at ≤ jetzt < ends_at`, neueste zuerst. Die Web-App (`index.html`) zeigt sie beim Start
+Mitteilungen im Zeitraum `starts_at ≤ jetzt < ends_at`, in der vom Admin festgelegten Reihenfolge. Die Web-App (`index.html`) zeigt sie beim Start
 nacheinander als Dialog, noch bevor der Editor bereit ist. Es wird nichts gemerkt: bei jedem Laden
 der Seite erscheinen alle aktiven Mitteilungen erneut, Wegklicken gilt nur bis zum nächsten Neuladen. Ohne Server (statische Web-App) schlägt der Abruf fehl und es erscheint nichts. Text ist reiner Text
 (Zeilenumbrüche bleiben), kein HTML.

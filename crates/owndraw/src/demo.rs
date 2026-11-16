@@ -3,7 +3,7 @@
 //! - `OWNDRAW_SCREENSHOT=pfad.png`: nach ein paar Frames Bild des Fensters speichern und beenden.
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
-//!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme),
+//!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `light` (helles Theme), `classic` (klassisches Design),
 //!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links).
 
 use crate::app::{App, Screen};
@@ -125,6 +125,9 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     let has = |t: &str| toks.contains(&t);
     if has("light") {
         app.sh.settings.theme = Theme::Light;
+    }
+    if has("classic") {
+        crate::style::set_modern(&mut app.sh.settings, false);
     }
     // Andocken: Werkzeugleiste links, Rückgängig-Leiste rechts, Auswahlleiste rechts (senkrecht)
     if has("dock") {

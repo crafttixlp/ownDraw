@@ -51,9 +51,15 @@ fn row(ui: &mut Ui, env: &Env, label: &str, hint: Option<&str>, controls: impl F
 }
 
 fn section(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
-    ui.add_space(14.0);
-    ui.label(egui::RichText::new(title).size(13.0).strong().color(c(style::pal().dim)));
-    ui.add_space(4.0);
+    if style::modern() {
+        ui.add_space(22.0);
+        ui.label(egui::RichText::new(title).size(15.0).strong().color(c(style::pal().text)));
+        ui.add_space(6.0);
+    } else {
+        ui.add_space(14.0);
+        ui.label(egui::RichText::new(title).size(13.0).strong().color(c(style::pal().dim)));
+        ui.add_space(4.0);
+    }
     style::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
         body(ui);
@@ -132,7 +138,16 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
 
     // ---- Darstellung
     section(ui, "Darstellung", |ui| {
-        row(ui, env, "Design", None, |ui| {
+        row(ui, env, "Design", Some("Modern ist das neue Erscheinungsbild ab 4.9. Klassisch entspricht den früheren Versionen."), |ui| {
+            let m = style::is_modern(settings);
+            if style::chip(ui, "Modern", m, btn).clicked() {
+                style::set_modern(settings, true);
+            }
+            if style::chip(ui, "Klassisch", !m, btn).clicked() {
+                style::set_modern(settings, false);
+            }
+        });
+        row(ui, env, "Farbschema", None, |ui| {
             for (t, l) in [(Theme::System, "System"), (Theme::Light, "Hell"), (Theme::Dark, "Dunkel")] {
                 if style::chip(ui, l, settings.theme == t, btn).clicked() {
                     settings.theme = t;
@@ -153,13 +168,13 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             if egui::color_picker::color_edit_button_srgba(ui, &mut col, egui::color_picker::Alpha::Opaque).changed() {
                 settings.accent = color_to_argb(col);
             }
-            ui.label(egui::RichText::new(if custom { "eigene" } else { "eigene wählen" }).size(12.5).color(c(p.dim)));
+            ui.label(egui::RichText::new(if custom { "Eigene Farbe" } else { "Eigene Farbe wählen" }).size(12.5).color(c(p.dim)));
         });
     });
 
     // ---- UI-Größe
-    section(ui, "UI-Größe", |ui| {
-        row(ui, env, "Größe der Oberfläche", Some("75 bis 200 %, zusätzlich zur Bildschirm-Skalierung des Systems."), |ui| {
+    section(ui, "Größe", |ui| {
+        row(ui, env, "Größe der Oberfläche", Some("75 bis 200 %. Gilt zusätzlich zur Skalierung des Systems."), |ui| {
             let id = Id::unique("ui-scale-tmp");
             let cur = settings.ui_scale;
             let mut v = ui.data(|d| d.get_temp::<f32>(id)).unwrap_or(cur as f32);
@@ -190,17 +205,18 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     });
 
     // ---- Leisten
-    section(ui, "Leisten anpassen", |ui| {
-        row(ui, env, "Abrundung der Kacheln", Some("0 = eckig, 26 = Standard, 40 = ganz rund."), |ui| {
+    section(ui, "Werkzeugleisten", |ui| {
+        row(ui, env, "Ecken der Leisten", Some("0 px ist eckig, 40 px ganz rund."), |ui| {
             let cur = style::tile_radius_setting(settings);
             let mut v = cur;
             ui.spacing_mut().slider_width = if env.ff == FormFactor::Compact { (ui.available_width() - 100.0).clamp(80.0, 300.0) } else { 220.0 };
             ui.add(egui::Slider::new(&mut v, 0.0..=40.0).step_by(1.0).fixed_decimals(0).suffix(" px"));
-            if style::chip(ui, "Standard", cur == style::TILE_RADIUS_DEFAULT, btn).clicked() {
-                v = style::TILE_RADIUS_DEFAULT;
+            let d = style::tile_radius_default(settings);
+            if style::chip(ui, "Standard", cur == d, btn).clicked() {
+                v = d;
             }
             if v != cur {
-                settings.extra.insert("tile_radius".into(), serde_json::json!(v));
+                style::set_tile_radius(settings, v);
             }
         });
         let before = settings.toolbar_pos;
@@ -211,14 +227,14 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             settings.tile_dock.retain(|k, _| !k.starts_with("bar-tools@"));
         }
         row(ui, env, "Optionsleiste", None, |ui| bar_chips(ui, env, &mut settings.options_pos));
-        row(ui, env, "Leisten-Positionen", Some("Leisten (auch Seiten- und Live-Leiste) mit dem Griff ⠿ verschieben; am Rand loslassen dockt an (seitlich senkrecht). Hier alles zurück an den Standardplatz."), |ui| {
-            if ui.add_enabled(!settings.tile_pos.is_empty() || !settings.tile_dock.is_empty(), egui::Button::new("Leisten-Positionen zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
+        row(ui, env, "Positionen", Some("Leisten lassen sich an ihrem Griff verschieben. Am Bildschirmrand losgelassen, docken sie an."), |ui| {
+            if ui.add_enabled(!settings.tile_pos.is_empty() || !settings.tile_dock.is_empty(), egui::Button::new("Positionen zurücksetzen").min_size(egui::vec2(0.0, btn))).clicked() {
                 settings.tile_pos.clear();
                 settings.tile_dock.clear();
             }
         });
-        row(ui, env, "Werkzeuge", Some("Reihenfolge ändern und Werkzeuge aus- oder einblenden."), |ui| {
-            if style::accent_btn(ui, "Werkzeuge bearbeiten…", btn).clicked() {
+        row(ui, env, "Werkzeuge", Some("Reihenfolge ändern, Werkzeuge ein- oder ausblenden."), |ui| {
+            if style::accent_btn(ui, "Werkzeuge bearbeiten …", btn).clicked() {
                 *act = SettingsAction::EditTools;
             }
         });
@@ -228,31 +244,31 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     section(ui, "Einrasten", |ui| {
         let sn = &mut settings.snap;
         let slider_w = if env.ff == FormFactor::Compact { (ui.available_width() - 100.0).clamp(80.0, 300.0) } else { 220.0 };
-        row(ui, env, "Formerkennung", Some("Erkannte Linien und Pfeile auf ein Winkelraster drehen."), |ui| {
+        row(ui, env, "Formerkennung", Some("Erkannte Linien und Pfeile werden auf das Winkelraster gedreht."), |ui| {
             ui.checkbox(&mut sn.lines, "Linien und Pfeile einrasten");
         });
         ui.add_enabled_ui(sn.lines, |ui| {
             row(ui, env, "Winkelraster", None, |ui| snap_steps(ui, btn, &mut sn.line_step));
-            row(ui, env, "Fangbereich", Some("Bis zu dieser Abweichung wird eingerastet. 0 = aus."), |ui| {
+            row(ui, env, "Fangbereich", Some("Bis zu dieser Abweichung rastet die Linie ein. Bei 0° ist es aus."), |ui| {
                 ui.spacing_mut().slider_width = slider_w;
                 ui.add(egui::Slider::new(&mut sn.line_tol, 0..=15).suffix("°"));
             });
         });
-        row(ui, env, "Formen ausrichten", Some("Erkannte Rechtecke und Vielecke waagerecht/senkrecht drehen, wenn sie fast gerade sind."), |ui| {
+        row(ui, env, "Formen ausrichten", Some("Fast gerade Rechtecke und Vielecke werden waagerecht ausgerichtet."), |ui| {
             ui.checkbox(&mut sn.shapes, "Gerade ausrichten");
         });
-        row(ui, env, "Griffe", Some("Pfeil-Endpunkte ziehen und Auswahl drehen rastet auf das Raster ein."), |ui| {
+        row(ui, env, "Griffe", Some("Beim Ziehen von Pfeilenden und beim Drehen einer Auswahl rastet der Winkel ein."), |ui| {
             ui.checkbox(&mut sn.handles, "Griffe einrasten");
         });
         ui.add_enabled_ui(sn.handles, |ui| {
             row(ui, env, "Winkelraster", None, |ui| snap_steps(ui, btn, &mut sn.handle_step));
-            row(ui, env, "Fangbereich", Some("0 = aus."), |ui| {
+            row(ui, env, "Fangbereich", Some("Bei 0° ist es aus."), |ui| {
                 ui.spacing_mut().slider_width = slider_w;
                 ui.add(egui::Slider::new(&mut sn.handle_tol, 0..=15).suffix("°"));
             });
         });
         if !platform.is_touch() {
-            row(ui, env, "Taste", Some("Gedrückt halten: Einrasten aus (oder ein, wenn es oben ausgeschaltet ist)."), |ui| {
+            row(ui, env, "Taste", Some("Solange die Taste gedrückt ist, gilt das Gegenteil der Einstellung oben."), |ui| {
                 for k in crate::settings::SnapKey::ALL {
                     if style::chip(ui, k.label(), sn.key == k, btn).clicked() {
                         sn.key = k;
@@ -272,7 +288,7 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     if crate::platform::WEB {
         section(ui, "Speichern", |ui| {
             row(ui, env, "Gastmodus", None, |ui| {
-                ui.add(egui::Label::new(egui::RichText::new("Boards werden nicht auf einem Server gespeichert, nur vorläufig in diesem Browser. Zum Sichern im Board über ⋯ → „Herunterladen“ (Strg+S).").color(c(p.dim))).wrap());
+                ui.add(egui::Label::new(egui::RichText::new("Boards werden nur in diesem Browser gespeichert. Lade wichtige Boards mit Strg+S herunter.").color(c(p.dim))).wrap());
             });
         });
     } else {
@@ -281,11 +297,11 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             Some(f) => (f.display_name(), false),
             None => (platform.default_dir().display_name(), true),
         };
-        row(ui, env, "Standard-Ort", Some(if is_default { "Vorgabe des Systems" } else { "selbst gewählt" }), |ui| {
+        row(ui, env, "Standard-Ort", Some(if is_default { "Vorgabe des Systems" } else { "Eigener Ordner" }), |ui| {
             ui.label(egui::RichText::new(dir_name).color(c(p.dim)));
         });
         row(ui, env, "", None, |ui| {
-            if style::accent_btn(ui, "Ändern…", btn).clicked() {
+            if style::accent_btn(ui, "Ändern …", btn).clicked() {
                 *act = SettingsAction::PickFolder;
             }
             ui.add_enabled_ui(!is_default, |ui| {
@@ -301,8 +317,8 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
                 }
             }
         });
-        row(ui, env, "Xournal++", Some("Autosave direkt in die .xopp-Datei statt in eine .owndraw daneben."), |ui| {
-            ui.checkbox(&mut settings.xopp_autosave_direct, "Direkt ins .xopp speichern");
+        row(ui, env, "Xournal++", Some("Änderungen direkt in der .xopp-Datei speichern statt in einer .owndraw-Datei daneben."), |ui| {
+            ui.checkbox(&mut settings.xopp_autosave_direct, "Direkt in .xopp speichern");
         });
     });
     }
@@ -318,7 +334,7 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     }
 
     // ---- Über
-    section(ui, "Über", |ui| {
+    section(ui, "Über OwnDraw", |ui| {
         row(ui, env, "OwnDraw", Some(concat!("Version ", env!("CARGO_PKG_VERSION"))), |ui| {
             if style::accent_btn(ui, "Projekt auf GitHub", btn).clicked() {
                 platform.open_url(&format!("https://github.com/{}", settings.update_repo.trim()));
@@ -333,18 +349,18 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     style::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
         if asking {
-            ui.label(egui::RichText::new("Alle Einstellungen auf die Vorgaben zurücksetzen? Deine Boards bleiben unberührt.").strong());
+            ui.label(egui::RichText::new("Alle Einstellungen zurücksetzen? Deine Boards bleiben erhalten.").strong());
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
                 if style::plain_btn(ui, "Abbrechen", btn).clicked() {
                     ui.data_mut(|d| d.insert_temp(cid, false));
                 }
-                if style::danger_btn(ui, "Ja, alles zurücksetzen", btn).clicked() {
+                if style::danger_btn(ui, "Zurücksetzen", btn).clicked() {
                     settings.reset();
                     ui.data_mut(|d| d.insert_temp(cid, false));
                 }
             });
-        } else if style::danger_btn(ui, "Alles zurücksetzen…", btn).clicked() {
+        } else if style::danger_btn(ui, "Alle Einstellungen zurücksetzen …", btn).clicked() {
             ui.data_mut(|d| d.insert_temp(cid, true));
         }
     });

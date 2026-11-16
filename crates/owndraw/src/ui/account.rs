@@ -40,7 +40,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
     let h = sh.env.btn;
     let (server, me) = api::with(|n| (n.server, n.me.clone()));
     ui.add_space(8.0);
-    egui::Frame::new().fill(c(p.accent_soft)).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
+    style::notice().show(ui, |ui| {
         ui.set_width(ui.available_width());
         match (server, me) {
             (Server::Ready, Some(me)) if me.guest => {
@@ -50,13 +50,13 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                         if style::plain_btn(ui, "Gastzugang beenden", h - 8.0).clicked() {
                             st.dlg = Some(Dlg::LeaveGuest);
                         }
-                        if style::accent_btn(ui, "Konto anlegen", h - 8.0).clicked() {
+                        if style::accent_btn(ui, "Konto erstellen", h - 8.0).clicked() {
                             api::with(|n| n.form_error = None);
                             st.dlg = Some(Dlg::Login { register: true, email: String::new(), password: String::new(), name: String::new(), focus: true });
                         }
                     });
                 });
-                ui.label(egui::RichText::new("Als Gast siehst du nur Boards, zu denen du eingeladen wurdest. Mit einem Konto speicherst du eigene Boards.").size(12.5).color(c(p.text)));
+                ui.label(egui::RichText::new("Als Gast siehst du nur Boards, zu denen du eingeladen wurdest. Mit einem Konto kannst du eigene Boards speichern.").size(12.5).color(c(p.text)));
             }
             (Server::Ready, Some(me)) => {
                 let who = if me.name.is_empty() { me.email.clone() } else { format!("{} ({})", me.name, me.email) };
@@ -66,7 +66,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                         if style::plain_btn(ui, "Abmelden", h - 8.0).clicked() {
                             api::logout();
                         }
-                        if !me.licensed() && style::accent_btn(ui, "Lizenzcode einlösen", h - 8.0).clicked() {
+                        if !me.licensed() && style::accent_btn(ui, "Lizenz einlösen", h - 8.0).clicked() {
                             api::with(|n| n.form_error = None);
                             st.dlg = Some(Dlg::Redeem { code: String::new(), focus: true });
                         }
@@ -74,35 +74,35 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                 });
                 let line = match &me.license {
                     Some(l) if l.active => {
-                        let until = l.expires_at.map(|e| format!("gültig bis {}", date(e))).unwrap_or_else(|| "unbefristet".into());
-                        format!("Lizenz {until} · Speicher {} von {} MB belegt · neue Boards werden am Server gespeichert", mb(l.used_mb), mb(l.quota_mb))
+                        let until = l.expires_at.map(|e| format!("gültig bis {}", date(e))).unwrap_or_else(|| "unbefristet gültig".into());
+                        format!("Lizenz {until}. {} von {} MB Speicher belegt. Neue Boards werden auf dem Server gespeichert.", mb(l.used_mb), mb(l.quota_mb))
                     }
                     Some(l) => format!(
-                        "Lizenz abgelaufen{} – deine Boards am Server sind nur noch lesbar. Mit einem neuen Code wieder am Server speichern.",
+                        "Lizenz abgelaufen{}. Deine Boards auf dem Server sind nur noch lesbar. Löse einen neuen Code ein, um wieder zu speichern.",
                         l.expires_at.map(|e| format!(" am {}", date(e))).unwrap_or_default()
                     ),
-                    None => "Keine Lizenz – neue Boards bleiben in diesem Browser (zum Sichern herunterladen). Mit Lizenz am Server speichern; Einladungen zu fremden Boards gehen auch ohne.".into(),
+                    None => "Keine Lizenz. Neue Boards werden nur in diesem Browser gespeichert. Lade sie herunter, um sie zu sichern. Mit einer Lizenz speicherst du auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.".into(),
                 };
                 ui.label(egui::RichText::new(line).size(12.5).color(c(p.text)));
             }
             (Server::Ready, None) => {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new("Gastmodus – Boards bleiben in diesem Browser, bitte herunterladen (im Board: ⋯ → Herunterladen).").size(13.0).color(c(p.text)));
+                    ui.label(egui::RichText::new("Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.").size(13.0).color(c(p.text)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if style::primary_btn(ui, "Anmelden", h - 8.0).clicked() {
                             api::with(|n| n.form_error = None);
                             st.dlg = Some(Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), focus: true });
                         }
-                        if style::plain_btn(ui, "Registrieren", h - 8.0).clicked() {
+                        if style::plain_btn(ui, "Konto erstellen", h - 8.0).clicked() {
                             api::with(|n| n.form_error = None);
                             st.dlg = Some(Dlg::Login { register: true, email: String::new(), password: String::new(), name: String::new(), focus: true });
                         }
                     });
                 });
-                ui.label(egui::RichText::new("Mit Konto zu Boards eingeladen werden und live mitarbeiten; mit Lizenz Boards am Server speichern und teilen.").size(12.0).color(c(p.dim)));
+                ui.label(egui::RichText::new("Mit einem Konto kannst du zu Boards eingeladen werden und live mitarbeiten. Mit einer Lizenz speicherst du Boards auf dem Server und teilst sie.").size(12.0).color(c(p.dim)));
             }
             _ => {
-                ui.label(egui::RichText::new("Gastmodus – Boards werden nicht gespeichert, bitte herunterladen (im Board: ⋯ → Herunterladen).").size(13.0).color(c(p.text)));
+                ui.label(egui::RichText::new("Du bist nicht angemeldet. Boards werden nicht gespeichert. Lade sie herunter, um sie zu sichern.").size(13.0).color(c(p.text)));
             }
         }
     });
@@ -119,7 +119,7 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
     let compact = sh.env.ff == FormFactor::Compact;
     ui.add_space(22.0);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Am Server").size(18.0).strong());
+        ui.label(egui::RichText::new("Auf dem Server").size(18.0).strong());
         if opening {
             ui.spinner();
         }
@@ -130,7 +130,7 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
         return;
     }
     if list.is_empty() {
-        ui.label(egui::RichText::new("Noch keine Boards am Server. Lege mit „Neu“ eins an – es wird automatisch gespeichert.").color(c(p.dim)));
+        ui.label(egui::RichText::new("Noch keine Boards auf dem Server. Erstelle mit „Neu“ eins. Es wird automatisch gespeichert.").color(c(p.dim)));
         return;
     }
     let gap = if compact { 12.0 } else { 18.0 };
@@ -150,8 +150,8 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
 fn role_text(b: &BoardInfo) -> String {
     match b.role.as_str() {
         "owner" => "Eigenes Board".into(),
-        "edit" => format!("Von {} · bearbeiten", b.owner_name),
-        _ => format!("Von {} · ansehen", b.owner_name),
+        "edit" => format!("Von {} · Bearbeiten erlaubt", b.owner_name),
+        _ => format!("Von {} · Nur ansehen", b.owner_name),
     }
 }
 
@@ -244,7 +244,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
         ui.set_width(width - 40.0);
         match &mut d {
             Dlg::Login { register, email, password, name, focus } => {
-                ui.label(egui::RichText::new(if *register { "Konto anlegen" } else { "Anmelden" }).heading().strong());
+                ui.label(egui::RichText::new(if *register { "Konto erstellen" } else { "Anmelden" }).heading().strong());
                 ui.add_space(6.0);
                 if *register {
                     field(ui, "Name", name, false, *focus);
@@ -261,7 +261,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 let valid = email.contains('@') && !password.is_empty() && !busy;
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_enabled_ui(valid, |ui| {
-                        if (style::primary_btn(ui, if *register { "Registrieren" } else { "Anmelden" }, h).clicked() || enter) && valid {
+                        if (style::primary_btn(ui, if *register { "Konto erstellen" } else { "Anmelden" }, h).clicked() || enter) && valid {
                             if *register {
                                 api::register(email, password, name);
                             } else {
@@ -275,17 +275,17 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                     }
                 });
                 ui.add_space(4.0);
-                let other = if *register { "Schon ein Konto? Anmelden" } else { "Noch kein Konto? Registrieren" };
+                let other = if *register { "Schon ein Konto? Anmelden" } else { "Noch kein Konto? Jetzt erstellen" };
                 if ui.add(egui::Button::new(egui::RichText::new(other).size(12.5).color(c(p.accent))).fill(egui::Color32::TRANSPARENT)).clicked() {
                     *register = !*register;
                     api::with(|n| n.form_error = None);
                 }
             }
             Dlg::Redeem { code, focus } => {
-                ui.label(egui::RichText::new("Lizenzcode einlösen").heading().strong());
-                ui.label(egui::RichText::new("Mit einer Lizenz werden deine Boards am Server gespeichert, sind auf allen Geräten da und lassen sich teilen.").size(12.5).color(c(p.dim)));
+                ui.label(egui::RichText::new("Lizenz einlösen").heading().strong());
+                ui.label(egui::RichText::new("Mit einer Lizenz werden deine Boards auf dem Server gespeichert, sind auf allen Geräten verfügbar und lassen sich teilen.").size(12.5).color(c(p.dim)));
                 ui.add_space(6.0);
-                field(ui, "Code", code, false, *focus);
+                field(ui, "Lizenzcode", code, false, *focus);
                 *focus = false;
                 if let Some(e) = &err {
                     ui.label(egui::RichText::new(e).size(12.5).color(c(p.danger_text)));
@@ -330,7 +330,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
             }
             Dlg::Delete { id, name } => {
                 ui.label(egui::RichText::new("Board löschen?").heading().strong());
-                ui.label(format!("„{name}“ wird am Server gelöscht – auch für alle, mit denen es geteilt ist. Das lässt sich nicht rückgängig machen."));
+                ui.label(format!("„{name}“ wird auf dem Server gelöscht. Das gilt auch für alle, mit denen das Board geteilt ist. Der Vorgang lässt sich nicht rückgängig machen."));
                 ui.add_space(10.0);
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if style::danger_btn(ui, "Löschen", h).clicked() {
@@ -363,18 +363,18 @@ fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
         ui.label(egui::RichText::new("Einladung").heading().strong());
         ui.add_space(4.0);
         if server == Server::Offline {
-            ui.label(egui::RichText::new("Einladungen gehen nur mit Server").color(c(p.danger_text)));
+            ui.label(egui::RichText::new("Ohne Verbindung zum Server sind Einladungen nicht möglich.").color(c(p.danger_text)));
         } else if let Some(e) = &inv.error {
             ui.label(egui::RichText::new(e).size(13.0).color(c(p.danger_text)));
         } else if let Some(i) = &inv.info {
-            let what = if i.role == "edit" { "bearbeiten" } else { "nur ansehen" };
-            ui.label(format!("{} lädt dich zu „{}“ ein ({what}).", i.owner_name, i.board_name));
+            let what = if i.role == "edit" { "Du kannst das Board bearbeiten." } else { "Du kannst es nur ansehen." };
+            ui.label(format!("{} lädt dich zu „{}“ ein. {what}", i.owner_name, i.board_name));
             ui.add_space(6.0);
             if me.is_none() {
                 style::caption(ui, "Dein Name");
                 let r = ui.add(egui::TextEdit::singleline(name).char_limit(24).desired_width(f32::INFINITY).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
                 r.request_focus();
-                ui.label(egui::RichText::new("Du bekommst eine eigene Gast-ID (Name + Kennung, z. B. Mila#K7Q2). Sie bleibt in diesem Browser gespeichert – ohne Konto und Lizenz.").size(12.0).color(c(p.dim)));
+                ui.label(egui::RichText::new("Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird in diesem Browser gespeichert. Ein Konto brauchst du dafür nicht.").size(12.0).color(c(p.dim)));
             }
         } else {
             ui.spinner();

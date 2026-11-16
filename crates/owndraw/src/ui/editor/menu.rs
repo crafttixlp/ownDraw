@@ -86,7 +86,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         ed.export(sh, 1);
         close = true;
     }
-    if style::menu_row(ui, "Ebenen + Website (ZIP) …", false, h) {
+    if style::menu_row(ui, "Ebenen und Website (ZIP) …", false, h) {
         ed.export(sh, 2);
         close = true;
     }
@@ -156,13 +156,13 @@ fn server_rows(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, h: f32, close: &mu
                 *close = true;
             }
         }
-        None if ed.file().is_some() && style::menu_row(ui, "Am Server speichern", false, h) => {
+        None if ed.file().is_some() && style::menu_row(ui, "Auf dem Server speichern", false, h) => {
             let mut d = ed.snapshot_doc();
             d.thumb = ed.board.thumb().encode_png().ok();
             match crate::session::serialize(&d) {
                 Ok(b) => {
                     api::create_board(&d.meta.name, b);
-                    sh.toast("Board wird am Server angelegt …");
+                    sh.toast("Board wird auf dem Server erstellt …");
                 }
                 Err(e) => sh.toast(&e),
             }

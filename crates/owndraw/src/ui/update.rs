@@ -46,7 +46,7 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
     if !cfg.configured() {
         ui.add_space(4.0);
         ui.label(
-            egui::RichText::new("Updates nicht eingerichtet: Diese Version enthält noch keinen echten Signaturschlüssel. Es wird nichts geladen oder installiert.")
+            egui::RichText::new("Updates sind nicht eingerichtet. Diese Version enthält noch keinen gültigen Signaturschlüssel, deshalb wird nichts geladen oder installiert.")
                 .color(c(p.danger_text)),
         );
     }
@@ -62,15 +62,15 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
             }
         });
         let hint = match settings.update_mode {
-            UpdateMode::Package => "Lädt das fertige AppImage (schnell).",
-            UpdateMode::Source => "Lädt den Quellcode und baut ihn selbst (braucht Rust und einige Minuten).",
+            UpdateMode::Package => "Lädt das fertige AppImage. Das geht schnell.",
+            UpdateMode::Source => "Lädt den Quellcode und baut die App selbst. Das braucht Rust und dauert einige Minuten.",
         };
         ui.label(egui::RichText::new(hint).size(12.0).color(c(p.dim)));
     } else {
-        ui.label(egui::RichText::new("Auf Android wird immer die fertige APK geladen und vom System-Installer eingespielt (Recht „Unbekannte Apps installieren“ nötig).").size(12.0).color(c(p.dim)));
+        ui.label(egui::RichText::new("Auf Android lädt OwnDraw immer die fertige APK und übergibt sie an den System-Installer. Dafür brauchst du die Berechtigung „Unbekannte Apps installieren“.").size(12.0).color(c(p.dim)));
     }
     cfg.mode = if desktop { settings.update_mode } else { UpdateMode::Package };
-    ui.checkbox(&mut settings.update_check_on_start, "Beim Start nach Updates suchen (nur Hinweis)");
+    ui.checkbox(&mut settings.update_check_on_start, "Beim Start nach Updates suchen, ohne zu installieren");
     ui.add_space(6.0);
 
     ui.horizontal(|ui| {
@@ -93,7 +93,7 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
                 ui.add_space(8.0);
                 style::card().show(ui, |ui| {
                     if chk.skipped {
-                        ui.label(egui::RichText::new("Diese Version hatten Sie übersprungen.").color(c(p.dim)));
+                        ui.label(egui::RichText::new("Du hast diese Version übersprungen.").color(c(p.dim)));
                     }
                     ui.label(egui::RichText::new(format!("Neue Version {} verfügbar", rel.version)).size(16.0).strong());
                     if !rel.date.is_empty() {
@@ -117,10 +117,10 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
             }
             (Some(_), true) => {}
             (Some(rel), false) => {
-                ui.label(egui::RichText::new(format!("Kein Update verfügbar: OwnDraw {} ist aktuell (neueste veröffentlichte Version: {}).", cfg.current, rel.version)).color(c(p.dim)));
+                ui.label(egui::RichText::new(format!("OwnDraw {} ist aktuell. Neueste veröffentlichte Version: {}.", cfg.current, rel.version)).color(c(p.dim)));
             }
             (None, _) => {
-                ui.label(egui::RichText::new("Kein Update verfügbar: Auf GitHub gibt es noch keine veröffentlichte Version.").color(c(p.dim)));
+                ui.label(egui::RichText::new("Auf GitHub gibt es noch keine veröffentlichte Version.").color(c(p.dim)));
             }
         }
     }
@@ -173,7 +173,7 @@ fn messages(ui: &mut egui::Ui, up: &Updater, st: &Status, settings: &mut Setting
                 if style::accent_btn(ui, "rustup.rs öffnen", h).clicked() {
                     platform.open_url(RUSTUP_URL);
                 }
-                if style::primary_btn(ui, "Stattdessen „Fertiges Paket“", h).clicked() {
+                if style::primary_btn(ui, "Fertiges Paket verwenden", h).clicked() {
                     settings.update_mode = UpdateMode::Package;
                     up.dismiss_message();
                 }
@@ -186,7 +186,7 @@ fn messages(ui: &mut egui::Ui, up: &Updater, st: &Status, settings: &mut Setting
     if let Some(d) = &st.done {
         ui.add_space(6.0);
         if d.restart {
-            ui.label(format!("Version {} ist installiert. Die bisherige Version liegt als „{}“ und unter „Frühere Versionen“ bereit.", d.version, d.backup.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+            ui.label(format!("Version {} ist installiert. Die bisherige Version ist als „{}“ gesichert und unter „Frühere Versionen“ verfügbar.", d.version, d.backup.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
             ui.horizontal_wrapped(|ui| {
                 if style::primary_btn(ui, "Neu starten", h).clicked() {
                     match update::install::spawn_new(&d.path) {
@@ -204,7 +204,7 @@ fn messages(ui: &mut egui::Ui, up: &Updater, st: &Status, settings: &mut Setting
                 ui.label(egui::RichText::new(format!("Neustart nicht möglich: {e}")).color(c(p.danger_text)));
             }
         } else {
-            ui.label("Der System-Installer wurde geöffnet. Bestätigen Sie dort die Installation (ggf. zuerst „Unbekannte Apps installieren“ für OwnDraw erlauben).");
+            ui.label("Der System-Installer wurde geöffnet. Bestätige dort die Installation. Erlaube OwnDraw dafür gegebenenfalls zuerst „Unbekannte Apps installieren“.");
             if style::plain_btn(ui, "OK", h).clicked() {
                 up.dismiss_message();
             }
@@ -229,7 +229,7 @@ fn saved_view(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, platfo
     let p = style::pal();
     let saved = versions::list_saved(&cfg.versions_dir);
     if saved.is_empty() {
-        ui.label(egui::RichText::new("Noch keine Vorversion gespeichert (entsteht beim nächsten Update).").size(12.0).color(c(p.dim)));
+        ui.label(egui::RichText::new("Noch keine frühere Version gesichert. Sie entsteht beim nächsten Update.").size(12.0).color(c(p.dim)));
         return;
     }
     let busy = st.busy.is_some();
@@ -238,7 +238,7 @@ fn saved_view(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, platfo
             request_restore(ui, up, cfg, n, platform);
         }
     }
-    ui.label(egui::RichText::new("Gespeichert (auch offline nutzbar):").size(12.0).color(c(p.dim)));
+    ui.label(egui::RichText::new("Gesicherte Versionen, auch offline verfügbar:").size(12.0).color(c(p.dim)));
     for s in saved {
         ui.horizontal(|ui| {
             ui.label(format!("Version {}", s.version));
@@ -286,12 +286,12 @@ fn release_list(ui: &mut egui::Ui, up: &Updater, cfg: &Config, st: &Status, h: f
                 ui.label(&rel.title);
             }
             if rel.body.trim().is_empty() {
-                ui.label(egui::RichText::new("Kein Änderungstext.").color(c(p.dim)));
+                ui.label(egui::RichText::new("Keine Versionshinweise.").color(c(p.dim)));
             }
             notes(ui, rel, "list_notes");
             let allowed = desktop || rel.version > cfg.current;
             if !current && allowed && !busy {
-                let label = if rel.version < cfg.current { "Auf diese Version zurückgehen" } else { "Diese Version installieren" };
+                let label = if rel.version < cfg.current { "Zu dieser Version zurückkehren" } else { "Diese Version installieren" };
                 if style::accent_btn(ui, label, h).clicked() {
                     if rel.version < cfg.current && versions::format_warning(&rel.version, cfg.recent_boards).is_some() {
                         ui.ctx().memory_mut(|m| m.data.insert_temp(pending_id(), Some(Pending::Install(rel.clone()))));

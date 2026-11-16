@@ -191,7 +191,7 @@ fn nav_chip(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay, po
                     if ui.add_enabled(cur + 1 < n, egui::Button::new("›").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Nächste Seite").clicked() {
                         *act = Some(Act::Goto(cur + 1));
                     }
-                    if ui.add(egui::Button::new("+").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Neue Seite nach dieser").clicked() {
+                    if ui.add(egui::Button::new("+").fill(egui::Color32::TRANSPARENT).min_size(small)).on_hover_text("Neue Seite nach dieser einfügen").clicked() {
                         *act = Some(Act::Add);
                     }
                     g
@@ -285,12 +285,12 @@ pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &
         }
         Some(Act::Add) => {
             if !add_page(&mut ed.board) {
-                sh.toast("Seite hinzufügen nicht möglich");
+                sh.toast("Seite konnte nicht hinzugefügt werden");
             }
         }
         Some(Act::Delete(i)) => {
             if page_count(&ed.board) <= 1 {
-                sh.toast("Mindestens eine Seite bleibt bestehen");
+                sh.toast("Das Board braucht mindestens eine Seite");
             } else {
                 sh.dialog = Some(Dialog::Confirm { title: "Seite löschen", text: format!("Seite {} mit allem Inhalt löschen?", i + 1), ok: "Löschen", action: ConfirmAction::DeletePage(i) });
             }
@@ -369,7 +369,7 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
                     if resp.drag_stopped() {
                         released = true;
                     }
-                    let resp = resp.on_hover_text("Tippen: springen · Ziehen: Reihenfolge ändern");
+                    let resp = resp.on_hover_text("Tippen springt zur Seite, Ziehen ändert die Reihenfolge");
                     if on || resp.hovered() {
                         row_actions(ui, sh, i, n, btn, act);
                     }
@@ -435,7 +435,7 @@ fn list(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, ctx: &egui::Context, thum
     });
     ui.add_space(6.0);
     ui.horizontal_wrapped(|ui| {
-        if style::accent_btn(ui, "+ Seite", btn - 6.0).on_hover_text("Neue Seite nach der aktuellen").clicked() {
+        if style::accent_btn(ui, "+ Seite", btn - 6.0).on_hover_text("Neue Seite nach dieser einfügen").clicked() {
             *act = Some(Act::Add);
         }
         // Zu Seite springen

@@ -25,9 +25,9 @@ pub fn format_of(v: &Version) -> i64 {
 pub fn format_warning(target: &Version, recent: usize) -> Option<String> {
     let cur = owndraw_core::doc::FORMAT_VERSION;
     if format_of(target) < cur {
-        let boards = if recent > 0 { format!(" Das betrifft auch Ihre {recent} zuletzt geöffneten Boards.") } else { String::new() };
+        let boards = if recent > 0 { format!(" Das betrifft auch deine {recent} zuletzt geöffneten Boards.") } else { String::new() };
         Some(format!(
-            "Die ältere Version {target} kann neue Boards (Format {cur}, ab 4.0.0) nicht öffnen.{boards} Sichern Sie wichtige Boards vorher."
+            "Version {target} kann neue Boards nicht öffnen (Format {cur}, ab 4.0.0).{boards} Sichere wichtige Boards vor dem Wechsel."
         ))
     } else {
         None

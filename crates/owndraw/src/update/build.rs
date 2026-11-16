@@ -32,7 +32,7 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<PathBuf, Error> {
     let f = std::fs::File::open(archive)?;
     let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(f));
     // `unpack` verwirft Pfade mit `..` und absolute Pfade.
-    ar.unpack(dest).map_err(|e| Error::Other(format!("Archiv nicht entpackbar: {e}")))?;
+    ar.unpack(dest).map_err(|e| Error::Other(format!("Das Archiv konnte nicht entpackt werden: {e}")))?;
     if dest.join("Cargo.toml").is_file() {
         return Ok(dest.to_path_buf());
     }
@@ -64,7 +64,7 @@ fn run_logged(mut cmd: Command, cancel: &AtomicBool, log: &dyn Fn(&str)) -> Resu
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    let mut child = cmd.spawn().map_err(|e| Error::Other(format!("Prozess nicht startbar: {e}")))?;
+    let mut child = cmd.spawn().map_err(|e| Error::Other(format!("Der Prozess konnte nicht gestartet werden: {e}")))?;
     let (tx, rx) = mpsc::channel::<String>();
     let mut readers = Vec::new();
     if let Some(o) = child.stdout.take() {
@@ -103,7 +103,7 @@ fn run_logged(mut cmd: Command, cancel: &AtomicBool, log: &dyn Fn(&str)) -> Resu
     if status.success() {
         Ok(())
     } else {
-        Err(Error::Other(format!("Der Bau ist fehlgeschlagen ({status}). Details im Protokoll.")))
+        Err(Error::Other(format!("Der Bau ist fehlgeschlagen ({status}). Details stehen im Protokoll.")))
     }
 }
 
@@ -117,21 +117,21 @@ pub fn build(root: &Path, spec: &BuildSpec, cargo: &Path, cancel: &AtomicBool, l
     run_logged(c, cancel, log)?;
     let bin = root.join("target/release").join(&spec.bin);
     if !bin.is_file() {
-        return Err(Error::Other(format!("Nach dem Bau fehlt {}.", bin.display())));
+        return Err(Error::Other(format!("Nach dem Bau fehlt die Datei {}.", bin.display())));
     }
     if !spec.appimage_script {
         return Ok(bin);
     }
     let script = root.join("build-appimage.sh");
     if !script.is_file() {
-        return Err(Error::Other("Im Quellbaum fehlt build-appimage.sh zum Packen des AppImage.".into()));
+        return Err(Error::Other("Zum Packen des AppImage fehlt build-appimage.sh im Quellcode.".into()));
     }
     log("$ ./build-appimage.sh");
     let mut c = Command::new("bash");
     c.current_dir(root).arg(&script);
     c.env_remove("CARGO_TARGET_DIR");
     run_logged(c, cancel, log).map_err(|e| match e {
-        Error::Other(m) => Error::Other(format!("{m} (Das Packen braucht gcc, zlib1g-dev und squashfs-tools.)")),
+        Error::Other(m) => Error::Other(format!("{m} Zum Packen braucht es gcc, zlib1g-dev und squashfs-tools.")),
         e => e,
     })?;
     let img = std::fs::read_dir(root)?

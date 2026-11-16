@@ -175,7 +175,7 @@ fn apply(ed: &mut Editor, sh: &mut Shared, act: Option<Act>) {
         }
         Act::Template => {
             b.apply_template();
-            sh.toast_for("Vorlage: 7 Ebenen (Hintergrund bis Text) mit passenden Animationen angelegt", 3.5);
+            sh.toast_for("Vorlage erstellt: 7 Ebenen mit passenden Animationen, vom Hintergrund bis zum Text.", 3.5);
         }
         Act::Image => ed.pick_image(sh),
         Act::Active(i) => b.set_active_layer(i),
@@ -197,7 +197,7 @@ fn apply(ed: &mut Editor, sh: &mut Shared, act: Option<Act>) {
         Act::Move(from, to) => b.move_layer(from, to),
         Act::Delete(i) => {
             if b.layers.len() <= 1 {
-                sh.toast("Mindestens eine Ebene bleibt bestehen");
+                sh.toast("Das Board braucht mindestens eine Ebene");
             } else {
                 sh.dialog = Some(Dialog::Confirm {
                     title: "Ebene löschen",

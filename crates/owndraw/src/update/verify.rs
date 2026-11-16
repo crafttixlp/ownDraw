@@ -18,8 +18,8 @@ pub fn verify_bytes(pubkey: &str, data: &[u8], sig_text: &str) -> Result<(), Err
     if is_placeholder(pubkey) {
         return Err(Error::NotConfigured);
     }
-    let pk = PublicKey::decode(pubkey).map_err(|e| Error::Other(format!("Öffentlicher Schlüssel unlesbar: {e}")))?;
-    let sig = Signature::decode(sig_text).map_err(|e| Error::BadSignature(format!("Signatur unlesbar: {e}")))?;
+    let pk = PublicKey::decode(pubkey).map_err(|e| Error::Other(format!("Der öffentliche Schlüssel ist nicht lesbar: {e}")))?;
+    let sig = Signature::decode(sig_text).map_err(|e| Error::BadSignature(format!("Die Signatur ist nicht lesbar: {e}")))?;
     pk.verify(data, &sig, true).map_err(|e| Error::BadSignature(e.to_string()))
 }
 

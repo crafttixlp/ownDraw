@@ -112,7 +112,7 @@ pub fn filter_name(k: FileKind) -> &'static str {
 fn path_of(f: &FileRef) -> io::Result<&Path> {
     match f {
         FileRef::Path(p) => Ok(p),
-        FileRef::Uri(_) => Err(io::Error::new(io::ErrorKind::Unsupported, "URI wird auf dem Desktop nicht unterstützt")),
+        FileRef::Uri(_) => Err(io::Error::new(io::ErrorKind::Unsupported, "URIs werden auf dem Desktop nicht unterstützt")),
     }
 }
 

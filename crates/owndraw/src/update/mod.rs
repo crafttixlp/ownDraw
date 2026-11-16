@@ -48,15 +48,15 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Cancelled => write!(f, "Abgebrochen. Die installierte Version ist unverändert."),
-            Error::NotConfigured => write!(f, "Updates nicht eingerichtet: Diese Version enthält noch keinen echten Signaturschlüssel."),
-            Error::BadSignature(m) => write!(f, "Signatur ungültig, nichts installiert ({m})."),
+            Error::Cancelled => write!(f, "Abgebrochen. Die installierte Version bleibt unverändert."),
+            Error::NotConfigured => write!(f, "Updates sind nicht eingerichtet. Diese Version enthält noch keinen gültigen Signaturschlüssel."),
+            Error::BadSignature(m) => write!(f, "Die Signatur ist ungültig. Es wurde nichts installiert ({m})."),
             Error::NoAppImage(m) | Error::Other(m) => write!(f, "{m}"),
-            Error::NoToolchain => write!(f, "Keine Rust-Toolchain gefunden (cargo)."),
-            Error::Offline => write!(f, "Offline: Keine Verbindung zu GitHub. Bitte Internetverbindung prüfen und erneut suchen."),
-            Error::Timeout => write!(f, "Zeitüberschreitung: GitHub antwortet nicht. Bitte später erneut versuchen."),
-            Error::RateLimit => write!(f, "GitHub-Abfragegrenze erreicht (60 Abfragen pro Stunde ohne Anmeldung). Bitte in etwa einer Stunde erneut versuchen."),
-            Error::Status(c) => write!(f, "GitHub meldet einen Fehler (HTTP {c}). Bitte später erneut versuchen."),
+            Error::NoToolchain => write!(f, "Keine Rust-Toolchain (cargo) gefunden."),
+            Error::Offline => write!(f, "Offline. Keine Verbindung zu GitHub. Prüfe deine Internetverbindung und suche erneut."),
+            Error::Timeout => write!(f, "Zeitüberschreitung. GitHub antwortet nicht. Versuche es später erneut."),
+            Error::RateLimit => write!(f, "GitHub-Abfragegrenze erreicht (60 Abfragen pro Stunde ohne Anmeldung). Versuche es in etwa einer Stunde erneut."),
+            Error::Status(c) => write!(f, "GitHub meldet einen Fehler (HTTP {c}). Versuche es später erneut."),
         }
     }
 }
@@ -236,7 +236,7 @@ fn check_url(cfg: &Config, url: &str) -> Result<(), Error> {
     if url.starts_with("https://") || (cfg.allow_http && url.starts_with("http://")) {
         Ok(())
     } else {
-        Err(Error::Other("Download-Adresse ist nicht HTTPS; abgelehnt.".into()))
+        Err(Error::Other("Die Download-Adresse nutzt kein HTTPS und wurde abgelehnt.".into()))
     }
 }
 
@@ -245,26 +245,26 @@ fn fetch_verified(cfg: &Config, http: &dyn Http, rel: &Release, name: &str, dir:
     if !cfg.configured() {
         return Err(Error::NotConfigured);
     }
-    let asset = rel.asset(name).ok_or_else(|| Error::Other(format!("Das Release {} enthält kein Asset „{name}“.", rel.tag)))?;
+    let asset = rel.asset(name).ok_or_else(|| Error::Other(format!("Das Release {} enthält die Datei „{name}“ nicht.", rel.tag)))?;
     let sig = rel
         .asset(&format!("{name}.minisig"))
-        .ok_or_else(|| Error::BadSignature(format!("zu {name} gibt es keine .minisig-Datei")))?;
+        .ok_or_else(|| Error::BadSignature(format!("Zu {name} fehlt die .minisig-Datei")))?;
     check_url(cfg, &asset.url)?;
     check_url(cfg, &sig.url)?;
     std::fs::create_dir_all(dir)?;
-    ctl.step("Signatur laden …");
+    ctl.step("Signatur wird geladen …");
     let sig_text = http.get_text(&sig.url)?;
     if ctl.cancelled() {
         return Err(Error::Cancelled);
     }
-    ctl.step(&format!("{name} laden …"));
+    ctl.step(&format!("{name} wird geladen …"));
     let part = dir.join(format!("{name}.part"));
     let r = http.download(&asset.url, &part, &ctl.cancel, &mut |d, t| ctl.progress(d, t));
     if let Err(e) = r {
         let _ = std::fs::remove_file(&part);
         return Err(e);
     }
-    ctl.step("Signatur prüfen …");
+    ctl.step("Signatur wird geprüft …");
     if let Err(e) = verify::verify_file(&cfg.pubkey, &part, &sig_text) {
         let _ = std::fs::remove_file(&part);
         return Err(e);
@@ -281,8 +281,8 @@ pub fn install_release(cfg: &Config, http: &dyn Http, rel: &Release, ctl: &Ctl) 
     {
         let name = package_asset(&rel.version).unwrap_or_default();
         let apk = fetch_verified(cfg, http, rel, &name, &dir, ctl)?;
-        ctl.step("System-Installer öffnen …");
-        let note = crate::platform::android::install_apk(&apk).map_err(|e| Error::Other(format!("Installer nicht startbar: {e}")))?;
+        ctl.step("System-Installer wird geöffnet …");
+        let note = crate::platform::android::install_apk(&apk).map_err(|e| Error::Other(format!("Installer konnte nicht gestartet werden: {e}")))?;
         ctl.log(&note);
         // Fehlt das Recht „Unbekannte Apps installieren“, öffnet Java die Systemeinstellung statt des Installers.
         if note.starts_with("Erlauben") {
@@ -299,13 +299,13 @@ pub fn install_release(cfg: &Config, http: &dyn Http, rel: &Release, ctl: &Ctl) 
         }
         let new_file = match cfg.mode {
             UpdateMode::Package => {
-                let name = package_asset(&rel.version).ok_or_else(|| Error::Other("Für diese Prozessor-Architektur gibt es kein fertiges Paket. Bitte „Aus Quellcode bauen“ wählen.".to_string()))?;
+                let name = package_asset(&rel.version).ok_or_else(|| Error::Other("Für diese Prozessorarchitektur gibt es kein fertiges Paket. Wähle „Aus Quellcode bauen“.".to_string()))?;
                 fetch_verified(cfg, http, rel, &name, &dir, ctl)?
             }
             UpdateMode::Source => {
                 let cargo = cfg.cargo.clone().or_else(build::find_cargo).ok_or(Error::NoToolchain)?;
                 let tar = fetch_verified(cfg, http, rel, &source_asset(&rel.version), &dir, ctl)?;
-                ctl.step("Quellcode entpacken …");
+                ctl.step("Quellcode wird entpackt …");
                 // Ältere Quellbäume aufräumen (sparen Platz), nur der aktuelle bleibt.
                 if let Ok(rd) = std::fs::read_dir(&cfg.build_dir) {
                     for e in rd.flatten() {
@@ -318,14 +318,14 @@ pub fn install_release(cfg: &Config, http: &dyn Http, rel: &Release, ctl: &Ctl) 
                 if ctl.cancelled() {
                     return Err(Error::Cancelled);
                 }
-                ctl.step("Bauen (kann einige Minuten dauern) …");
+                ctl.step("App wird gebaut. Das kann einige Minuten dauern …");
                 build::build(&root, &cfg.spec, &cargo, &ctl.cancel, &|l| ctl.log(l))?
             }
         };
         if ctl.cancelled() {
             return Err(Error::Cancelled);
         }
-        ctl.step("Installieren …");
+        ctl.step("Update wird installiert …");
         let r = install::install_appimage(&new_file, &rel.version, &target, &cfg.current, &cfg.versions_dir)?;
         let _ = std::fs::remove_dir_all(&dir);
         Ok(r)
@@ -335,7 +335,7 @@ pub fn install_release(cfg: &Config, http: &dyn Http, rel: &Release, ctl: &Ctl) 
 /// Installiert eine gespeicherte Vorversion (offline).
 pub fn install_saved(cfg: &Config, saved: &versions::Saved, ctl: &Ctl) -> Result<Installed, Error> {
     let target = install::require_target(cfg.target.as_deref())?;
-    ctl.step("Vorherige Version wiederherstellen …");
+    ctl.step("Vorherige Version wird wiederhergestellt …");
     install::install_appimage(&saved.path, &saved.version, &target, &cfg.current, &cfg.versions_dir)
 }
 
@@ -445,7 +445,7 @@ impl Updater {
             Ok(r) => {
                 ctl.with(|s| {
                     if silent && r.newer && !r.skipped {
-                        s.notice = r.latest.as_ref().map(|l| format!("OwnDraw {} ist verfügbar – Einstellungen → Updates", l.version));
+                        s.notice = r.latest.as_ref().map(|l| format!("OwnDraw {} ist verfügbar. Mehr unter Einstellungen > Updates.", l.version));
                     }
                     s.dismissed = false;
                     s.check = Some(r);

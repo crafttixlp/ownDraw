@@ -152,7 +152,7 @@ impl App {
             self.recent.add(RecentEntry { file: f, name, modified_ms: owndraw_core::store::now_ms(), pages });
         }
         if n > 0 {
-            self.sh.toast_for(&format!("{n} alte Boards übernommen"), 5.0);
+            self.sh.toast_for(&format!("{n} Boards aus früheren Versionen übernommen"), 5.0);
         }
     }
 
@@ -174,7 +174,7 @@ impl App {
 
     fn title(&self, ctx: &egui::Context) {
         let t = match (&self.editor, self.screen) {
-            (Some(e), Screen::Editor) => format!("OwnDraw – {}", e.name()),
+            (Some(e), Screen::Editor) => format!("OwnDraw · {}", e.name()),
             _ => "OwnDraw".to_string(),
         };
         // Browser: Seitentitel (das Web-Backend kennt ViewportCommand::Title nicht)
@@ -261,7 +261,7 @@ impl App {
             if self.sh.settings.xopp_autosave_direct {
                 let mut ed = Editor::open(&mut self.sh, doc, Some(f));
                 ed.autosave.set_format(SaveFormat::Xopp);
-                self.sh.toast("Xournal++-Datei geöffnet (Änderungen gehen direkt ins .xopp)");
+                self.sh.toast("Xournal++-Datei geöffnet. Änderungen werden direkt in der .xopp-Datei gespeichert.");
                 self.enter_editor(ctx, ed);
                 return;
             }

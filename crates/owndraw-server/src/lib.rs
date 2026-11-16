@@ -7,6 +7,7 @@ pub mod boards;
 pub mod collab;
 pub mod config;
 pub mod db;
+pub mod downloads;
 pub mod error;
 pub mod invites;
 pub mod notices;
@@ -159,6 +160,13 @@ pub fn build_app(state: AppState) -> Router {
         .nest("/api", api)
         .route("/admin", get(admin_page))
         .route("/admin/", get(admin_page))
+        .merge(
+            Router::new()
+                .route("/download", get(downloads::page))
+                .route("/download/", get(downloads::page))
+                .route("/download/{name}", get(downloads::file))
+                .with_state(state.clone()),
+        )
         .fallback_service(
             Router::new()
                 .fallback_service(ServeDir::new(&state.cfg.web).append_index_html_on_directories(true))
@@ -167,6 +175,6 @@ pub fn build_app(state: AppState) -> Router {
         )
         .layer(RequestBodyLimitLayer::new(body_limit))
         .layer(middleware::map_response(json_413))
-        .layer(CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotForContentType::new("application/octet-stream"))))
+        .layer(CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotForContentType::new("application/octet-stream")).and(NotForContentType::new("application/vnd.android.package-archive"))))
         .layer(middleware::from_fn(security_headers))
 }

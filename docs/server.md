@@ -170,6 +170,7 @@ direkt ins Internet stellen (Port 8080 ist im Compose-Setup nur intern erreichba
 data/owndraw.db        Konten, Sitzungen, Lizenzen, Board-Metadaten, Update-Einstellungen (SQLite, WAL)
 data/boards/<id>.owndraw   Board-Dateien
 data/secret.key        Schlüssel für die 2FA-Geheimnisse der Admins (mitsichern; ohne ihn: reset-2fa)
+data/downloads/        App-Dateien für /download (APK, AppImage, manifest.json; lädt der Server selbst neu)
 data/backups/          automatische DB-Sicherungen vor jedem Update
 data/bugreports/<id>/  Screenshots der Fehlerberichte (ab 4.10.0, Text in der DB)
 data/versions/<v>/     per Self-Update installierte Versionen (Binary + web/)
@@ -231,7 +232,23 @@ Das erzeugt `dist/server/owndraw-server-<v>-x86_64-linux.tar.gz` (+ `.sha256`, +
 wird lokal mit `cargo` gebaut. Beide Dateien (`.tar.gz` und `.minisig`) als Assets an das GitHub-Release hängen. Ein
 Release ohne diese Assets wird vom Server erkannt und nicht installiert.
 
-## 8. Betrieb
+## 8. Download-Seite (`/download`, ab 4.17.0)
+
+`https://owndraw.thepepelex.at/download` bietet die Android-App (`.apk`) und die Linux-App (`.AppImage`) zum
+Herunterladen an, mit Version, Größe, SHA-256 und Kurzanleitung. Verlinkt ist sie in der Web-App auf der Startseite
+(„Apps“) und im Editor-Menü („Apps herunterladen“).
+
+- **Quelle**: das neueste GitHub-Release. Der Server prüft kurz nach dem Start und danach stündlich, lädt neue
+  Dateien samt `.minisig`, prüft die Signatur (Schlüssel wie beim Self-Update) und legt sie in `data/downloads/` ab.
+  Ausgeliefert wird nur von dort, Nutzer kommen nicht zu GitHub. Ohne gültige Signatur wird nichts angeboten.
+- **Fehlende Dateien**: Hat ein Release keine APK (Secrets `ANDROID_KEYSTORE_B64`/`_PASS`/`ANDROID_KEY_ALIAS` nicht
+  gesetzt, siehe `release.md`), bleibt die zuletzt geladene APK stehen; gab es nie eine, zeigt die Seite
+  „Noch nicht verfügbar“. Sobald ein Release die Datei enthält, erscheint sie spätestens nach einer Stunde
+  (sofort: Container neu starten).
+- **Schutz**: höchstens 30 Downloads je Adresse in 10 Minuten (danach 429); im Wartungsmodus sehen Nicht-Admins die
+  Wartungsseite. Ausgeliefert werden nur Dateinamen aus `manifest.json`.
+
+## 9. Betrieb
 
 ```bash
 docker compose ps                 # Status
@@ -269,7 +286,7 @@ aktualisiert sich alle 5 Sekunden, solange er sichtbar ist:
   mit Name, Besitzer und Anzahl der Teilnehmer.
 - *Am Server gespeichert*: Anzahl der Boards und belegter Speicher (Summe der Board-Dateien).
 
-## 9. Hinweise zum Vertrag (`web-api.md`)
+## 10. Hinweise zum Vertrag (`web-api.md`)
 
 - Umgesetzt wie beschrieben, einschließlich Live-Zusammenarbeit über `/api/collab/{board_id}` (WebSocket).
   Pro offenem Board hält der Server einen **Raum** im Speicher (`src/collab.rs`): Dokument, laufende `seq`,

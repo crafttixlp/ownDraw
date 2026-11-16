@@ -102,6 +102,7 @@ async fn run_server() -> i32 {
         eprintln!("Hinweis: {} enthält keine index.html (OWNDRAW_WEB prüfen); die Web-App wird nicht ausgeliefert.", web.display());
     }
     update::spawn_auto(state.clone());
+    owndraw_server::downloads::spawn_refresh(state.clone());
     let st2 = state.clone();
     let app = build_app(state).into_make_service_with_connect_info::<std::net::SocketAddr>();
     let listener = match tokio::net::TcpListener::bind(&bind).await {

@@ -1232,3 +1232,91 @@ async fn admin_statistik_konten_gaeste_boards() {
     assert_eq!(s["stored"]["boards"], 1);
     assert!(s["stored"]["bytes"].as_i64().unwrap() > 0);
 }
+
+/// Unechter GitHub-Server mit Release-JSON (Asset-URLs zeigen auf ihn selbst) und Dateien unter `/f/<name>`.
+async fn fake_release(tag: &str, files: Vec<(&'static str, Vec<u8>)>) -> String {
+    use axum::extract::Path;
+    use axum::routing::get;
+    use std::collections::HashMap;
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", l.local_addr().unwrap());
+    let assets: Vec<Value> = files.iter().map(|(n, _)| json!({"name": n, "browser_download_url": format!("{base}/f/{n}")})).collect();
+    let rel = json!({"tag_name": tag, "draft": false, "prerelease": false, "assets": assets});
+    let map: std::sync::Arc<HashMap<String, Vec<u8>>> = std::sync::Arc::new(files.into_iter().map(|(n, b)| (n.to_string(), b)).collect());
+    let r = Router::new().route("/latest", get(move || async move { axum::Json(rel) })).route(
+        "/f/{name}",
+        get(move |Path(n): Path<String>| async move { map.get(&n).cloned().map(|b| (StatusCode::OK, b)).unwrap_or((StatusCode::NOT_FOUND, vec![])) }),
+    );
+    tokio::spawn(async move { axum::serve(l, r).await.unwrap() });
+    format!("{base}/latest")
+}
+
+/// Test-Signaturprüfung: gültig ist nur die Signatur „gut“.
+fn fake_verify(_: &[u8], sig: &str) -> Result<(), String> {
+    if sig == "gut" { Ok(()) } else { Err("Signatur ungültig".into()) }
+}
+
+#[tokio::test]
+async fn download_seite() {
+    use owndraw_server::downloads;
+    // Ohne Release: beide Apps „noch nicht verfügbar“
+    let app = App::new();
+    let r = app.get("/download", None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(String::from_utf8_lossy(&r.bytes).matches("Noch nicht verfügbar.").count(), 2);
+
+    // Release mit AppImage (gültig) und APK (falsche Signatur)
+    let image = b"\x7fELF AppImage".repeat(1000);
+    let url = fake_release(
+        "v9.1.0",
+        vec![
+            ("OwnDraw-9.1.0-x86_64.AppImage", image.clone()),
+            ("OwnDraw-9.1.0-x86_64.AppImage.minisig", b"gut".to_vec()),
+            ("OwnDraw-9.1.0.apk", b"PK apk".to_vec()),
+            ("OwnDraw-9.1.0.apk.minisig", b"falsch".to_vec()),
+        ],
+    )
+    .await;
+    let app = App::with(|c| c.release_url = url);
+    let err = downloads::refresh_with(&app.state, fake_verify).await.unwrap_err();
+    assert!(err.contains("OwnDraw-9.1.0.apk"), "{err}");
+    let m = downloads::manifest(&app.state);
+    assert_eq!(m.files.len(), 1);
+    let sha = m.files[0].sha256.clone();
+    assert_eq!(sha.len(), 64);
+    let html = String::from_utf8_lossy(&app.get("/download", None).await.bytes).to_string();
+    assert!(html.contains("href=\"/download/OwnDraw-9.1.0-x86_64.AppImage\""));
+    assert!(html.contains(&sha) && html.contains("Version 9.1.0"));
+    assert_eq!(html.matches("Noch nicht verfügbar.").count(), 1);
+    assert!(!app.state.cfg.data.join("downloads/OwnDraw-9.1.0.apk").exists());
+
+    // Datei ausliefern, als Anhang
+    let r = app.get("/download/OwnDraw-9.1.0-x86_64.AppImage", None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.bytes, image);
+    assert!(r.headers["content-disposition"].to_str().unwrap().contains("attachment"));
+    // Unbekannte Namen und Pfade werden nicht ausgeliefert
+    for p in ["/download/manifest.json", "/download/..%2Fowndraw.db", "/download/OwnDraw-9.1.0.apk", "/download/.x"] {
+        assert_eq!(app.get(p, None).await.status, StatusCode::NOT_FOUND, "{p}");
+    }
+
+    // Erneute Prüfung lädt nichts doppelt; Manifest übersteht einen Neustart
+    let _ = downloads::refresh_with(&app.state, fake_verify).await;
+    let fresh = AppState::new(Db::memory().unwrap(), (*app.state.cfg).clone());
+    assert_eq!(downloads::manifest(&fresh).files, downloads::manifest(&app.state).files);
+
+    // Download-Limit je Adresse
+    let ip = [("x-forwarded-for", "203.0.113.9")];
+    let mut last = StatusCode::OK;
+    for _ in 0..=downloads::RATE_LIMIT {
+        last = app.send(Method::GET, "/download/OwnDraw-9.1.0-x86_64.AppImage", None, &ip, Body::empty(), false).await.status;
+    }
+    assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
+
+    // Wartungsmodus: Seite und Dateien für Nicht-Admins gesperrt, Admins kommen durch
+    let admin = app.admin().await;
+    assert_eq!(app.api(Method::PUT, "/api/admin/maintenance", Some(&admin), Some(json!({"active": true}))).await.status, StatusCode::OK);
+    assert_eq!(app.get("/download", None).await.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(app.get("/download/OwnDraw-9.1.0-x86_64.AppImage", None).await.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(app.get("/download", Some(&admin)).await.status, StatusCode::OK);
+}

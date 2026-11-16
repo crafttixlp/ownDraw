@@ -20,11 +20,13 @@ pub struct AppState {
     pub maintenance: Arc<RwLock<Option<crate::notices::Maintenance>>>,
     /// Zuletzt aktive Nutzer für die Admin-Statistik (`stats.rs`).
     pub seen: Arc<crate::stats::Seen>,
+    /// Bereitliegende App-Downloads (`downloads.rs`).
+    pub downloads: Arc<crate::downloads::Downloads>,
 }
 
 impl AppState {
     pub fn new(db: Db, cfg: Config) -> Self {
-        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)), hub: Arc::default(), maintenance: Arc::default(), seen: Arc::default() }
+        Self { db, cfg: Arc::new(cfg), limiter: Arc::new(RateLimiter::default()), installing: Arc::new(AtomicBool::new(false)), hub: Arc::default(), maintenance: Arc::default(), seen: Arc::default(), downloads: Arc::default() }
     }
 }
 

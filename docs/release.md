@@ -1,6 +1,6 @@
 # Release-Anleitung
 
-Releases entstehen automatisch: Ein Tag `v*` startet `.github/workflows/release.yml`. Die Action baut AppImage, APK, Server-Paket (`owndraw-server-<v>-x86_64-linux.tar.gz`, Binary + Web-App, für das Self-Update im Admin-Panel) und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an. Ohne Signaturschlüssel bricht der Lauf sofort ab; es entstehen keine unsignierten Releases. Ohne Android-Keystore entsteht das Release ohne APK (Warnung im Log).
+Releases entstehen automatisch: Ein Push auf `main`, dessen Version (`Cargo.toml`) noch keinen Tag `v<version>` hat, startet `.github/workflows/release.yml` und legt Tag und Release an (also: Version anheben, PR mergen, fertig). Ein von Hand gesetzter Tag `v*` funktioniert weiterhin. Die Action baut AppImage, APK, Server-Paket (`owndraw-server-<v>-x86_64-linux.tar.gz`, Binary + Web-App, für das Self-Update im Admin-Panel) und Quell-Tarball, signiert alle Assets mit minisign und legt das GitHub-Release an. Ohne Signaturschlüssel bricht der Lauf sofort ab; es entstehen keine unsignierten Releases. Ohne Android-Keystore entsteht das Release ohne APK (Warnung im Log).
 
 ## 1. minisign-Schlüssel erzeugen (einmalig)
 

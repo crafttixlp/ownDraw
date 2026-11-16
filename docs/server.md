@@ -216,6 +216,10 @@ Self-Update beendet sich der Prozess nur; einen Neustart muss dann ein Superviso
 - Zusätzliche Felder/Codes, die den Vertrag nicht verletzen: `GET /api/health`; `License` enthält zusätzlich
   `active`; die 409-Antwort bei Versionskonflikt enthält die aktuelle `version`; `GET /api/admin/update` enthält
   `installing`; Fehlercodes `internal` (500), `not_implemented` (501), `upstream_error` (502, GitHub nicht erreichbar).
+- Einladungslinks und Gäste (`src/invites.rs`, ab 4.7.0): Gäste sind Zeilen in `users` mit `guest=1`, Platzhalter-
+  Adresse `gast:<uuid>` (nie angezeigt, nicht anmeldbar) und Anzeige-ID `<Name>#XXXX`; Links in der Tabelle `invites`
+  (nur SHA-256 des Tokens). Ältere Datenbanken bekommen die Spalte `users.guest` beim Start (`db::migrate`).
+  Im Admin-Panel tragen Gäste den Chip „Gast“ und können nicht Admin werden.
 - Zugriff auf fremde Boards ohne Einladung liefert `404 not_found` (nicht `403`), damit Board-IDs nichts verraten.
 - Ein Konto hat höchstens eine gültige Lizenz zur selben Zeit; ein zweiter Code kann erst nach Ablauf/Widerruf
   eingelöst werden. Ist die Lizenz der **Besitzerin oder des Besitzers** abgelaufen, ist das Board für alle nur noch

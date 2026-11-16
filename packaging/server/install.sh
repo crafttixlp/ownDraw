@@ -8,7 +8,7 @@
 #
 # Aufruf:
 #   sudo sh install.sh                                    # fragt Domain, Admin-E-Mail, Passwort ab
-#   sudo bash install.sh --web-zip OwnDraw-Web-4.6.4-statisch.zip
+#   sudo bash install.sh --web-zip OwnDraw-Web-4.7.0-statisch.zip
 #   sudo bash install.sh --domain owndraw.thepepelex.at --email ich@example.org --password '…' --yes
 #
 # Optionen:

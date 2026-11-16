@@ -44,14 +44,14 @@ pub(crate) fn board_row(conn: &Connection, id: &str) -> rusqlite::Result<Option<
 }
 
 /// Rolle des Nutzers am Board: `owner`, `edit`, `view` oder `None` (kein Zugriff).
-fn role_for(conn: &Connection, b: &BoardRow, uid: &str) -> rusqlite::Result<Option<String>> {
+pub(crate) fn role_for(conn: &Connection, b: &BoardRow, uid: &str) -> rusqlite::Result<Option<String>> {
     if b.owner_id == uid {
         return Ok(Some("owner".into()));
     }
     conn.query_row("SELECT role FROM members WHERE board_id=?1 AND user_id=?2", params![b.id, uid], |r| r.get(0)).optional()
 }
 
-fn info(b: &BoardRow, role: &str) -> Value {
+pub(crate) fn info(b: &BoardRow, role: &str) -> Value {
     json!({
         "id": b.id,
         "name": b.name,
@@ -272,11 +272,15 @@ pub async fn delete(State(s): State<AppState>, a: Auth, Path(id): Path<String>) 
 
 fn members_json(c: &Connection, b: &BoardRow) -> ApiResult<Value> {
     let owner = db::user_by_id(c, &b.owner_id)?.ok_or_else(|| ApiError::internal("Besitzer fehlt"))?;
-    let mut out = vec![json!({"user_id": owner.id, "email": owner.email, "name": owner.name, "role": "owner"})];
-    let mut st =
-        c.prepare("SELECT u.id,u.email,u.name,m.role FROM members m JOIN users u ON u.id=m.user_id WHERE m.board_id=?1 ORDER BY u.email")?;
+    let mut out = vec![json!({"user_id": owner.id, "email": owner.email, "name": owner.name, "role": "owner", "guest": false})];
+    // Gäste (per Einladungslink) ohne E-Mail, nach den Konten
+    let mut st = c.prepare(
+        "SELECT u.id,u.email,u.name,m.role,u.guest FROM members m JOIN users u ON u.id=m.user_id WHERE m.board_id=?1 ORDER BY u.guest, u.email, u.name",
+    )?;
     let rows = st.query_map([&b.id], |r| {
-        Ok(json!({"user_id": r.get::<_, String>(0)?, "email": r.get::<_, String>(1)?, "name": r.get::<_, String>(2)?, "role": r.get::<_, String>(3)?}))
+        let guest = r.get::<_, i64>(4)? != 0;
+        let email = if guest { String::new() } else { r.get::<_, String>(1)? };
+        Ok(json!({"user_id": r.get::<_, String>(0)?, "email": email, "name": r.get::<_, String>(2)?, "role": r.get::<_, String>(3)?, "guest": guest}))
     })?;
     for r in rows {
         out.push(r?);
@@ -317,7 +321,7 @@ pub async fn add_member(State(s): State<AppState>, a: Auth, Path(id): Path<Strin
                 return Err(ApiError::license_required(license_msg_owner(true)));
             }
             let target = db::user_by_email(c, &email)?
-                .filter(|u| !u.disabled)
+                .filter(|u| !u.disabled && !u.guest)
                 .ok_or_else(|| ApiError::not_found("Zu dieser E-Mail-Adresse gibt es kein Konto."))?;
             if target.id == uid {
                 return Err(ApiError::invalid("Du bist bereits Besitzer dieses Boards."));

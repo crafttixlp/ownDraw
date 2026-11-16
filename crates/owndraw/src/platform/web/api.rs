@@ -57,6 +57,8 @@ pub struct Session {
     pub email: String,
     pub name: String,
     pub admin: bool,
+    /// Gast per Einladungslink (Name ist die Gast-ID, keine E-Mail, keine Lizenz).
+    pub guest: bool,
     pub license: Option<License>,
 }
 
@@ -73,7 +75,7 @@ impl Session {
             quota_mb: l.get("quota_mb").and_then(Value::as_f64).unwrap_or(0.0),
             used_mb: l.get("used_mb").and_then(Value::as_f64).unwrap_or(0.0),
         });
-        Some(Session { id: v.get("id")?.as_str()?.to_string(), email: s("email"), name: s("name"), admin: v.get("admin").and_then(Value::as_bool).unwrap_or(false), license })
+        Some(Session { id: v.get("id")?.as_str()?.to_string(), email: s("email"), name: s("name"), admin: v.get("admin").and_then(Value::as_bool).unwrap_or(false), guest: v.get("guest").and_then(Value::as_bool).unwrap_or(false), license })
     }
 }
 
@@ -109,6 +111,47 @@ pub struct Member {
     pub email: String,
     pub name: String,
     pub role: String,
+    pub guest: bool,
+}
+
+/// Vorschau einer Einladung (`GET /api/invites/{token}`).
+#[derive(Clone, Debug)]
+pub struct InviteInfo {
+    pub board_id: String,
+    pub board_name: String,
+    pub owner_name: String,
+    /// `edit` oder `view`.
+    pub role: String,
+}
+
+/// Vorgemerkte Einladung aus dem Link (`#invite=…`).
+#[derive(Clone, Debug)]
+pub struct PendingInvite {
+    pub token: String,
+    pub info: Option<InviteInfo>,
+    pub error: Option<String>,
+}
+
+/// Einladungslink eines Boards (ohne Token; der steht nur direkt nach dem Anlegen in [`Net::new_link`]).
+#[derive(Clone, Debug)]
+pub struct Invite {
+    pub id: String,
+    pub role: String,
+    pub created: i64,
+    pub expires_at: Option<i64>,
+    pub uses: i64,
+}
+
+impl Invite {
+    fn parse(v: &Value) -> Option<Invite> {
+        Some(Invite {
+            id: v.get("id")?.as_str()?.to_string(),
+            role: v.get("role").and_then(Value::as_str).unwrap_or("view").to_string(),
+            created: v.get("created").and_then(Value::as_i64).unwrap_or(0),
+            expires_at: v.get("expires_at").and_then(Value::as_i64),
+            uses: v.get("uses").and_then(Value::as_i64).unwrap_or(0),
+        })
+    }
 }
 
 /// Laufendes/vorgemerktes Speichern eines Server-Boards.
@@ -148,6 +191,12 @@ pub struct Net {
     pub members: Option<(String, Vec<Member>)>,
     /// Ein Board wird gerade geöffnet/angelegt.
     pub opening: bool,
+    /// Einladung aus dem Link, wartet auf Beitritt.
+    pub invite: Option<PendingInvite>,
+    /// Einladungslinks des Teilen-Dialogs (Board-ID, Liste).
+    pub invites: Option<(String, Vec<Invite>)>,
+    /// Frisch erstellter Link (Board-ID, vollständige URL).
+    pub new_link: Option<(String, String)>,
     puts: HashMap<String, Put>,
 }
 
@@ -170,6 +219,9 @@ thread_local! {
         live: HashSet::new(),
         members: None,
         opening: false,
+        invite: None,
+        invites: None,
+        new_link: None,
         puts: HashMap::new(),
     });
 }
@@ -190,6 +242,7 @@ fn repaint() {
 /// Beim Start: Kontext merken, Anmeldung prüfen.
 pub fn init(ctx: &egui::Context) {
     CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
+    take_invite_from_url();
     refresh_me();
 }
 
@@ -575,7 +628,7 @@ fn set_members(id: &str, v: &Value) {
             a.iter()
                 .map(|m| {
                     let s = |k: &str| m.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-                    Member { user_id: s("user_id"), email: s("email"), name: s("name"), role: s("role") }
+                    Member { user_id: s("user_id"), email: s("email"), name: s("name"), role: s("role"), guest: m.get("guest").and_then(Value::as_bool).unwrap_or(false) }
                 })
                 .collect()
         })
@@ -609,6 +662,130 @@ pub fn remove_member(id: &str, user_id: &str) {
     let id2 = id.to_string();
     request("DELETE", format!("/api/boards/{id}/members/{user_id}"), None, vec![], move |r| match r {
         Ok(r) if r.ok() => set_members(&id2, &r.json()),
+        Ok(r) => notice(r.message()),
+        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+    });
+}
+
+// ---------------------------------------------------------------- Einladungslinks
+
+/// Liest `#invite=<token>` aus der Adresse, merkt die Einladung vor und entfernt das Fragment aus der Adresszeile.
+fn take_invite_from_url() {
+    let Some(w) = web_sys::window() else { return };
+    let loc = w.location();
+    let Ok(hash) = loc.hash() else { return };
+    let Some(token) = hash.strip_prefix("#invite=") else { return };
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return;
+    }
+    if let (Ok(path), Ok(search), Ok(h)) = (loc.pathname(), loc.search(), w.history()) {
+        let _ = h.replace_state_with_url(&JsValue::NULL, "", Some(&format!("{path}{search}")));
+    }
+    invite_info(&token);
+}
+
+/// Lädt die Vorschau einer Einladung (ohne Anmeldung) und merkt sie vor.
+pub fn invite_info(token: &str) {
+    with(|n| n.invite = Some(PendingInvite { token: token.to_string(), info: None, error: None }));
+    let tok = token.to_string();
+    let enc = String::from(js_sys::encode_uri_component(token));
+    request("GET", format!("/api/invites/{enc}"), None, vec![], move |r| {
+        with(|n| {
+            let Some(p) = n.invite.as_mut().filter(|p| p.token == tok) else { return };
+            match r {
+                Ok(r) if r.ok() => {
+                    let v = r.json();
+                    let s = |k: &str| v.pointer(k).and_then(Value::as_str).unwrap_or("").to_string();
+                    p.info = Some(InviteInfo { board_id: s("/board/id"), board_name: s("/board/name"), owner_name: s("/owner/name"), role: s("/role") });
+                }
+                Ok(r) if r.status == 404 => p.error = Some("Diese Einladung ist ungültig, abgelaufen oder wurde widerrufen.".into()),
+                Ok(r) => p.error = Some(r.message()),
+                Err(e) => p.error = Some(format!("Server nicht erreichbar: {e}")),
+            }
+        });
+    });
+}
+
+/// Tritt der Einladung bei. Ohne Anmeldung legt der Server einen Gast mit `name` an.
+pub fn join_invite(token: &str, name: &str) {
+    start_form();
+    let enc = String::from(js_sys::encode_uri_component(token));
+    let body = if logged_in() { json!({}) } else { json!({"name": name.trim()}) };
+    request("POST", format!("/api/invites/{enc}/join"), Some(Body::Json(body)), vec![], |r| {
+        if form_result(&r) {
+            if let Ok(r) = r {
+                let v = r.json();
+                let Some(b) = v.get("board").and_then(BoardInfo::parse) else { return };
+                if let Some(me) = v.get("me") {
+                    set_me(me);
+                }
+                let id = b.id.clone();
+                with(|n| {
+                    n.invite = None;
+                    n.form_ok = false;
+                    n.versions.insert(id.clone(), b.version);
+                    match n.boards.iter_mut().find(|e| e.id == id) {
+                        Some(e) => *e = b,
+                        None => n.boards.insert(0, b),
+                    }
+                });
+                open_board(&id);
+                notice("Du bist dem Board beigetreten");
+            }
+        }
+    });
+}
+
+fn set_invites(id: &str, v: &Value) {
+    let list = v.as_array().map(|a| a.iter().filter_map(Invite::parse).collect()).unwrap_or_default();
+    with(|n| n.invites = Some((id.to_string(), list)));
+}
+
+pub fn load_invites(board: &str) {
+    with(|n| {
+        n.invites = None;
+        n.new_link = None;
+    });
+    let id = board.to_string();
+    request("GET", format!("/api/boards/{board}/invites"), None, vec![], move |r| match r {
+        Ok(r) if r.ok() => set_invites(&id, &r.json()),
+        Ok(r) => notice(r.message()),
+        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+    });
+}
+
+/// Neuer Einladungslink; `days` `None` = unbefristet. Das Ergebnis steht in [`Net::new_link`].
+pub fn create_invite(board: &str, role: &str, days: Option<u32>) {
+    let id = board.to_string();
+    request("POST", format!("/api/boards/{board}/invites"), Some(Body::Json(json!({"role": role, "days": days}))), vec![], move |r| match r {
+        Ok(r) if r.ok() => {
+            let v = r.json();
+            let Some(token) = v.get("token").and_then(Value::as_str) else { return };
+            let origin = web_sys::window().and_then(|w| w.location().origin().ok()).unwrap_or_default();
+            let url = format!("{origin}/#invite={token}");
+            let inv = Invite::parse(&v);
+            with(|n| {
+                n.new_link = Some((id.clone(), url));
+                if let (Some(inv), Some((b, l))) = (inv, n.invites.as_mut()) {
+                    if *b == id {
+                        l.push(inv);
+                    }
+                }
+            });
+        }
+        Ok(r) => notice(r.message()),
+        Err(e) => notice(format!("Server nicht erreichbar: {e}")),
+    });
+}
+
+pub fn delete_invite(board: &str, invite_id: &str) {
+    let id = board.to_string();
+    request("DELETE", format!("/api/boards/{board}/invites/{invite_id}"), None, vec![], move |r| match r {
+        Ok(r) if r.ok() => {
+            set_invites(&id, &r.json());
+            with(|n| n.new_link = None);
+        }
         Ok(r) => notice(r.message()),
         Err(e) => notice(format!("Server nicht erreichbar: {e}")),
     });

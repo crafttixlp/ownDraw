@@ -315,3 +315,34 @@ async fn fremde_origin_und_geloeschtes_board() {
     assert_eq!(recv_t(&mut w, "error").await["code"], "not_found");
     assert!(!srv.state.hub.is_active(&id));
 }
+
+#[tokio::test]
+async fn gast_per_einladungslink_zeichnet_live_mit() {
+    let srv = Srv::start().await;
+    let admin = srv.admin().await;
+    let a = srv.register("a@example.org", "Anna").await;
+    srv.license(&admin, &a).await;
+    let id = srv.board(&a).await;
+    let (s, inv, _) = srv.json(Method::POST, &format!("/api/boards/{id}/invites"), Some(&a), json!({"role": "edit"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let token = inv["token"].as_str().unwrap();
+    let (s, j, h) = srv.json(Method::POST, &format!("/api/invites/{token}/join"), None, json!({"name": "Mila"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let g = h.get(header::SET_COOKIE).unwrap().to_str().unwrap().split(';').next().unwrap().to_string();
+    let gid = j["me"]["name"].as_str().unwrap().to_string();
+
+    let mut wa = srv.ws(&id, &a).await;
+    recv_t(&mut wa, "hello").await;
+    let mut wg = srv.ws(&id, &g).await;
+    let hello = recv_t(&mut wg, "hello").await;
+    assert_eq!((hello["can_write"].clone(), hello["you"]["name"].clone()), (json!(true), json!(gid)));
+    assert_eq!(recv_t(&mut wa, "join").await["peer"]["name"], gid.as_str());
+    let (uid, ops) = upsert(5.0);
+    send(&mut wg, json!({"t": "ops", "cid": 7, "ops": ops})).await;
+    let o = recv_t(&mut wa, "ops").await;
+    assert_eq!(o["ops"][0]["item"]["uid"], owndraw_core::item::uid_str(uid));
+
+    // Gastzugang beenden: Verbindung fliegt raus
+    srv.json(Method::POST, "/api/auth/logout", Some(&g), json!({})).await;
+    assert_eq!(recv_t(&mut wg, "error").await["code"], "removed");
+}

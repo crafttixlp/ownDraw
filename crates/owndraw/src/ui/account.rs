@@ -13,11 +13,15 @@ enum Dlg {
     Redeem { code: String, focus: bool },
     Rename { id: String, name: String },
     Delete { id: String, name: String },
+    /// Gastzugang beenden (Bestätigung).
+    LeaveGuest,
 }
 
 #[derive(Default)]
 pub struct AccountUi {
     dlg: Option<Dlg>,
+    /// Name für den Gastzugang im Einladungsdialog.
+    invite_name: String,
 }
 
 fn date(secs: i64) -> String {
@@ -39,6 +43,21 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
     egui::Frame::new().fill(c(p.accent_soft)).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         match (server, me) {
+            (Server::Ready, Some(me)) if me.guest => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(format!("Gast-ID: {}", me.name)).size(13.5).strong().color(c(p.text)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if style::plain_btn(ui, "Gastzugang beenden", h - 8.0).clicked() {
+                            st.dlg = Some(Dlg::LeaveGuest);
+                        }
+                        if style::accent_btn(ui, "Konto anlegen", h - 8.0).clicked() {
+                            api::with(|n| n.form_error = None);
+                            st.dlg = Some(Dlg::Login { register: true, email: String::new(), password: String::new(), name: String::new(), focus: true });
+                        }
+                    });
+                });
+                ui.label(egui::RichText::new("Als Gast siehst du nur Boards, zu denen du eingeladen wurdest. Mit einem Konto speicherst du eigene Boards.").size(12.5).color(c(p.text)));
+            }
             (Server::Ready, Some(me)) => {
                 let who = if me.name.is_empty() { me.email.clone() } else { format!("{} ({})", me.name, me.email) };
                 ui.horizontal_wrapped(|ui| {
@@ -206,6 +225,11 @@ fn field(ui: &mut egui::Ui, label: &str, text: &mut String, password: bool, focu
 
 /// Dialoge (Anmelden, Registrieren, Lizenz, Umbenennen, Löschen).
 pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
+    // Einladung aus dem Link hat Vorrang; während Anmelden/Registrieren bleibt sie nur vorgemerkt
+    if st.dlg.is_none() && api::with(|n| n.invite.is_some()) {
+        invite_dialog(ctx, sh, st);
+        return;
+    }
     let Some(mut d) = st.dlg.take() else { return };
     let (busy, err, ok) = api::with(|n| (n.busy, n.form_error.clone(), std::mem::take(&mut n.form_ok)));
     if ok && matches!(d, Dlg::Login { .. } | Dlg::Redeem { .. }) {
@@ -292,6 +316,18 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                     close |= style::plain_btn(ui, "Abbrechen", h).clicked();
                 });
             }
+            Dlg::LeaveGuest => {
+                ui.label(egui::RichText::new("Gastzugang beenden?").heading().strong());
+                ui.label("Deine Gast-ID und der Zugriff auf eingeladene Boards gehen verloren.");
+                ui.add_space(10.0);
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if style::danger_btn(ui, "Gastzugang beenden", h).clicked() {
+                        api::logout();
+                        close = true;
+                    }
+                    close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+                });
+            }
             Dlg::Delete { id, name } => {
                 ui.label(egui::RichText::new("Board löschen?").heading().strong());
                 ui.label(format!("„{name}“ wird am Server gelöscht – auch für alle, mit denen es geteilt ist. Das lässt sich nicht rückgängig machen."));
@@ -308,5 +344,72 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
     });
     if !close {
         st.dlg = Some(d);
+    }
+}
+
+/// Einladung aus dem Link: Vorschau, Beitreten (angemeldet) bzw. Gastname eingeben oder anmelden.
+fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
+    let Some(inv) = api::with(|n| n.invite.clone()) else { return };
+    let (server, me, busy, err) = api::with(|n| (n.server, n.me.clone(), n.busy, n.form_error.clone()));
+    let h = sh.env.btn;
+    let p = style::pal();
+    let width = (ctx.content_rect().width() - 24.0).clamp(260.0, 420.0);
+    let (enter, esc) = ctx.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+    let mut close = esc;
+    let mut login = false;
+    let name = &mut st.invite_name;
+    egui::Modal::new(egui::Id::unique("invite-dlg")).frame(style::card()).show(ctx, |ui| {
+        ui.set_width(width - 40.0);
+        ui.label(egui::RichText::new("Einladung").heading().strong());
+        ui.add_space(4.0);
+        if server == Server::Offline {
+            ui.label(egui::RichText::new("Einladungen gehen nur mit Server").color(c(p.danger_text)));
+        } else if let Some(e) = &inv.error {
+            ui.label(egui::RichText::new(e).size(13.0).color(c(p.danger_text)));
+        } else if let Some(i) = &inv.info {
+            let what = if i.role == "edit" { "bearbeiten" } else { "nur ansehen" };
+            ui.label(format!("{} lädt dich zu „{}“ ein ({what}).", i.owner_name, i.board_name));
+            ui.add_space(6.0);
+            if me.is_none() {
+                style::caption(ui, "Dein Name");
+                let r = ui.add(egui::TextEdit::singleline(name).char_limit(24).desired_width(f32::INFINITY).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
+                r.request_focus();
+                ui.label(egui::RichText::new("Du bekommst eine eigene Gast-ID (Name + Kennung, z. B. Mila#K7Q2). Sie bleibt in diesem Browser gespeichert – ohne Konto und Lizenz.").size(12.0).color(c(p.dim)));
+            }
+        } else {
+            ui.spinner();
+        }
+        if let Some(e) = &err {
+            ui.label(egui::RichText::new(e).size(12.5).color(c(p.danger_text)));
+        }
+        ui.add_space(10.0);
+        ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if inv.info.is_some() && server != Server::Offline {
+                let valid = !busy && (me.is_some() || !name.trim().is_empty());
+                ui.add_enabled_ui(valid, |ui| {
+                    let label = if me.is_some() { "Beitreten" } else { "Als Gast beitreten" };
+                    if (style::primary_btn(ui, label, h).clicked() || enter) && valid {
+                        api::join_invite(&inv.token, name);
+                    }
+                });
+                if me.is_none() {
+                    login = style::plain_btn(ui, "Anmelden", h).clicked();
+                }
+            }
+            close |= style::plain_btn(ui, "Abbrechen", h).clicked();
+            if busy {
+                ui.spinner();
+            }
+        });
+    });
+    if login {
+        api::with(|n| n.form_error = None);
+        st.dlg = Some(Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), focus: true });
+    }
+    if close {
+        api::with(|n| {
+            n.invite = None;
+            n.form_error = None;
+        });
     }
 }

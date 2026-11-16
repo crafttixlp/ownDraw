@@ -8,6 +8,7 @@ Domain im Betrieb: `https://owndraw.thepepelex.at` (Caddy davor, Auto-HTTPS). Al
 | Rolle | Darf |
 |---|---|
 | Gast (kein Account) | Editor vollständig, Import per Upload, Speichern nur als Download (`.owndraw`, PNG, PDF …) |
+| Gast mit Gast-ID | über einen Einladungslink beigetreten: eigene ID `<Name>#XXXX`, arbeitet an den eingeladenen Boards live mit (Rolle des Links); keine eigenen Boards am Server, kein Passwort, keine Lizenz |
 | Account ohne Lizenz | wie Gast; kann zu fremden Boards eingeladen werden und dort mitarbeiten |
 | Account mit gültiger Lizenz | zusätzlich Boards am Server speichern, Boards teilen, Kollaboration starten |
 | Admin | Admin-Panel `/admin`: Nutzer, Lizenzcodes, Updates |
@@ -42,8 +43,12 @@ erhalten, sind aber nur noch lesbar/herunterladbar (kein Speichern, kein Teilen)
 | POST | `/api/me/password` | `{old, new}` → `{}` |
 | POST | `/api/license/redeem` | `{code}` → `Me` |
 
+Gäste (siehe „Einladungslinks“) melden sich nicht an: `login` lehnt sie ab, `me/password` und `license/redeem`
+antworten 403. `logout` eines Gastes löscht ihn samt Mitgliedschaften. `register`/`login` mit Gast-Cookie
+übernehmen dessen Mitgliedschaften ins Konto (bei doppelter gewinnt `edit`) und löschen den Gast.
+
 ```json
-Me = {"id":"…","email":"…","name":"…","admin":false,
+Me = {"id":"…","email":"…" (Gast: ""),"name":"…" (Gast: "Mila#K7Q2"),"admin":false,"guest":false,
       "license":{"active":true,"expires_at":1790000000,"quota_mb":500,"used_mb":12.3} | null}
 ```
 
@@ -59,7 +64,7 @@ Board-Inhalt = die `.owndraw`-Datei (ZIP, Format wie Desktop/Java 2.x) als Binä
 | PUT | `/api/boards/{id}` | rohe Bytes, Header `If-Match: <version>` → `BoardInfo`; 409 bei Versionskonflikt (`{…,"version":n}`), 409 mit `"live":true`, solange eine Live-Sitzung läuft |
 | PATCH | `/api/boards/{id}` | `{name}` → `BoardInfo` |
 | DELETE | `/api/boards/{id}` | nur Besitzer → `{}` |
-| GET | `/api/boards/{id}/members` | → `[{user_id,email,name,role}]` |
+| GET | `/api/boards/{id}/members` | → `[{user_id,email,name,role,guest}]` (Gäste mit `email:""`) |
 | POST | `/api/boards/{id}/members` | `{email, role:"edit"\|"view"}` → Liste; nur Besitzer mit Lizenz |
 | DELETE | `/api/boards/{id}/members/{user_id}` | → Liste |
 | PUT | `/api/boards/{id}/images/{sha256}.{ext}` | rohe Bildbytes, nur während einer Live-Sitzung; `owner`/`edit`, Lizenz der Besitzerin/des Besitzers |
@@ -69,6 +74,27 @@ Board-Inhalt = die `.owndraw`-Datei (ZIP, Format wie Desktop/Java 2.x) als Binä
 BoardInfo = {"id":"…","name":"…","owner":{"id":"…","name":"…"},"role":"owner"|"edit"|"view",
              "version":7,"size":12345,"modified":1790000000}
 ```
+
+## Einladungslinks (auch für Gäste ohne Konto)
+
+Link = `https://<host>/#invite=<token>` (Token: 48 Hex-Zeichen, im Fragment, damit er nicht in Server-Logs landet;
+in der DB nur sein SHA-256). Verwalten nur Besitzer mit gültiger Lizenz, höchstens 20 Links je Board.
+
+| Methode | Pfad | |
+|---|---|---|
+| GET | `/api/boards/{id}/invites` | → `[Invite]` (ohne Token) |
+| POST | `/api/boards/{id}/invites` | `{role:"edit"\|"view", days}` → `Invite` mit `token` (nur hier). `days` fehlt → 7, `null` → unbefristet, sonst 1–365 |
+| DELETE | `/api/boards/{id}/invites/{invite_id}` | → `[Invite]` (Link ungültig; schon Beigetretene bleiben Mitglied) |
+| GET | `/api/invites/{token}` | ohne Anmeldung → `{board:{id,name}, owner:{name}, role}`; 404 wenn ungültig/abgelaufen |
+| POST | `/api/invites/{token}/join` | `{name}` → `{me: Me, board: BoardInfo}`. Angemeldet: wird Mitglied (eine `edit`-Rolle wird nicht herabgestuft). Nicht angemeldet: neuer Gast, `name` 1–24 Zeichen (ohne `#`), ID `<name>#XXXX` (eindeutig), setzt Cookie (30 Tage). 403 `license_required`, wenn die Lizenz der Besitzerin/des Besitzers abgelaufen ist |
+
+```json
+Invite = {"id":"…","role":"edit","created":1790000000,"expires_at":1790604800|null,"uses":2}
+```
+
+Missbrauchsschutz: neue Gäste zählen auf das Registrierungs-Limit je IP (10 je 10 Minuten),
+`GET /api/invites/…` und `join` auf ein fünffaches Limit. Gäste ohne gültige Sitzung werden beim Anlegen neuer
+Gäste gelöscht.
 
 Max. Größe pro Board 50 MB (einstellbar). Der Speicherplatz der Lizenz (`quota_mb`) zählt nur eigene Boards.
 

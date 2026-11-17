@@ -170,6 +170,13 @@ Ein TOTP-Code gilt nur einmal (Fenster ±1 Schritt à 30 s). Notfall-Reset: `own
 | POST | `/api/admin/update/check` | sucht neue Version |
 | POST | `/api/admin/update/install` | installiert neueste Version (Backup, Austausch, Neustart) |
 | PATCH | `/api/admin/update` | `{auto, auto_hour}` |
+| GET | `/api/models` | öffentlich: installierte Erkennungsmodelle → `{pakete:[Manifest + groesse]}` (Manifest ohne Quell-URLs der Dateien) |
+| GET | `/api/models/{id}/{datei}` | Modelldatei; Range, ETag/Last-Modified, `Cache-Control: public, max-age=3600` |
+| GET | `/api/admin/models` | → `{pakete:[…], katalog:[…], auftraege:[{id,quelle,status:"laeuft"\|"fertig"\|"fehler",text,geladen,gesamt}]}` |
+| POST | `/api/admin/models/upload` | Rohdaten eines Archivs (tar, tar.gz, zip, bis 4 GiB) mit `manifest.json`; prüft Größe und sha256 jeder Datei und die Lizenz (MIT, Apache-2.0, AFL-3.0) |
+| POST | `/api/admin/models/fetch` | `{url, sha256?, minisig_url?, pubkey?}`: `…/manifest.json` (Dateien daneben bzw. mit eigener `url`) oder ein Archiv → `{auftrag}` |
+| POST | `/api/admin/models/catalog/{id}` | Eintrag des eingebauten Katalogs laden → `{auftrag}` |
+| DELETE | `/api/admin/models/{id}` | Paket löschen |
 | GET | `/api/admin/notices` | → `[Notice]` (alle, in Anzeige-Reihenfolge; neue kommen ans Ende) |
 | POST | `/api/admin/notices` | `{title, body, kind:"info"\|"warning", active:true, starts_at?:…\|null, ends_at?:…\|null}` → `Notice` |
 | PUT | `/api/admin/notices/order` | `{ids:[…]}` alle IDs in neuer Reihenfolge (erste wird zuerst gezeigt) → `[Notice]`; 409, wenn die Liste nicht mehr passt |

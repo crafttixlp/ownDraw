@@ -413,6 +413,8 @@ noscript { position: absolute; inset: 0; display: flex; align-items: center; jus
     };
   })();
 </script>
+<!-- Handschrift-Erkennung (lädt Modelle erst nach Klick in den Einstellungen) -->
+<script type="module" src="hw.js?v=__OWNDRAW_VERSION__"></script>
 <script type="module">
   import init, { start } from "./owndraw_web.js";
   const lade = document.getElementById("lade");

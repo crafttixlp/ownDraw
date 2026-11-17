@@ -2958,7 +2958,7 @@ impl Board {
         let Some(mut cache) = self.cache.take() else { return };
         self.draw_cache_area(&mut cache, 0, 0);
         self.cache = Some(cache);
-        self.cache_items = self.items.iter().filter(|it| !it.lift).cloned().collect();
+        self.cache_items = self.items.iter().filter(|it| self.in_cache(it)).cloned().collect();
         self.cache_sig = Some(self.sig());
         self.cache_dmg = Damage(vec![IRect { x: 0, y: 0, w: dw, h: dh }]);
         self.dirty = false;
@@ -3029,6 +3029,12 @@ impl Board {
     /// Vergleicht die Objekte mit dem Stand des Zwischenspeichers (Zeiger-Identitaet; Aenderungen erzeugen
     /// per Copy-on-Write neue Objekte). Ergebnis: Bereich (Geraete-Pixel), der neu gezeichnet werden muss,
     /// oder None, wenn ein komplettes Neuzeichnen guenstiger ist.
+    /// Liegt das Objekt im Zwischenspeicher? Nicht beim Anheben (`lift`) und nicht, solange es ausgeblendet ist
+    /// (Text am Ort bearbeiten): sonst bliebe der alte Text unter dem Eingabefeld stehen.
+    fn in_cache(&self, it: &Item) -> bool {
+        !it.lift && self.hidden != Some(it.id)
+    }
+
     fn item_diff(&self) -> Option<IRect> {
         let old: HashMap<*const Item, usize> = self.cache_items.iter().enumerate().map(|(i, it)| (Rc::as_ptr(it), i)).collect();
         let mut seen = vec![false; self.cache_items.len()];
@@ -3038,7 +3044,7 @@ impl Board {
             let (w, h) = self.cache_size();
             w as u64 * h as u64 / 2
         };
-        for it in self.items.iter().filter(|it| !it.lift) {
+        for it in self.items.iter().filter(|it| self.in_cache(it)) {
             match old.get(&Rc::as_ptr(it)) {
                 Some(&i) if !seen[i] && i as isize > last => {
                     seen[i] = true;
@@ -3118,7 +3124,7 @@ impl Board {
             match self.item_diff() {
                 Some(r) => {
                     self.redraw_cache_rect(r);
-                    self.cache_items = self.items.iter().filter(|it| !it.lift).cloned().collect();
+                    self.cache_items = self.items.iter().filter(|it| self.in_cache(it)).cloned().collect();
                     self.dirty = false;
                 }
                 None => self.render_cache(),
@@ -3548,6 +3554,25 @@ mod tests {
         assert!(b.sel.is_empty());
         b.delete_item(id);
         assert!(b.items.is_empty());
+    }
+
+    /// Regression: Doppelklick auf Text (am Ort bearbeiten) blendet den Text auch im Zwischenspeicher aus,
+    /// sonst stand der alte Text unter dem Eingabefeld (doppelt/versetzt).
+    #[test]
+    fn ausgeblendeter_text_verschwindet_aus_zwischenspeicher() {
+        let mut b = board();
+        b.add_note_rect("HHHHHH", (100.0, 100.0, 60.0, 0.0, 0.0), false);
+        let id = b.items[0].id;
+        let mut pm = Pixmap::new(800, 600).unwrap();
+        let dunkel = |pm: &Pixmap| (100..400).flat_map(|x| (100..180).map(move |y| (x, y))).filter(|&(x, y)| pm.pixel(x, y).unwrap().red() < 0x80).count();
+        b.render(&mut pm);
+        assert!(dunkel(&pm) > 100, "Text wird gezeichnet");
+        b.set_hidden(Some(id));
+        b.render(&mut pm);
+        assert_eq!(dunkel(&pm), 0, "ausgeblendeter Text bleibt sichtbar");
+        b.set_hidden(None);
+        b.render(&mut pm);
+        assert!(dunkel(&pm) > 100, "Text wieder sichtbar");
     }
 
     #[test]

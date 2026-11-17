@@ -7,6 +7,8 @@
 
 #[cfg(not(target_os = "android"))]
 use crate::net::{self, Body};
+#[cfg(target_os = "android")]
+use net::Body;
 use crate::settings::Settings;
 use owndraw_core::calc::library::{self, Collection};
 use owndraw_core::calc::Prelude;
@@ -136,6 +138,7 @@ fn me_id() -> Option<String> {
 }
 
 #[cfg(target_os = "android")]
+#[allow(dead_code)]
 mod net {
     pub enum Body {
         Json(serde_json::Value),

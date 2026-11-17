@@ -134,7 +134,7 @@ def p_p2t(out, tmp):
               f'https://huggingface.co/{r}', REV[r], 'Formel → LaTeX, TrOCR-Architektur, selbst nach int8 quantisiert.')
     mf['modell'] = ved('encoder.onnx', 'decoder.onnx', 1, 2, 0, 160, 4)
     mf['vorverarbeitung'] = {'breite': 384, 'hoehe': 384, 'farbe': 'rgb', 'mittel': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5],
-                             'anpassen': 'einpassen', 'rand': 0.08}
+                             'anpassen': 'strecken', 'rand': 0.04}
     mf['tokenizer'] = {'datei': 'tokenizer.json', 'format': 'hf'}
     finish(out, mf, {'encoder.onnx': os.path.join(w, 'encoder.onnx'), 'decoder.onnx': os.path.join(w, 'decoder.onnx'),
                      'tokenizer.json': hf(r, 'tokenizer.json', tmp)}, tmp, 'MIT', 'breezedeus')

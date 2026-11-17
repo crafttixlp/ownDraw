@@ -4,6 +4,8 @@
 mod app;
 mod autosave;
 mod demo;
+/// Handschrift-Erkennung: Anbindung an die Browser-Seite (hw.js).
+mod hw;
 mod kv;
 #[allow(dead_code)]
 mod layout;

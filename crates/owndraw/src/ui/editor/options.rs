@@ -275,6 +275,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
             colors(ui, ed, sh);
         }
         Tool::Calc => super::calced::options(ui, ed, sh),
+        Tool::Convert => super::convert::options(ui, sh),
     }
 }
 

@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `stamps` (alle Stempel), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `convert` (Werkzeug „Umwandeln“ mit Fenster und festen Alternativen), `stamps` (alle Stempel), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -263,6 +263,35 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
                 l.push((1000.0, 140.0 + i as f32 * 55.0, s));
             }
             ed.demo_calc(sh, &l, (120.0, 470.0), "v = 72 km/h");
+        }
+        if has("convert") {
+            // Werkzeug „Umwandeln“: Handschrift „F = 2 kN“ und das Fenster mit Alternativen (ohne Modell, feste Ergebnisse)
+            let sh = app.parts().0;
+            sh.settings.tool_on.insert("convert".into(), true);
+            ed.select_tool(sh, crate::ui::editor::Tool::Convert);
+            ed.board.add_math(120.0, 120.0, 30.0, &owndraw_core::calc::to_latex("F: 2 kN"));
+            let col = 0xFF3E63DD;
+            let n0 = ed.board.items.len();
+            stroke(&mut ed.board, col, 3.0, false, &[(120.0, 240.0), (120.0, 290.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(120.0, 240.0), (145.0, 240.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(120.0, 263.0), (140.0, 263.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(165.0, 258.0), (190.0, 258.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(165.0, 272.0), (190.0, 272.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(212.0, 250.0), (225.0, 240.0), (238.0, 250.0), (212.0, 290.0), (242.0, 290.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(262.0, 240.0), (262.0, 290.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(282.0, 258.0), (264.0, 274.0), (284.0, 290.0)]);
+            stroke(&mut ed.board, col, 3.0, false, &[(296.0, 290.0), (296.0, 240.0), (322.0, 290.0), (322.0, 240.0)]);
+            let ids: Vec<u64> = ed.board.items[n0..].iter().map(|i| i.id).collect();
+            use owndraw_core::hw::Art;
+            ed.demo_convert(
+                ids,
+                &[
+                    (Art::Formel, vec![("F=2\\mathrm{kN}", -0.21), ("F=2kN", -0.35), ("F=2\\,\\mathrm{kN}", -0.4), ("E=2kN", -0.5)]),
+                    (Art::Text, vec![("F = 2 kN", -0.3), ("F = 2kN", -0.4), ("F=2 KN", -0.6)]),
+                    (Art::Zahl, vec![("F=2kN", -0.9), ("2 kN", -1.2)]),
+                ],
+                Art::Formel,
+            );
         }
         if has("ruler") {
             ed.demo_ruler();

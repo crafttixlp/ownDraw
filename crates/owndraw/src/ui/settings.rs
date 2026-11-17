@@ -370,6 +370,115 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         });
     });
 
+    // ---- Handschrift-Erkennung (Werkzeug „Umwandeln“)
+    section(ui, "Handschrift-Erkennung", |ui| {
+        use owndraw_core::hw::{self as chw, Stufe};
+        row(ui, env, "Handschrift-Erkennung", Some("Höher = größere Modelle, bessere Erkennung, längeres Laden. Erkannt wird nur im Browser, nichts geht an den Server."), |ui| {
+            let cur = settings.hw.stufe();
+            for s in Stufe::ALL {
+                if style::chip(ui, s.label(), cur == s, btn).clicked() {
+                    settings.hw.set(s);
+                }
+            }
+        });
+        let stufe = settings.hw.stufe();
+        let info = crate::hw::info();
+        row(ui, env, "Modelle", Some("Werden nur auf Klick vom OwnDraw-Server geladen und im Browser gespeichert."), |ui| {
+            if !crate::hw::SUPPORTED {
+                ui.label(egui::RichText::new("Nur im Browser verfügbar (Web-App).").color(c(p.dim)));
+                return;
+            }
+            let Some(info) = info.as_ref() else {
+                ui.label(egui::RichText::new("Die Erkennung wird noch geladen …").color(c(p.dim)));
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+                return;
+            };
+            match info.liste.as_str() {
+                "leer" => {
+                    crate::hw::refresh_list();
+                    ui.spinner();
+                }
+                "laedt" => {
+                    ui.spinner();
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                }
+                "fehler" => {
+                    ui.label(egui::RichText::new(&info.fehler).color(c(p.danger)));
+                    if style::plain_btn(ui, "Erneut versuchen", btn).clicked() {
+                        crate::hw::refresh_list();
+                    }
+                }
+                _ => {
+                    let ms = info.manifests();
+                    let need = chw::pakete_fuer_stufe(&ms, stufe);
+                    ui.vertical(|ui| {
+                        if stufe == Stufe::Aus {
+                            ui.label(egui::RichText::new("Aus: das Werkzeug „Umwandeln“ erkennt nichts.").color(c(p.dim)));
+                        } else if need.is_empty() {
+                            ui.label(egui::RichText::new("Der Server bietet keine Modelle an (Admin → Erkennungsmodelle).").color(c(p.dim)));
+                        }
+                        let mut busy = false;
+                        for m in &need {
+                            let pk = info.paket(&m.id);
+                            let (st, col) = match pk.map(|x| x.zustand.as_str()) {
+                                Some("da") => ("gespeichert".to_string(), p.text),
+                                Some("laedt") => {
+                                    busy = true;
+                                    let x = pk.unwrap();
+                                    (format!("lädt {} %", x.geladen * 100 / x.gesamt.max(1)), p.accent)
+                                }
+                                Some("fehler") => (format!("Fehler: {}", pk.unwrap().fehler), p.danger),
+                                _ => ("nicht geladen".to_string(), p.dim),
+                            };
+                            let art = m.art().map(|a| a.label()).unwrap_or("Laufzeit");
+                            ui.label(egui::RichText::new(format!("{art}: {} · {} · {st}", m.name, chw::fmt_mb(m.groesse()))).color(c(col)));
+                        }
+                        if busy {
+                            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                        }
+                        let missing: Vec<String> = need.iter().filter(|m| !info.paket(&m.id).is_some_and(|x| x.da() || x.zustand == "laedt")).map(|m| m.id.clone()).collect();
+                        let sum: u64 = need.iter().filter(|m| missing.contains(&m.id)).map(|m| m.groesse()).sum();
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.add_enabled_ui(!missing.is_empty(), |ui| style::accent_btn(ui, &format!("Modelle laden ({})", chw::fmt_mb(sum)), btn)).inner.clicked() {
+                                crate::hw::download(&missing);
+                            }
+                            let any = info.pakete.iter().any(|x| x.da());
+                            if ui.add_enabled(any && !busy, egui::Button::new("Gespeicherte Modelle löschen").min_size(egui::vec2(0.0, btn))).clicked() {
+                                crate::hw::clear();
+                            }
+                        });
+                        ui.label(egui::RichText::new(if info.webgpu { "Beschleunigung: WebGPU verfügbar (große Modelle), sonst WebAssembly." } else { "Rechnet mit WebAssembly auf dem Prozessor (kein WebGPU)." }).size(12.0).color(c(p.dim)));
+                        if !info.cache {
+                            ui.label(egui::RichText::new("Dieser Browser speichert Modelle nur bis zum Neuladen (kein Cache Storage, z. B. ohne HTTPS).").size(12.0).color(c(p.dim)));
+                        }
+                    });
+                }
+            }
+        });
+        if let Some(info) = info.as_ref().filter(|i| !i.pakete.is_empty()) {
+            row(ui, env, "Lizenzen", Some("Herkunft und Lizenz der Modelle auf dem Server."), |ui| {
+                ui.vertical(|ui| {
+                    for pk in &info.pakete {
+                        let m = &pk.m;
+                        ui.label(egui::RichText::new(format!("{} ({}, Version {})", m.name, m.lizenz, m.version)).strong());
+                        if !m.lizenz_hinweis.is_empty() {
+                            ui.label(egui::RichText::new(&m.lizenz_hinweis).size(12.0).color(c(p.dim)));
+                        }
+                        ui.horizontal_wrapped(|ui| {
+                            if !m.quelle.is_empty() && ui.link(egui::RichText::new("Quelle").size(12.0)).on_hover_text(&m.quelle).clicked() {
+                                platform.open_url(&m.quelle);
+                            }
+                            if !m.lizenz_datei.is_empty() && ui.link(egui::RichText::new("Lizenztext").size(12.0)).clicked() {
+                                platform.open_url(&format!("api/models/{}/{}", m.id, m.lizenz_datei));
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                });
+            });
+        }
+    });
+
     // ---- Speichern
     if crate::platform::WEB {
         section(ui, "Speichern", |ui| {

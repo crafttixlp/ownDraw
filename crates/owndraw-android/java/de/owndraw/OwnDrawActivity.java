@@ -295,7 +295,10 @@ public class OwnDrawActivity extends NativeActivity {
 
     /** Druckt ein PDF aus dem App-Speicher über den Druckdienst von Android. */
     public void printPdf(final String path, final String name) {
-        runOnUiThread(() -> {
+        // ohne Lambda: der Build nutzt javac mit android.jar ohne LambdaMetafactory
+        runOnUiThread(new Runnable() {
+          @Override
+          public void run() {
             try {
                 android.print.PrintManager pm = (android.print.PrintManager) getSystemService(Context.PRINT_SERVICE);
                 pm.print(name, new android.print.PrintDocumentAdapter() {
@@ -329,6 +332,7 @@ public class OwnDrawActivity extends NativeActivity {
             } catch (RuntimeException e) {
                 Log.w(TAG, "printPdf: " + e);
             }
+          }
         });
     }
 

@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `stamps` (alle Stempel), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `stamps` (alle Stempel), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -242,6 +242,27 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             ed.board.add_math(520.0, 300.0, 34.0, "\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}");
             ed.select_tool(app.parts().0, crate::ui::editor::Tool::Math);
             ed.demo_math(520.0, 120.0, "x_{1,2} = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}");
+        }
+        if has("calc") {
+            // Werkzeug „Rechnen“: Beispiel von Le, Umstellen, quadratische Gleichung, Gleichungssystem
+            let sh = app.parts().0;
+            sh.settings.tool_on.insert("calc".into(), true);
+            if has("steps") {
+                sh.settings.calc.steps = true;
+            }
+            ed.board.calc = sh.settings.calc.to_core();
+            ed.select_tool(sh, crate::ui::editor::Tool::Calc);
+            let mut l: Vec<(f32, f32, &str)> = Vec::new();
+            for (i, s) in ["a: 1 N", "b: 2 m", "M = a·b", "M = kN·m", "M ="].into_iter().enumerate() {
+                l.push((120.0, 140.0 + i as f32 * 55.0, s));
+            }
+            for (i, s) in ["F = 10 kN", "p = 5 MPa", "p = F/A", "A = mm²", "z² - 5z + 6 = 0", "z =", "U = 12 V + 3 m"].into_iter().enumerate() {
+                l.push((560.0, 140.0 + i as f32 * 55.0, s));
+            }
+            for (i, s) in ["x + y = 10", "x - y = 2", "x =", "y ="].into_iter().enumerate() {
+                l.push((1000.0, 140.0 + i as f32 * 55.0, s));
+            }
+            ed.demo_calc(sh, &l, (120.0, 470.0), "v = 72 km/h");
         }
         if has("ruler") {
             ed.demo_ruler();

@@ -16,6 +16,8 @@ const CALC: (u32, u32) = (0xFF1F6FEB, 0xFF79B0FF);
 pub struct CalcView {
     /// Linke Seite neu gesetzt (bei Wunsch-Einheit/Platzhalter), sonst None = Formel wie geschrieben.
     left: Option<Formula>,
+    /// Zwischenschritte in der Zeile (Rechenweg), je mit „=“ dahinter.
+    chain: Vec<Formula>,
     value: Option<Formula>,
     unit: Option<Formula>,
     err: bool,
@@ -106,19 +108,21 @@ impl Board {
                 Out::Result { left, value, unit, steps, err } => {
                     let it = self.items.iter().find(|it| it.id == id);
                     let src_ok = it.and_then(|it| it.as_math()).is_some_and(|m| m.src.trim_end().ends_with('=') && unit.is_empty());
-                    let mut below: Vec<(Formula, bool)> = steps.iter().map(|s| (layout(s, MATH_BASE * 0.7), false)).collect();
+                    let chain = steps.iter().filter(|s| !s.starts_with("\\text{")).map(|s| layout(&format!("{s} ="), MATH_BASE)).collect();
+                    let mut below: Vec<(Formula, bool)> = steps.iter().filter(|s| s.starts_with("\\text{")).map(|s| (layout(s, MATH_BASE * 0.55), false)).collect();
                     if let Some(e) = &err {
                         below.push((layout(&text_tex(e), MATH_BASE * 0.6), true));
                     }
                     CalcView {
                         left: (!src_ok && !left.is_empty()).then(|| layout(&left, MATH_BASE)),
+                        chain,
                         value: Some(layout(&value, MATH_BASE)),
                         unit: (!unit.is_empty()).then(|| layout(&unit, MATH_BASE)),
                         err: err.is_some(),
                         below,
                     }
                 }
-                Out::Error(e) => CalcView { left: None, value: None, unit: None, err: true, below: vec![(layout(&text_tex(&e), MATH_BASE * 0.6), true)] },
+                Out::Error(e) => CalcView { left: None, chain: Vec::new(), value: None, unit: None, err: true, below: vec![(layout(&text_tex(&e), MATH_BASE * 0.6), true)] },
             };
             map.insert(id, v);
         }
@@ -132,7 +136,7 @@ impl Board {
         let gap = MATH_BASE * 0.12;
         let mut w = main.w;
         let mut h = main.h;
-        for f in [v.value.as_ref(), v.unit.as_ref()].into_iter().flatten() {
+        for f in v.chain.iter().chain([v.value.as_ref(), v.unit.as_ref()].into_iter().flatten()) {
             w += f.w + gap * 0.3;
             h = h.max(main.asc - f.asc + f.h);
         }
@@ -159,6 +163,15 @@ impl Board {
         let gap = MATH_BASE * 0.12;
         let mut x = main.w;
         let mut bottom = main.h;
+        for f in &v.chain {
+            let y = main.asc - f.asc;
+            c.save();
+            c.translate(x + gap * 0.3, y);
+            f.draw(c, calc_col);
+            c.restore();
+            x += f.w + gap * 0.3;
+            bottom = bottom.max(y + f.h);
+        }
         for (f, col, tint) in [(v.value.as_ref(), if v.err { calc::ERR } else { calc_col }, true), (v.unit.as_ref(), ink, false)] {
             let Some(f) = f else { continue };
             let y = main.asc - f.asc;

@@ -197,6 +197,8 @@
             "Zuweisung: a: 1 N oder a = 1 N. Formel: M = a·b. Ergebniszeile: M = (das Ergebnis erscheint farbig). Mit Wunscheinheit: M = kN·m.",
             "Einheiten mit Vorsätzen (k, m, µ …) werden umgerechnet; passen die Einheiten nicht zusammen, erscheint eine Warnung.",
             "Variablen gelten auf der Seite von oben nach unten: Eine Zeile kennt alles, was darüber steht.",
+          "Zahl direkt vor einem Einheitenzeichen = Einheit (2 m, 5 kN·m); als Variable mit Malpunkt schreiben (2·m). Einbuchstabige Wunscheinheiten eindeutig mit Fragezeichen: v = ? m/s. Temperaturen: 20 °C wird umgerechnet, Differenzen in K angeben.",
+          "Rechenweg (Option): die Zeile zeigt die Formel und die eingesetzten Werte, z. B. M = a·b = 1 N·2 m = 2 N·m; beim Lösen steht darunter, aus welcher Gleichung gelöst wurde. Ergebnis auch ohne Variable: 3·4 + 2 =",
             "Unbekannte lösen: Ist p = F/A gegeben und p und F sind bekannt, liefert die Zeile A = die Fläche. Auch quadratische Gleichungen und Gleichungssysteme gehen: x + y = 10, x − y = 2, danach x = und y =.",
             "Funktionen: sqrt, sin, cos, tan (Grad oder Bogenmaß, siehe Optionen), ln, log und Prozent. Zahlen wie 1,5e3 oder 1,5·10^3. Konstanten: π, e, g.",
             "Schnellknöpfe im Feld fügen · ² √ π ° Ω µ Δ ein.",

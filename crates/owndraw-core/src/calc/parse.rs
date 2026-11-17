@@ -1169,9 +1169,34 @@ pub fn part_latex(t: &[Tok], unit_ok: bool) -> Option<String> {
     }
     if let Some(u) = unit_only(t).filter(|_| unit_ok) {
         let pre = if t[0] == Tok::Hole { "\\ldots\\," } else { "" };
+        // nur einbuchstabige Zeichen (p = F/A, v = m/s): ob Einheit oder Formel, entscheidet erst die Seite → kursiv, Schrägstrich
+        if pre.is_empty() && single_letters(&u) {
+            return Some(ambig_latex(&u));
+        }
         return Some(format!("{pre}{}", unit_latex(&u)));
     }
     expr(t).ok().map(|e| latex(&e, None))
+}
+
+fn single_letters(e: &E) -> bool {
+    match e {
+        E::Unit(u) => u.sym.chars().count() == 1 && u.sym.chars().all(|c| c.is_ascii_alphabetic()),
+        E::Num(..) => true,
+        E::Bin(_, a, b) => single_letters(a) && single_letters(b),
+        E::Par(a) | E::Neg(a) => single_letters(a),
+        _ => false,
+    }
+}
+
+fn ambig_latex(e: &E) -> String {
+    match e {
+        E::Unit(u) => u.sym.clone(),
+        E::Bin(Op::Pow, a, b) => format!("{}^{{{}}}", ambig_latex(a), unit_latex(b)),
+        E::Bin(Op::Div | Op::Frac, a, b) => format!("{}/{}", ambig_latex(a), ambig_latex(b)),
+        E::Bin(_, a, b) => format!("{} \\cdot {}", ambig_latex(a), ambig_latex(b)),
+        E::Par(a) => format!("\\left({}\\right)", ambig_latex(a)),
+        x => unit_latex(x),
+    }
 }
 
 pub fn part_plain(t: &[Tok], unit_ok: bool) -> Option<String> {

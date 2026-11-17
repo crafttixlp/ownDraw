@@ -45,7 +45,8 @@ impl Default for Opts {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Out {
     /// Ergebniszeile: `left` (LaTeX bis einschließlich „=“), Wert (LaTeX, mit Einheit, wenn keine Wunsch-Einheit),
-    /// Wunsch-Einheit (LaTeX, sonst leer), Rechenweg (LaTeX-Zeilen), Fehler/Warnung.
+    /// Wunsch-Einheit (LaTeX, sonst leer), Rechenweg (LaTeX: Zwischenschritte der Kette `M = a·b = 1 N·2 m = …`;
+    /// Einträge, die mit `\text{` beginnen, sind Hinweise wie „aus p = F/A gelöst nach A“), Fehler/Warnung.
     Result { left: String, value: String, unit: String, steps: Vec<String>, err: Option<String> },
     /// Rechenzeile mit Fehler (z. B. „Einheiten passen nicht: N + m“).
     Error(String),
@@ -226,10 +227,7 @@ fn line(t: &[Tok], o: &Opts, names: &HashSet<String>, env: &mut Env, defs: &mut 
                 }
             }
             let value = parts.join("\\;\\text{oder}\\;");
-            if o.steps && !steps.is_empty() {
-                let lt = parse::latex(target, None);
-                steps.push(format!("{lt} = {value}{}", if unit.is_empty() { String::new() } else { format!("\\,{unit}") }));
-            } else {
+            if !o.steps {
                 steps.clear();
             }
             Some(Out::Result { left, value, unit, steps, err: None })
@@ -327,9 +325,10 @@ fn query_value(target: &E, o: &Opts, env: &mut Env, defs: &HashMap<String, Def>,
                     let f = parse::latex(&d.e, None);
                     let s = parse::latex(&d.e, Some(&sub));
                     let nl = parse::latex(target, None);
-                    steps.push(format!("{nl} = {f}"));
+                    let _ = nl;
+                    steps.push(f.clone());
                     if s != f {
-                        steps.push(format!("{nl} = {s}"));
+                        steps.push(s);
                     }
                 }
             }
@@ -344,10 +343,12 @@ fn query_value(target: &E, o: &Opts, env: &mut Env, defs: &HashMap<String, Def>,
     }
     // Lösen
     let (sol, used) = solve_for(&need, o, env, rels)?;
-    for u in &used {
-        steps.push(format!("\\text{{aus }} {}", rels[*u].tex));
-    }
-    steps.push(format!("\\text{{gelöst nach }} {}", need.iter().map(|n| parse::name_latex(n)).collect::<Vec<_>>().join(", ")));
+    let from: Vec<&str> = used.iter().map(|u| rels[*u].tex.as_str()).collect();
+    steps.push(format!(
+        "\\text{{aus }} {}\\;\\text{{gelöst nach }} {}",
+        from.join(",\\; "),
+        need.iter().map(|n| parse::name_latex(n)).collect::<Vec<_>>().join(", ")
+    ));
     if sol.len() == 1 {
         for (n, q) in need.iter().zip(&sol[0]) {
             env.insert(n.clone(), q.clone());

@@ -57,6 +57,18 @@ impl Editor {
         self.calc = Some(ed);
     }
 
+    /// Abnahme-Demo: Rechen-Zeilen anlegen und das Feld mit `src` öffnen.
+    pub fn demo_calc(&mut self, sh: &mut Shared, lines: &[(f32, f32, &str)], at: (f32, f32), src: &str) {
+        let size = self.board.math_size();
+        for (x, y, l) in lines {
+            self.board.add_math(*x, *y, size, &calc::to_latex(l));
+        }
+        self.start_calc(sh, at.0, at.1);
+        if let Some(ce) = self.calc.as_mut() {
+            ce.src = src.to_string();
+        }
+    }
+
     /// Schließt das Feld.
     pub(super) fn finish_calc(&mut self) {
         self.calc = None;

@@ -131,7 +131,7 @@ fn rechenweg() {
     let o = Opts { steps: true, ..Opts::default() };
     let out = page(&["a: 1 N", "b: 2 m", "M = a·b", "M ="], &o);
     let Some(Out::Result { steps, .. }) = &out[3] else { panic!() };
-    assert_eq!(steps[0], "M = a \\cdot b");
+    assert_eq!(steps[0], "a \\cdot b");
     assert!(steps[1].contains("1\\,\\mathrm{N} \\cdot 2\\,\\mathrm{m}"), "{steps:?}");
     let out = page(&["p = F/A", "p = 2 bar", "F = 100 N", "A = cm²"], &o);
     let Some(Out::Result { steps, .. }) = &out[3] else { panic!() };
@@ -162,6 +162,11 @@ fn latex_umwandeln() {
     assert_eq!(to_latex("ΔT = 5 K"), "\\Delta T = 5\\,\\mathrm{K}");
     assert_eq!(to_latex("v = 3 m/s^2"), "v = 3\\,\\mathrm{m}/\\mathrm{s}^{2}");
     assert_eq!(to_latex("x = ?"), "x = \\ldots");
+    assert_eq!(to_latex("p = F/A"), "p = F/A");
+    assert_eq!(to_latex("v = ? m/s"), "v = \\ldots\\,\\mathrm{m}/\\mathrm{s}");
+    // gleich gerechnet wie getippt
+    assert_eq!(run(&["F = 10 N", "A = 2 m²", &to_latex("p = F/A"), "p ="])[3], "5\\,\\mathrm{Pa}");
+    assert_eq!(run(&["s = 100 m", "t = 10 s", "v = s/t", &to_latex("v = km/h")])[3], "36 \\mathrm{km}/\\mathrm{h}");
     assert_eq!(to_latex("T = 20 °C"), "T = 20\\,^{\\circ}\\mathrm{C}");
     assert_eq!(to_latex("c = 4190 J/(kg·K)"), "c = 4190\\,\\mathrm{J}/\\left(\\mathrm{kg}\\cdot \\mathrm{K}\\right)");
     for s in ["a: 1,5 kN", "M = a·b", "M =", "M = kN·m", "x = sqrt(2)/3", "F_res = 2 F_1", "α = 30°", "v = 3 m/s²", "T = 20 °C", "y = sin(x) + 2^(x+1)", "c = 4190 J/(kg·K)", "x = ?"] {

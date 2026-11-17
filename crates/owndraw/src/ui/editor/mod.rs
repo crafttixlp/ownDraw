@@ -11,6 +11,7 @@ pub mod keys;
 mod glyphs;
 mod layers;
 mod mathed;
+mod mathin;
 mod calced;
 mod fbook;
 #[cfg(not(target_os = "android"))]
@@ -858,6 +859,7 @@ impl Editor {
         more::show(self, &ctx, sh, &lay);
         fbook::show(self, &ctx, sh);
         self.x_frame(&ctx, sh, &lay, layer);
+        self.math_inline_bar(&ctx, sh);
         self.text_editor(&ctx, &sh.settings);
         self.math_editor(&ctx, sh);
         self.calc_editor(&ctx, sh);
@@ -960,12 +962,12 @@ impl Editor {
             match e {
                 board::Event::Notice(s) => sh.toast(&s),
                 board::Event::AskText { wx, wy, .. } if self.st.math_tool => match self.board.math_at(wx, wy) {
-                    Some(id) => self.edit_math(id),
-                    None => self.start_math(wx, wy),
+                    Some(id) => self.edit_math_inline(id),
+                    None => self.start_math_inline(wx, wy),
                 },
                 board::Event::AskText { wx, wy, .. } if self.st.calc_tool => self.start_calc(sh, wx, wy),
                 board::Event::AskText { wx, wy, note } => self.start_text(wx, wy, note),
-                board::Event::EditNote(id) if self.board.items.iter().any(|it| it.id == id && it.as_math().is_some()) => self.edit_math(id),
+                board::Event::EditNote(id) if self.board.items.iter().any(|it| it.id == id && it.as_math().is_some()) => self.edit_math_inline(id),
                 board::Event::EditNote(id) => self.edit_note(id),
                 board::Event::Changed | board::Event::Haptic => {}
             }

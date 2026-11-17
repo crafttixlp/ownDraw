@@ -175,19 +175,22 @@
         {
           "id": "tool-formel",
           "title": "Formel",
-          "text": "Setzt Mathe-Formeln in LaTeX-Schreibweise. Tippe aufs Blatt, schreibe die Formel und sieh sie live in der Vorschau. Fehlerhafte Stellen erscheinen rot. Einschalten unter Einstellungen → Werkzeuge (Extras).",
+          "text": "Setzt Mathe-Formeln. Tippe aufs Blatt und schreibe die Formel direkt an der Stelle in einfacher Schreibweise (M = a·b, x^2, sqrt(2)/3); darunter siehst du sie live in der Vorschau. Enter übernimmt. Für Integrale, Summen oder Matrizen gibt es mit „LaTeX …“ das Formel-Fenster. Fehlerhafte Stellen erscheinen rot. Einschalten unter Einstellungen → Werkzeuge (Extras).",
           "how": [
-            "Schnellknöpfe fügen Bruch, Wurzel, Hoch-/Tiefstellung, Summe, Integral, Klammern, griechische Buchstaben und Zeichen ein; markierter Text wird eingepackt.",
+            "Direkt auf dem Blatt: Bruch a/b, Wurzel sqrt(x) oder √x, hoch x^2, Index F_1, Malpunkt a·b bzw. a*b, griechisch α β Δ, Einheiten 5 kN·m. Schnellknöpfe unter dem Feld fügen · ² √ π ° Ω µ Δ ein. Enter, Esc oder Tippen daneben übernimmt, leerer Text löscht die Formel.",
+            "Vorhandene Formel ändern: mit dem Werkzeug „Formel“ oder „Rechnen“ darauf tippen, oder eine ausgewählte Formel erneut antippen bzw. doppelklicken. Die Formel wird an ihrer Stelle zum Eingabefeld, das Formel-Fenster öffnet sich nicht.",
+            "„LaTeX …“ unter dem Feld öffnet das Formel-Fenster mit LaTeX-Schreibweise. Formeln, die sich nicht einfach schreiben lassen, zeigen ihren LaTeX-Quelltext direkt im Feld auf dem Blatt.",
+            "Im Formel-Fenster: Schnellknöpfe fügen Bruch, Wurzel, Hoch-/Tiefstellung, Summe, Integral, Klammern, griechische Buchstaben und Zeichen ein; markierter Text wird eingepackt.",
             "Brüche und Wurzeln: \\frac{a}{b}, \\sqrt{x}, \\sqrt[3]{x}. Hoch/tief: x^2, a_{n+1}.",
             "Klammern, die mitwachsen: \\left( \\frac{1}{2} \\right). Summe/Integral mit Grenzen: \\sum_{k=1}^{n} k, \\int_0^\\infty e^{-x}\\,dx, \\lim_{x \\to 0}.",
             "Griechisch und Zeichen: \\alpha \\beta \\pi \\Omega, \\cdot \\times \\pm \\le \\ge \\ne \\approx \\infty \\rightarrow \\Rightarrow \\in.",
             "Text und Akzente: \\text{Fläche}, \\vec{v}, \\bar{x}, \\hat{y}. Matrizen: \\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix}, auch bmatrix, vmatrix und cases.",
-            "Bearbeiten: mit dem Werkzeug auf die Formel tippen oder eine ausgewählte Formel erneut antippen. Strg+Enter übernimmt, Esc bricht ab, leerer Text löscht die Formel.",
+            "Im Formel-Fenster übernimmt Strg+Enter, Esc bricht ab.",
             "Formeln lassen sich wie Text verschieben, skalieren, drehen und einfärben; PNG/PDF zeigen sie exakt, Xournal++ bekommt Texte und Linien."
           ],
           "keys": ["Y"],
           "action": ["tool.math"],
-          "covers": ["tool:Formel", "action:tool.math"]
+          "covers": ["tool:Formel", "action:tool.math", "extra:formel-am-ort"]
         },
         {
           "id": "tool-rechnen",
@@ -204,7 +207,7 @@
             "Funktionen: sqrt, sin, cos, tan (Grad oder Bogenmaß, siehe Optionen), ln, log und Prozent. Zahlen wie 1,5e3 oder 1,5·10^3. Konstanten: π, e, g.",
             "Schnellknöpfe im Feld fügen · ² √ π ° Ω µ Δ ein.",
             "Optionen (zweiter Tipp auf den Knopf): Rechenweg anzeigen, Winkel in Grad oder Bogenmaß, gültige Stellen (2–10, Standard 4), Dezimalkomma oder -punkt.",
-            "Bearbeiten: mit dem Werkzeug auf eine Zeile tippen. Die Zeilen sind normale Formeln und lassen sich verschieben, skalieren und einfärben.",
+            "Bearbeiten: mit dem Werkzeug auf eine Zeile tippen (oder doppelklicken). Die Zeile wird direkt auf dem Blatt zum Eingabefeld, Enter übernimmt und alle Ergebnisse rechnen neu. Die Zeilen sind normale Formeln und lassen sich verschieben, skalieren und einfärben.",
             "Einstellungen → Werkzeugleisten → „Rechnen erlauben“: Aus = keine Ergebnisse, z. B. für Prüfungen. Zeilen eingeben bleibt möglich."
           ],
           "keys": ["A"],

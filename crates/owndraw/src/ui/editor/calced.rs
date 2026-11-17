@@ -32,7 +32,7 @@ impl CalcEd {
 }
 
 /// Schnellknöpfe: Zeichen, die auf der Tastatur fehlen.
-const QUICK: [(&str, &str); 8] = [
+pub(super) const QUICK: [(&str, &str); 8] = [
     ("·", "Malpunkt"),
     ("²", "Quadrat"),
     ("√", "Wurzel"),
@@ -54,11 +54,8 @@ impl Editor {
         }
         let size = self.board.math_size();
         let ed = match self.board.math_at(wx, wy) {
-            Some(id) => {
-                let Some(it) = self.board.items.iter().find(|it| it.id == id) else { return };
-                let Some(m) = it.as_math() else { return };
-                CalcEd { at: (m.x, m.y), edit: Some(id), src: calc::to_plain(&m.src), size: m.size, color: it.color, focus: true }
-            }
+            // vorhandene Zeile: direkt auf dem Blatt bearbeiten
+            Some(id) => return self.edit_math_inline(id),
             None => CalcEd { at: (wx, wy), edit: None, src: String::new(), size, color: self.board.color, focus: true },
         };
         self.calc = Some(ed);

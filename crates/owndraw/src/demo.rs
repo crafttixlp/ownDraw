@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `stamps` (alle Stempel), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `mathinline` (Formel direkt auf dem Blatt bearbeiten), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `stamps` (alle Stempel), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -276,6 +276,22 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         if let Some(t) = toks.iter().find_map(|s| s.strip_prefix("fbook")) {
             // Formelsammlung: fbook (Formeln), fbook=konst, fbook=teilen, fbook=neu (Formular)
             ed.demo_fbook(t.trim_start_matches('='));
+        }
+        if has("mathinline") {
+            // Formel direkt auf dem Blatt bearbeiten (ohne Formel-Fenster)
+            let sh = app.parts().0;
+            sh.settings.tool_on.insert("calc".into(), true);
+            ed.board.calc = sh.settings.calc.to_core();
+            let size = ed.board.math_size() * 1.3;
+            let mut id = 0;
+            for (i, s) in ["F = 10 kN", "A = 20 mm²", "σ = F/A", "σ = MPa"].into_iter().enumerate() {
+                let k = ed.board.add_math(560.0, 150.0 + i as f32 * 70.0, size, &owndraw_core::calc::to_latex(s)).unwrap_or(0);
+                if i == 2 {
+                    id = k;
+                }
+            }
+            ed.board.set_tool(board::SELECT);
+            ed.edit_math_inline(id);
         }
         if has("ruler") {
             ed.demo_ruler();

@@ -23,6 +23,7 @@ pub enum Glyph {
     Picker,
     Stamp,
     Calc,
+    Convert,
 }
 
 /// Symbol einer Form (`Board::shape_kind` ab 11).
@@ -57,6 +58,7 @@ pub fn of_tool(ed: &super::Editor, t: Tool) -> Option<Glyph> {
         Tool::Picker => Some(Glyph::Picker),
         Tool::Stamp => Some(Glyph::Stamp),
         Tool::Calc => Some(Glyph::Calc),
+        Tool::Convert => Some(Glyph::Convert),
         Tool::Dim => Some(Glyph::Dim),
         Tool::Shape => of_shape(ed.board.shape_kind),
         _ => None,
@@ -148,6 +150,19 @@ pub fn paint(p: &Painter, c: Pos2, size: f32, g: Glyph, col: Color32) {
             for (u, v) in [(-0.14, 0.0), (0.14, 0.0), (-0.14, 0.26), (0.14, 0.26)] {
                 p.circle_filled(pt(u, v), size * 0.06, col);
             }
+        }
+        Glyph::Convert => {
+            // Handschrift-Schleife, Pfeil, „T“: Geschriebenes wird zu Text
+            let wave: Vec<Pos2> = (0..=12).map(|k| {
+                let u = -0.48 + k as f32 * 0.035;
+                pt(u, -0.12 + 0.14 * (k as f32 * 1.3).sin())
+            }).collect();
+            p.add(Shape::line(wave, st));
+            seg((-0.1, 0.28), (0.12, 0.28));
+            seg((0.05, 0.2), (0.12, 0.28));
+            seg((0.05, 0.36), (0.12, 0.28));
+            seg((0.2, -0.36), (0.48, -0.36));
+            seg((0.34, -0.36), (0.34, 0.1));
         }
         Glyph::Stamp => {
             poly(&[(-0.15, 0.14), (-0.15, -0.08), (-0.32, -0.08), (-0.32, -0.46), (0.32, -0.46), (0.32, -0.08), (0.15, -0.08), (0.15, 0.14)], true);

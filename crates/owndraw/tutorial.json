@@ -229,6 +229,23 @@
           "covers": ["menu:Formelsammlung …", "extra:formelsammlung", "extra:formel-vorschlaege", "extra:formel-teilen", "extra:formel-datei"]
         },
         {
+          "id": "tool-umwandeln",
+          "title": "Umwandeln (Handschrift erkennen)",
+          "text": "Macht aus Handgeschriebenem getippten Text, eine Formel oder eine Zahl mit Einheit. Umkreise die Striche mit dem Werkzeug oder tippe auf einen Strich: Dann nimmt OwnDraw ihn und seine Nachbarn in derselben Zeile. Ein Fenster zeigt das Ergebnis mit Alternativen; „Ersetzen“ legt an derselben Stelle und in passender Größe einen Text bzw. eine Formel an. Die Erkennung läuft nur im Browser auf deinem Gerät, nichts wird an den Server geschickt.",
+          "how": [
+            "Einschalten unter Einstellungen → Werkzeuge (Extras). Einmalig unter Einstellungen → Handschrift-Erkennung „Modelle laden“ tippen; die Modelle bleiben danach im Browser gespeichert.",
+            "Reiter Text, Formel und Zahl: OwnDraw wählt den passenden vor (z. B. „Zahl“ bei 12,5 kN, „Formel“ bei M = a·b). Jeder Reiter zeigt bis zu fünf Alternativen, Formeln gerendert.",
+            "Korrekturfeld: Text direkt verbessern. Bei Formeln wahlweise als LaTeX oder als Rechenzeile in einfacher Schreibweise (a: 2 N, M = a·b).",
+            "Formeln und Zahlen werden Formel-Objekte: Das Werkzeug „Rechnen“ rechnet sie mit. Bekannte Variablen und Einheiten der Seite helfen beim Erkennen.",
+            "Ersetzen ist ein Schritt: Rückgängig (Strg+Z) bringt die Striche zurück. Abbrechen oder Esc lässt alles, wie es war.",
+            "Optionen (zweiter Tipp auf den Knopf): Stufe der Erkennung wählen.",
+            "Desktop und Android: noch nicht verfügbar (nur im Browser)."
+          ],
+          "keys": ["V"],
+          "action": ["tool.convert"],
+          "covers": ["tool:Umwandeln", "action:tool.convert", "extra:umwandeln-lasso", "extra:umwandeln-antippen", "extra:umwandeln-alternativen", "extra:umwandeln-korrektur"]
+        },
+        {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",
@@ -471,6 +488,17 @@
           "title": "Feste Position und Ecken",
           "text": "In den Einstellungen legst du die Werkzeugleiste und die Optionsleiste auf Automatisch, Oben, Unten, Links oder Rechts fest. „Ecken der Leisten“ stellt die Abrundung ein (0 px eckig bis 40 px ganz rund).",
           "covers": ["setting:Werkzeugleiste", "setting:Optionsleiste", "setting:Ecken der Leisten"]
+        },
+        {
+          "id": "einstellung-handschrift",
+          "title": "Handschrift-Erkennung einstellen",
+          "text": "Einstellungen → Handschrift-Erkennung: Stufe Aus, Schlecht, Mittel oder Hoch. Höher erkennt Formeln besser, braucht aber größere Modelle (Mittel etwa 150 MB, Hoch etwa 800 MB) und rechnet länger. Darunter stehen je Modell Größe und Status, dazu „Modelle laden“ und „Gespeicherte Modelle löschen“.",
+          "how": [
+            "Geladen wird nur, wenn du auf „Modelle laden“ tippst, nie automatisch. Die Dateien kommen von deinem OwnDraw-Server und bleiben im Browser gespeichert.",
+            "„Lizenzen“ zeigt Herkunft und Lizenz jedes Modells (nur freie Lizenzen wie MIT, Apache-2.0, AFL-3.0).",
+            "Aus = das Werkzeug „Umwandeln“ erkennt nichts."
+          ],
+          "covers": ["setting:Handschrift-Erkennung", "setting:Modelle", "setting:Lizenzen", "extra:handschrift-modelle-laden"]
         }
       ]
     },
@@ -735,6 +763,12 @@
           "id": "tipp-rechnen-pruefung",
           "title": "Rechnen für Prüfungen abschalten",
           "text": "Soll OwnDraw nicht mitrechnen, z. B. in einer Klassenarbeit, schalte unter Einstellungen → Werkzeugleisten „Rechnen erlauben“ aus. Dann erscheinen keine Ergebnisse; Zeilen eingeben bleibt möglich.",
+          "covers": []
+        },
+        {
+          "id": "tipp-krakelig",
+          "title": "Krakelig geschrieben? Alternativen und Korrektur",
+          "text": "Erkennt „Umwandeln“ etwas falsch, schau zuerst in die Alternativen (bis zu fünf je Reiter) und tipp die passende an. Sonst korrigiere im Feld darunter, bevor du „Ersetzen“ tippst. Schreib Formeln in einer Zeile und lass etwas Abstand zu anderen Strichen; Variablen, die schon auf der Seite stehen (a: 2 N), werden bevorzugt erkannt. Lange Texte am besten Zeile für Zeile umwandeln.",
           "covers": []
         },
         {

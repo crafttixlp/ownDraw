@@ -5,6 +5,7 @@
 //! - Laser: Leuchtspur ([`owndraw_core::laser::Laser`]), verblasst nach 1,5 s, nie gespeichert, kein Undo;
 //!   live an die anderen Teilnehmer (`live.rs`, Nachricht `laser`).
 //! - Platz schaffen: senkrecht ziehen; beim Loslassen `Board::make_space` (ein Rückgängig-Schritt).
+//! - Umwandeln: Lasso-Weg bzw. Tipp sammeln; beim Loslassen die Striche wählen ([`super::convert`]).
 
 use super::ruler::{self, Hit, Ruler};
 use super::{Editor, Tool};
@@ -60,6 +61,10 @@ pub struct Extras {
     out_sent: usize,
     out_at: f64,
     space: Option<SpaceDrag>,
+    /// Werkzeug „Umwandeln“: laufendes Lasso (Zeiger, Weltpunkte).
+    pub lasso: Option<(u64, Vec<(f32, f32)>)>,
+    /// Werkzeug „Umwandeln“: fertige Auswahl (Striche), wird im Frame übernommen.
+    pub convert_pick: Option<Vec<u64>>,
     /// Zeiger, die hier verbraucht werden (nicht ans Board).
     eaten: Vec<u64>,
     pub now: f64,
@@ -81,6 +86,8 @@ impl Default for Extras {
             out_sent: 0,
             out_at: 0.0,
             space: None,
+            lasso: None,
+            convert_pick: None,
             eaten: Vec::new(),
             now: 0.0,
         }
@@ -228,6 +235,7 @@ impl Editor {
                             self.ext.space = Some(SpaceDrag { id, page, y0: wy, y1: wy });
                         }
                     }
+                    Some(Tool::Convert) => self.ext.lasso = Some((id, vec![(wx, wy)])),
                     _ => return Hook::Pass(p),
                 }
                 self.ext.eaten.push(id);
@@ -243,6 +251,9 @@ impl Editor {
                         self.ext.laser_pt(wx, wy);
                     } else if let Some(s) = self.ext.space.as_mut().filter(|s| s.id == id) {
                         s.y1 = (p.y - self.board.ty) / self.board.sc;
+                    } else if let Some((_, pts)) = self.ext.lasso.as_mut().filter(|l| l.0 == id) {
+                        let (wx, wy) = self.board.screen_to_world(p.x, p.y);
+                        pts.push((wx, wy));
                     }
                     return Hook::Eat;
                 }
@@ -255,6 +266,11 @@ impl Editor {
                     if self.ext.laser_ptr == Some(id) {
                         self.ext.laser_ptr = None;
                         self.ext.laser_lift();
+                    }
+                    if let Some((_, pts)) = self.ext.lasso.take_if(|l| l.0 == id) {
+                        if ph == Ph::Up {
+                            self.ext.convert_pick = Some(self.convert_ids(&pts));
+                        }
                     }
                     if let Some(s) = self.ext.space.filter(|s| s.id == id) {
                         self.ext.space = None;
@@ -270,6 +286,25 @@ impl Editor {
                 Hook::Pass(q)
             }
         }
+    }
+
+    /// Striche zum Lasso-Weg (Weltpunkte): kurzer Weg = Antippen (Strich + Nachbarn der Zeile), sonst Lasso.
+    fn convert_ids(&self, pts: &[(f32, f32)]) -> Vec<u64> {
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for &(x, y) in pts {
+            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+        }
+        let extent = (x1 - x0).max(y1 - y0) * self.board.sc;
+        if extent < 12.0 {
+            let (x, y) = pts[0];
+            return self.board.ink_at(x, y);
+        }
+        let ids = self.board.ink_in_lasso(pts);
+        if ids.is_empty() && extent < 40.0 {
+            // kurzer Wisch über einen Strich: wie Antippen
+            return self.board.ink_at(pts[0].0, pts[0].1);
+        }
+        ids
     }
 
     /// Hält ein Werkzeug hier gerade die Maus?
@@ -311,6 +346,7 @@ impl Editor {
             pt.rect_filled(rr, CornerRadius::same(8), acc);
             pt.galley(rr.min + Vec2::new(6.0, 2.0), g, Color32::WHITE);
         }
+        self.convert_paint(&pt, rect);
         // Laser (eigener und fremde)
         let mut visible = self.ext.laser.prune(now);
         self.ext.remote.retain_mut(|(_, l)| l.prune(now));

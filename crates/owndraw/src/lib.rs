@@ -6,6 +6,8 @@ mod autosave;
 mod demo;
 /// Formelsammlungen (Werkzeug „Rechnen“).
 mod formulas;
+/// Handschrift-Erkennung: Anbindung an die Browser-Seite (hw.js).
+mod hw;
 mod kv;
 #[allow(dead_code)]
 mod layout;

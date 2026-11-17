@@ -11,6 +11,7 @@ pub mod downloads;
 pub mod error;
 pub mod formulas;
 pub mod invites;
+pub mod models;
 pub mod notices;
 pub mod state;
 pub mod totp;
@@ -160,6 +161,12 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/bugreports/{id}/images/{n}", get(bugreports::image))
         .route("/boards/{id}/images/{name}", get(collab::get_image).put(collab::put_image))
         .route("/collab/{board_id}", get(collab::ws))
+        .route("/models", get(models::list))
+        .route("/models/{id}/{name}", get(models::file))
+        .route("/admin/models", get(models::admin_list))
+        .route("/admin/models/fetch", post(models::fetch))
+        .route("/admin/models/catalog/{id}", post(models::from_catalog))
+        .route("/admin/models/{id}", axum::routing::delete(models::delete))
         .fallback(api_not_found)
         .layer(middleware::from_fn_with_state(state.clone(), notices::api_guard))
         .layer(middleware::from_fn(auth::csrf))
@@ -187,6 +194,8 @@ pub fn build_app(state: AppState) -> Router {
                 .layer(middleware::from_fn_with_state(state.clone(), notices::static_guard)),
         )
         .layer(RequestBodyLimitLayer::new(body_limit))
+        // Modell-Pakete (Handschrift-Erkennung) sind größer als die allgemeine Grenze
+        .merge(models::upload_router(state.clone()))
         .layer(middleware::map_response(json_413))
         .layer(CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotForContentType::new("application/octet-stream")).and(NotForContentType::new("application/vnd.android.package-archive"))))
         .layer(middleware::from_fn(security_headers))

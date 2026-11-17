@@ -3,6 +3,7 @@
 
 mod arrange;
 pub mod clip;
+mod convert;
 mod crop;
 pub mod drop;
 pub mod export;
@@ -90,6 +91,8 @@ pub enum Tool {
     Calc,
     /// Stift-Modus (Schalter): an = nur Stift/Maus zeichnen, Finger verschieben und zoomen.
     PenMode,
+    /// Umwandeln: Handschrift per Lasso/Antippen erkennen und durch Text bzw. Formel ersetzen.
+    Convert,
 }
 
 impl Tool {
@@ -217,6 +220,8 @@ pub struct Editor {
     formula_rev: u64,
     /// Fenster „Formelsammlung“.
     pub(super) fbook: fbook::FBook,
+    /// Offenes Fenster des Werkzeugs „Umwandeln“.
+    pub(super) conv: Option<convert::Conv>,
     pub st: UiState,
     pub(super) page_thumbs: pages::PageThumbs,
     /// Lineal/Geodreieck, Laserpointer, Platz schaffen.
@@ -284,6 +289,7 @@ impl Editor {
             calc: None,
             formula_rev: u64::MAX,
             fbook: fbook::FBook::default(),
+            conv: None,
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
             ext: extras::Extras::default(),
@@ -589,7 +595,7 @@ impl Editor {
         match t {
             Tool::Ruler => return self.toggle_ruler(),
             Tool::PenMode => return self.toggle_pen_mode(),
-            Tool::Laser | Tool::Space => {
+            Tool::Laser | Tool::Space | Tool::Convert => {
                 self.ext.xtool = Some(t);
                 self.board.invalidate();
                 return;
@@ -626,7 +632,7 @@ impl Editor {
                 }
             }
             Tool::Note => board::NOTE,
-            Tool::Image | Tool::Ruler | Tool::Laser | Tool::Space | Tool::PenMode => return,
+            Tool::Image | Tool::Ruler | Tool::Laser | Tool::Space | Tool::PenMode | Tool::Convert => return,
             Tool::Connector | Tool::Table | Tool::Pin => {
                 self.select_xtool(t);
                 return;
@@ -728,7 +734,7 @@ impl Editor {
             pages::initial_view(&mut self.board);
         }
 
-        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some() || self.calc.is_some();
+        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some() || self.calc.is_some() || self.conv.is_some();
         // Klick auf die Zeichenfläche schließt offene Popups und zeichnet nicht.
         let popup_open = self.st.opts_open || self.st.menu_open || self.st.more_open || self.st.export.open;
         let mut swallow = false;
@@ -863,6 +869,7 @@ impl Editor {
         self.text_editor(&ctx, &sh.settings);
         self.math_editor(&ctx, sh);
         self.calc_editor(&ctx, sh);
+        self.convert_frame(&ctx, sh);
         self.close_popups_on_esc(&ctx, &sh.settings);
         self.drain_events(sh);
 

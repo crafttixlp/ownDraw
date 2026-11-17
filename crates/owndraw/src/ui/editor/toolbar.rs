@@ -386,7 +386,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         Tool::Ruler => ic::RULER,
         Tool::Laser => ic::LASER,
         Tool::Space => ic::SPACE,
-        Tool::Fill | Tool::Picker | Tool::Dim | Tool::Stamp | Tool::Calc => return None, // gezeichnetes Icon (glyphs.rs)
+        Tool::Fill | Tool::Picker | Tool::Dim | Tool::Stamp | Tool::Calc | Tool::Convert => return None, // gezeichnetes Icon (glyphs.rs)
         Tool::Connector => ic::CONNECTOR,
         Tool::Table => ic::TABLE,
         Tool::Pin => ic::PIN,

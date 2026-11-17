@@ -19,6 +19,8 @@ use tiny_skia::{PathBuilder, Pixmap};
 
 mod calcview;
 mod frames;
+mod hw;
+pub use hw::Ersatz;
 mod math;
 mod tools;
 pub use frames::{ExportFrame, Scope};

@@ -274,6 +274,7 @@ dialog .row { justify-content: flex-end; margin-top: var(--s5); }
       <button class="tab" role="tab" id="tab-bugs" data-tab="bugs" aria-selected="false">Fehlerberichte <span id="bugChip" class="chip acc" hidden></span></button>
       <button class="tab" role="tab" id="tab-maint" data-tab="maint" aria-selected="false">Wartung <span id="maintChip" class="chip warn" hidden>aktiv</span></button>
       <button class="tab" role="tab" id="tab-update" data-tab="update" aria-selected="false">Updates</button>
+      <button class="tab" role="tab" id="tab-models" data-tab="models" aria-selected="false">Erkennungsmodelle</button>
     </div>
     <div class="page-head"><h2 class="page-title" id="pageTitle">Übersicht</h2><p class="page-sub" id="pageSub"></p></div>
     <div id="flash"></div>
@@ -382,6 +383,31 @@ dialog .row { justify-content: flex-end; margin-top: var(--s5); }
       </div>
       <div class="card"><h2>Protokoll</h2><div id="uLog" class="log"></div></div>
     </section>
+
+    <section id="panel-models" role="tabpanel" hidden>
+      <div class="card"><h2>Installierte Pakete</h2><div id="mdList"></div>
+        <p class="hint">Die Web-App lädt diese Pakete nur, wenn jemand in den Einstellungen „Modelle laden“ tippt. Erkannt wird im Browser, der Server rechnet nichts.</p></div>
+      <div class="card" id="mdJobsCard" hidden><h2>Laufende Aufträge</h2><div id="mdJobs"></div></div>
+      <div class="card"><h2>Katalog</h2><div id="mdKat"></div>
+        <p class="hint">Unveränderte Modelle direkt von der Quelle (Hugging Face, npm). Jede Datei wird per sha256 geprüft. Kleinere int8-Pakete baut <code>tools/handschrift/pakete-bauen.py</code>.</p></div>
+      <div class="card">
+        <h2>Paket hochladen</h2>
+        <p class="hint">Archiv (.tar, .tar.gz oder .zip) mit <code>manifest.json</code>, den Modelldateien und dem Lizenztext. Größe und sha256 jeder Datei werden geprüft; erlaubt sind nur MIT, Apache-2.0 und AFL-3.0.</p>
+        <div class="row" style="margin-top:0"><input id="mdFile" type="file" accept=".tar,.gz,.tgz,.zip"><button id="mdUpload" class="primary">Hochladen</button></div>
+        <div id="mdUpProg" class="hint"></div>
+      </div>
+      <div class="card">
+        <h2>Aus URL laden</h2>
+        <label for="mdUrl">Adresse von manifest.json oder eines Archivs</label>
+        <input id="mdUrl" type="url" placeholder="https://…/manifest.json">
+        <div class="grid">
+          <div><label for="mdSha">sha256 des Archivs (optional)</label><input id="mdSha" class="mono" maxlength="64"></div>
+          <div><label for="mdSig">minisign-Signatur, URL (optional)</label><input id="mdSig" type="url"></div>
+          <div><label for="mdKey">minisign-Schlüssel (optional)</label><input id="mdKey" class="mono"></div>
+        </div>
+        <div class="row"><button id="mdFetch" class="primary">Laden</button></div>
+      </div>
+    </section>
   </div>
 </main>
 
@@ -402,7 +428,7 @@ function h(tag, props, ...kids) {
     else if (k in el && k !== "list") el[k] = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
   return el;
 }
 const emptyState = (title, hint) => h("div", { class: "empty" }, h("b", {}, title), hint && h("span", {}, hint));
@@ -564,6 +590,7 @@ const TAB_INFO = {
   bugs: ["Fehlerberichte", "Meldungen aus der Web-App („Fehler melden“), auch von Gästen ohne Konto."],
   maint: ["Wartung", "Sperre den Server kurz für Besucher, zum Beispiel bei Arbeiten."],
   update: ["Updates", "Halte den Server auf dem neuesten Stand."],
+  models: ["Erkennungsmodelle", "Modelle für die Handschrift-Erkennung, die die Web-App vom Server lädt."],
 };
 function selectTab(name) {
   state.tab = name;
@@ -573,11 +600,11 @@ function selectTab(name) {
     if (on && t.scrollIntoView) t.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   $("pageTitle").textContent = TAB_INFO[name][0]; $("pageSub").textContent = TAB_INFO[name][1];
-  for (const n of ["stats", "users", "licenses", "notices", "bugs", "maint", "update"]) $("panel-" + n).hidden = n !== name;
+  for (const n of ["stats", "users", "licenses", "notices", "bugs", "maint", "update", "models"]) $("panel-" + n).hidden = n !== name;
   flash("");
   stopStats();
   if (name === "stats") startStats();
-  else if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "bugs") loadBugs(); else if (name === "maint") loadMaint(); else loadUpdate();
+  else if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "bugs") loadBugs(); else if (name === "maint") loadMaint(); else if (name === "models") loadModels(); else loadUpdate();
 }
 for (const t of document.querySelectorAll(".tab[data-tab]")) t.addEventListener("click", () => selectTab(t.dataset.tab));
 
@@ -1019,6 +1046,78 @@ $("uInstall").addEventListener("click", async () => {
 });
 $("uSave").addEventListener("click", async () => {
   try { renderUpdate(await api("PATCH", "/api/admin/update", { auto: $("uAuto").checked, auto_hour: +$("uHour").value })); flash("Gespeichert."); } catch (e) { fail(e); }
+});
+
+// ---------- Erkennungsmodelle ----------
+const ART = { text: "Text", formel: "Formel", zahl: "Zahl", laufzeit: "Laufzeit" };
+let mdTimer = null;
+function renderModels(d) {
+  const pk = d.pakete || [];
+  $("mdList").replaceChildren(...(pk.length ? pk.map((p) => h("div", { class: "item" },
+    h("div", { class: "main" },
+      h("b", {}, p.ok ? p.name : p.id),
+      p.ok ? h("span", { class: "chip ok" }, "bereit") : h("span", { class: "chip bad" }, "fehlerhaft"),
+      p.ok && h("span", { class: "chip" }, ART[p.art] || p.art),
+      h("div", { class: "meta" }, p.ok
+        ? [p.id, " · ", fmtBytes(p.groesse), " · Version ", p.version || "–", " · Stufen ", (p.stufen || []).join(", ") || "–", " · ", p.lizenz,
+           p.lizenz_datei && [" (", h("a", { href: "/api/models/" + encodeURIComponent(p.id) + "/" + encodeURIComponent(p.lizenz_datei), target: "_blank", rel: "noopener" }, "Lizenztext"), ")"]]
+        : p.fehler),
+      p.ok && (p.hinweis || p.quelle) && h("div", { class: "meta" }, p.hinweis, p.quelle && [" Quelle: ", h("a", { href: p.quelle, target: "_blank", rel: "noopener noreferrer" }, p.quelle)])),
+    h("div", { class: "actions" }, h("button", { class: "danger", onclick: () => deleteModel(p) }, "Löschen"))))
+    : [emptyState("Noch keine Modelle", "Lade ein Paket aus dem Katalog, per URL oder als Archiv.")]));
+  const kat = d.katalog || [];
+  $("mdKat").replaceChildren(...(kat.length ? kat.map((k) => h("div", { class: "item" },
+    h("div", { class: "main" }, h("b", {}, k.name), k.installiert && h("span", { class: "chip ok" }, "installiert"), h("span", { class: "chip" }, ART[k.art] || k.art),
+      h("div", { class: "meta" }, k.id, " · ", fmtBytes(k.groesse), " · ", k.lizenz, " · Stufen ", (k.stufen || []).join(", ")),
+      k.hinweis && h("div", { class: "meta" }, k.hinweis)),
+    h("div", { class: "actions" }, h("button", { onclick: (ev) => fromCatalog(k, ev.target) }, k.installiert ? "Neu laden" : "Laden"))))
+    : [emptyState("Katalog leer")]));
+  const jobs = d.auftraege || [];
+  $("mdJobsCard").hidden = !jobs.length;
+  $("mdJobs").replaceChildren(...jobs.map((j) => h("div", { class: "item" },
+    h("div", { class: "main" }, h("b", {}, j.quelle),
+      h("span", { class: "chip " + (j.status === "fertig" ? "ok" : j.status === "fehler" ? "bad" : "acc") }, j.status === "laeuft" ? "läuft" : j.status),
+      h("div", { class: "meta" }, j.text, j.gesamt ? " · " + fmtBytes(j.geladen) + " von " + fmtBytes(j.gesamt) : "")),
+    j.status === "laeuft" && j.gesamt ? h("progress", { max: j.gesamt, value: j.geladen, style: "width:100%" }) : null)));
+  clearTimeout(mdTimer);
+  if (jobs.some((j) => j.status === "laeuft") && state.tab === "models") mdTimer = setTimeout(loadModels, 1000);
+}
+async function loadModels() { try { renderModels(await api("GET", "/api/admin/models")); } catch (e) { fail(e); } }
+async function deleteModel(p) {
+  if (!(await confirmDialog("Paket löschen?", "„" + (p.name || p.id) + "“ wird vom Server entfernt. Browser, die es schon geladen haben, behalten ihre Kopie.", "Löschen"))) return;
+  try { await api("DELETE", "/api/admin/models/" + encodeURIComponent(p.id)); flash("Gelöscht."); } catch (e) { fail(e); }
+  loadModels();
+}
+async function fromCatalog(k, btn) {
+  btn.disabled = true;
+  try { await api("POST", "/api/admin/models/catalog/" + encodeURIComponent(k.id), {}); flash("Download gestartet."); } catch (e) { fail(e); }
+  btn.disabled = false; loadModels();
+}
+$("mdFetch").addEventListener("click", async () => {
+  const body = { url: $("mdUrl").value.trim() };
+  for (const [k, id] of [["sha256", "mdSha"], ["minisig_url", "mdSig"], ["pubkey", "mdKey"]]) { const v = $(id).value.trim(); if (v) body[k] = v; }
+  if (!body.url) return flash("Bitte eine Adresse angeben.", "err");
+  try { await api("POST", "/api/admin/models/fetch", body); flash("Download gestartet."); $("mdUrl").value = ""; } catch (e) { fail(e); }
+  loadModels();
+});
+$("mdUpload").addEventListener("click", () => {
+  const f = $("mdFile").files[0];
+  if (!f) return flash("Bitte zuerst ein Archiv wählen.", "err");
+  const b = $("mdUpload"); b.disabled = true;
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/admin/models/upload");
+  xhr.withCredentials = true;
+  xhr.setRequestHeader("X-OwnDraw", "1");
+  xhr.setRequestHeader("Content-Type", "application/octet-stream");
+  xhr.upload.onprogress = (e) => { $("mdUpProg").textContent = e.lengthComputable ? "Hochgeladen: " + fmtBytes(e.loaded) + " von " + fmtBytes(e.total) : ""; };
+  xhr.onloadend = () => {
+    b.disabled = false; $("mdUpProg").textContent = "";
+    let d = null; try { d = JSON.parse(xhr.responseText); } catch (e) { /* leer */ }
+    if (xhr.status >= 200 && xhr.status < 300 && d && d.ok) { flash("„" + d.name + "“ installiert (" + fmtBytes(d.groesse) + ")."); $("mdFile").value = ""; }
+    else flash((d && d.message) || "Hochladen fehlgeschlagen (" + xhr.status + ")", "err");
+    loadModels();
+  };
+  xhr.send(f);
 });
 
 // ---------- Start ----------

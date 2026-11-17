@@ -248,6 +248,19 @@ Herunterladen an, mit Version, Größe, SHA-256 und Kurzanleitung. Verlinkt ist 
 - **Schutz**: höchstens 30 Downloads je Adresse in 10 Minuten (danach 429); im Wartungsmodus sehen Nicht-Admins die
   Wartungsseite. Ausgeliefert werden nur Dateinamen aus `manifest.json`.
 
+## 8a. Erkennungsmodelle (Handschrift)
+
+Das Werkzeug „Umwandeln“ erkennt Handschrift **nur im Browser** (onnxruntime-web). Der Server liefert lediglich die
+Modelle aus `data/models/<paket>/` (je Paket `manifest.json` mit Größe und sha256 jeder Datei, Lizenz und Quelle).
+Die Web-App lädt sie erst, wenn jemand in den Einstellungen „Modelle laden“ tippt, und speichert sie im Browser.
+Auch onnxruntime-web selbst ist ein Paket (`onnxruntime-web`), es kommt also nie von einem CDN.
+
+- **Admin → Erkennungsmodelle**: Pakete ansehen und löschen, aus dem eingebauten Katalog laden (unveränderte Dateien von
+  Hugging Face/npm, sha256-geprüft), aus einer URL laden (Manifest oder Archiv, optional sha256 und minisign) oder ein
+  Archiv hochladen.
+- **Eigene Pakete** (kleiner, int8): `tools/handschrift/pakete-bauen.py` baut fertige `.tar`-Archive zum Hochladen.
+- Erlaubt sind nur Modelle unter MIT, Apache-2.0 oder AFL-3.0; der Lizenztext muss im Paket liegen.
+
 ## 9. Betrieb
 
 ```bash

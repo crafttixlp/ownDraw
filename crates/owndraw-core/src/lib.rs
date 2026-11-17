@@ -8,6 +8,7 @@ pub mod collab;
 pub mod doc;
 pub mod export;
 pub mod geom;
+pub mod hw;
 pub mod icons;
 pub mod item;
 pub mod laser;

@@ -34,4 +34,5 @@ VERSION=$(awk -F'"' '/^\[workspace.package\]/{w=1} w && /^version *=/{print $2; 
 sed "s/__OWNDRAW_VERSION__/$VERSION/g" crates/owndraw-web/index.html > "$OUT/index.html"
 echo "$VERSION" > "$OUT/version.txt"
 cp assets/owndraw.png "$OUT/"
+cp crates/owndraw-web/hw.js "$OUT/"
 ls -la "$OUT"

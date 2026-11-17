@@ -272,6 +272,66 @@ public class OwnDrawActivity extends NativeActivity {
         }
     }
 
+    /** Teilt eine Datei aus dem App-Speicher über das Teilen-Menü von Android. */
+    public void shareFile(String path, String mime) {
+        try {
+            Uri u = FileShareProvider.uriFor(this, new File(path));
+            if (u == null) {
+                Log.w(TAG, "shareFile: Datei liegt nicht im App-Speicher: " + path);
+                return;
+            }
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType(mime);
+            i.putExtra(Intent.EXTRA_STREAM, u);
+            i.setClipData(ClipData.newRawUri("", u));
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent c = Intent.createChooser(i, "Teilen");
+            c.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(c);
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Log.w(TAG, "shareFile: " + e);
+        }
+    }
+
+    /** Druckt ein PDF aus dem App-Speicher über den Druckdienst von Android. */
+    public void printPdf(final String path, final String name) {
+        runOnUiThread(() -> {
+            try {
+                android.print.PrintManager pm = (android.print.PrintManager) getSystemService(Context.PRINT_SERVICE);
+                pm.print(name, new android.print.PrintDocumentAdapter() {
+                    @Override
+                    public void onLayout(android.print.PrintAttributes o, android.print.PrintAttributes n, android.os.CancellationSignal cs,
+                            LayoutResultCallback cb, Bundle extras) {
+                        if (cs.isCanceled()) {
+                            cb.onLayoutCancelled();
+                            return;
+                        }
+                        cb.onLayoutFinished(new android.print.PrintDocumentInfo.Builder(name)
+                                .setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).build(), true);
+                    }
+
+                    @Override
+                    public void onWrite(android.print.PageRange[] pages, android.os.ParcelFileDescriptor dest, android.os.CancellationSignal cs,
+                            WriteResultCallback cb) {
+                        try (InputStream in = new java.io.FileInputStream(path);
+                             OutputStream out = new FileOutputStream(dest.getFileDescriptor())) {
+                            byte[] buf = new byte[65536];
+                            int n;
+                            while ((n = in.read(buf)) > 0) {
+                                out.write(buf, 0, n);
+                            }
+                            cb.onWriteFinished(new android.print.PageRange[] { android.print.PageRange.ALL_PAGES });
+                        } catch (IOException e) {
+                            cb.onWriteFailed(e.toString());
+                        }
+                    }
+                }, null);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "printPdf: " + e);
+            }
+        });
+    }
+
     // ---- Update-Dienst (WP11) ----
 
     private static volatile boolean updCancel;

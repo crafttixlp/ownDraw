@@ -105,6 +105,7 @@ pub fn filter_name(k: FileKind) -> &'static str {
         FileKind::Png => "PNG-Bilder (*.png)",
         FileKind::Pdf => "PDF-Dokumente (*.pdf)",
         FileKind::Zip => "ZIP-Archive (*.zip)",
+        FileKind::Export(f) => f.label(),
         FileKind::Any => "Alle Dateien",
     }
 }

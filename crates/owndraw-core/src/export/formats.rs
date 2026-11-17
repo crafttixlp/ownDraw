@@ -419,7 +419,7 @@ fn progress_frames(b: &Board, frames: &[ExportFrame], o: &Opts, max_edge: f32) -
     let f = union(frames);
     let items = b.export_items(o.scope, &f);
     if items.is_empty() {
-        return Err("Das Board ist noch leer".into());
+        return Err(if matches!(o.scope, Scope::Page(_)) { "Auf dieser Seite ist nichts gezeichnet" } else { "Das Board ist noch leer" }.into());
     }
     let k = Board::frame_scale(&f, (max_edge / f.width().max(f.height())).min(o.scale.max(1.0)));
     let steps = items.len().min(48);
@@ -436,4 +436,116 @@ fn progress_frames(b: &Board, frames: &[ExportFrame], o: &Opts, max_edge: f32) -
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item::{Item, Kind, ARROW, POLY};
+    use crate::pages::{BoardMode, PageBg, PageSetup};
+    use std::rc::Rc;
+
+    fn board() -> Board {
+        let mut b = Board::new(1.0);
+        let mut s = Item::stroke(0x80CC0000, 6.0, true, false);
+        if let Kind::Stroke(st) = &mut s.kind {
+            st.p = vec![10.0, 10.0, 0.5, 60.0, 40.0, 0.6, 120.0, 12.0, 0.7];
+        }
+        b.items.push(Rc::new(s));
+        let mut r = Item::shape(POLY, vec![50.0, 50.0, 150.0, 50.0, 150.0, 120.0, 50.0, 120.0], 0xFF000000, 2.0);
+        r.fill = Some(0xFFFFFF00);
+        b.items.push(Rc::new(r));
+        b.items.push(Rc::new(Item::shape(ARROW, vec![0.0, 200.0, 100.0, 220.0], 0xFF0000FF, 2.0)));
+        b
+    }
+
+    fn check(b: &Board, scope: Scope) {
+        let o = Opts { scope, scale: 1.0, title: "Test".into(), ..Opts::default() };
+        for f in ALL {
+            let d = build(b, f, &o).unwrap_or_else(|e| panic!("{f:?} {scope:?}: {e}"));
+            assert!(d.len() > 20, "{f:?} {scope:?}: nur {} Bytes", d.len());
+            match f {
+                Fmt::Png | Fmt::Apng => assert!(d.starts_with(b"\x89PNG")),
+                Fmt::Jpeg => assert!(d.starts_with(&[0xFF, 0xD8])),
+                Fmt::Pdf | Fmt::PdfA | Fmt::PdfImage => assert!(d.starts_with(b"%PDF")),
+                Fmt::Svg => assert!(String::from_utf8_lossy(&d).contains("<svg")),
+                Fmt::Pptx | Fmt::Docx | Fmt::Ora => assert!(d.starts_with(b"PK")),
+                Fmt::Psd => assert!(d.starts_with(b"8BPS")),
+                Fmt::Gif => assert!(d.starts_with(b"GIF8")),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn alle_formate_board_und_auswahl() {
+        let mut b = board();
+        check(&b, Scope::Board);
+        b.sel = vec![b.items[1].id];
+        check(&b, Scope::Selection);
+        // Auswahl: Ausschnitt nur um das Rechteck
+        let f = b.export_frames(Scope::Selection);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].rect.left > 20.0 && f[0].rect.right < 200.0);
+        assert_eq!(b.export_items(Scope::Selection, &f[0]).len(), 1);
+    }
+
+    #[test]
+    fn alle_formate_seiten() {
+        let mut b = board();
+        b.board_mode = BoardMode::Pages(PageSetup::new(595.0, 842.0, PageBg::Lined, 2));
+        assert_eq!(b.export_frames(Scope::Board).len(), 2);
+        check(&b, Scope::Board);
+        check(&b, Scope::Page(0));
+        let o = Opts { scope: Scope::Page(1), ..Opts::default() };
+        assert!(build(&b, Fmt::Gif, &o).is_err() && build(&b, Fmt::Png, &o).is_ok());
+        // PDF: eine Seite je Board-Seite
+        let pdf = build(&b, Fmt::Pdf, &Opts::default()).unwrap();
+        let s = String::from_utf8_lossy(&pdf);
+        assert_eq!(s.matches("/Type /Page\n").count() + s.matches("/Type /Page ").count() + s.matches("/Type/Page/").count() + s.matches("/Type /Page>").count() + s.matches("/Type/Page>").count(), 2, "Seitenzahl");
+    }
+
+    #[test]
+    fn leer_und_ohne_auswahl() {
+        let b = Board::new(1.0);
+        assert!(build(&b, Fmt::Png, &Opts::default()).is_err());
+        let b = board();
+        let o = Opts { scope: Scope::Selection, ..Opts::default() };
+        assert_eq!(build(&b, Fmt::Svg, &o).unwrap_err(), "Es ist nichts ausgewählt");
+    }
+
+    #[test]
+    fn eindeutige_namen() {
+        let mut seen = HashSet::new();
+        for f in ALL {
+            assert!(seen.insert(f.label()), "doppelt: {}", f.label());
+        }
+    }
+}
+
+/// Beispieldateien aller Formate zum Ansehen: `OWNDRAW_EXPORT_DIR=/tmp/x cargo test -p owndraw-core --lib export_beispiele -- --ignored`
+#[cfg(test)]
+#[test]
+#[ignore]
+fn export_beispiele() {
+    let dir = std::path::PathBuf::from(std::env::var("OWNDRAW_EXPORT_DIR").expect("OWNDRAW_EXPORT_DIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut b = Board::new(1.0);
+    for (i, c) in [0xFF3355DD_u32, 0x80EE6622, 0xFF22AA55].iter().enumerate() {
+        let mut s = crate::item::Item::stroke(*c, 4.0 + 6.0 * i as f32, i == 1, false);
+        if let crate::item::Kind::Stroke(st) = &mut s.kind {
+            st.p = (0..30).flat_map(|k| [20.0 + k as f32 * 12.0, 60.0 + 50.0 * i as f32 + 15.0 * (k as f32 * 0.5).sin(), 0.6]).collect();
+        }
+        b.items.push(std::rc::Rc::new(s));
+    }
+    let mut r = crate::item::Item::shape(crate::item::POLY, vec![60.0, 220.0, 260.0, 220.0, 260.0, 320.0, 60.0, 320.0], 0xFF000000, 3.0);
+    r.fill = Some(0xFFFFE066);
+    b.items.push(std::rc::Rc::new(r));
+    b.items.push(std::rc::Rc::new(crate::item::Item::shape(crate::item::ARROW, vec![300.0, 270.0, 420.0, 230.0], 0xFFCC0000, 3.0)));
+    b.items.push(std::rc::Rc::new(crate::item::Item::note("Hallo Export!", 0xFF111111, 80.0, 360.0, 24.0, 300.0, 0.0, 0)));
+    let o = Opts { title: "Beispiel".into(), ..Opts::default() };
+    for f in ALL {
+        let d = build(&b, f, &o).unwrap();
+        std::fs::write(dir.join(format!("beispiel-{:?}.{}", f, f.ext()).to_lowercase()), d).unwrap();
+    }
 }

@@ -140,6 +140,17 @@ pub fn build_preview(cache_dir: &Path, v: &Board) -> Option<PathBuf> {
     Some(index)
 }
 
+/// Website-Export als einzelne HTML-Datei: Ebenenbilder als data-URIs statt ebenen/*.png (für `interchange::html_single`).
+pub(crate) fn html_single_impl(v: &Board, title: &str) -> Option<String> {
+    let p = plan(v, 1920.0)?;
+    let mut files = Vec::new();
+    for l in &p.ls {
+        let png = v.render_layer(l, &p.b, p.k)?.encode_png().ok()?;
+        files.push(format!("data:image/png;base64,{}", interchange::b64(&png)));
+    }
+    Some(html(title, v.bg_color(), p.w, p.h, &p.ls, &files))
+}
+
 struct Plan {
     b: RectF,
     k: f32,

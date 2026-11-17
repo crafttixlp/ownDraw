@@ -9,6 +9,14 @@ use std::path::{Path, PathBuf};
 use tiny_skia::Pixmap;
 use zip::write::SimpleFileOptions;
 
+pub mod formats;
+pub mod interchange;
+pub mod layered;
+pub mod office;
+pub mod pdfv;
+pub mod raster;
+pub mod vector;
+
 /// Minimale PDF-Datei mit einer Seite (Groesse pw × ph Punkt), die das Bild ganzflaechig zeigt (RGB, FlateDecode).
 pub fn pdf_from_pixmap(pm: &Pixmap, pw: f32, ph: f32) -> Vec<u8> {
     pdf_pages(1, |_| Some((pm.clone(), pw, ph))).unwrap_or_default()

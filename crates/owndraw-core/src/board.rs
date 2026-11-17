@@ -17,8 +17,10 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use tiny_skia::{PathBuilder, Pixmap};
 
+mod frames;
 mod math;
 mod tools;
+pub use frames::{ExportFrame, Scope};
 use tools::dup_all;
 pub use tools::{Align, STAMP_CHECK, STAMP_CROSS, STAMP_EXCLAIM, STAMP_QUESTION, STAMP_STAR};
 
@@ -355,6 +357,8 @@ pub struct Board {
     pub events: Vec<Event>,
     /// Objekt, das gerade direkt auf dem Blatt bearbeitet wird (wird nicht gezeichnet).
     pub hidden: Option<u64>,
+    /// Export: nur diese Objekte zeichnen (Bereich „Auswahl“, Zeichenverlauf).
+    export_only: RefCell<Option<HashSet<u64>>>,
     /// Werkzeug, zu dem nach dem Abwaehlen zurueckgekehrt wird (Text antippen, mittlere Maustaste).
     back_tool: Option<i32>,
     /// Unendlich oder Seiten (WP2).
@@ -481,6 +485,7 @@ impl Board {
             erase_mode: 0,
             events: Vec::new(),
             hidden: None,
+            export_only: RefCell::new(None),
             back_tool: None,
             board_mode: BoardMode::Infinite,
             needs_redraw: true,
@@ -859,9 +864,15 @@ impl Board {
         let n = self.layers.len();
         let mut bk: Vec<Vec<&Item>> = vec![Vec::new(); n];
         let (mut last_id, mut last_k) = (i32::MIN, 0usize);
+        let only = self.export_only.borrow();
         for it in &self.items {
             if (skip_lift && it.lift) || self.hidden == Some(it.id) || (!pins && matches!(it.kind, Kind::Pin(_))) {
                 continue;
+            }
+            if let Some(o) = only.as_ref() {
+                if !o.contains(&it.id) {
+                    continue;
+                }
             }
             if let Some(v) = vis {
                 if !RectF::intersects(v, &paint_bounds(it)) {

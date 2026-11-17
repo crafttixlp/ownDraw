@@ -565,6 +565,15 @@ pub struct AndroidPlatform {
 }
 
 impl AndroidPlatform {
+    /// Legt eine Export-Datei zum Teilen/Drucken im Cache ab (über den FileShareProvider erreichbar).
+    fn export_tmp(&self, name: &str, data: &[u8]) -> Result<PathBuf, String> {
+        let dir = self.cache_dir().join("teilen");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let p = dir.join(name.replace(['/', '\\'], "_"));
+        std::fs::write(&p, data).map_err(|e| e.to_string())?;
+        Ok(p)
+    }
+
     /// `data_dir` = `AndroidApp::internal_data_path()`.
     pub fn new(data_dir: PathBuf) -> AndroidPlatform {
         let cache_dir = with_env(|env, act| {
@@ -832,6 +841,32 @@ impl Platform for AndroidPlatform {
 
     fn is_touch(&self) -> bool {
         true
+    }
+
+    fn can_share(&self) -> bool {
+        true
+    }
+
+    fn share_file(&self, name: &str, mime: &str, data: &[u8]) -> Result<(), String> {
+        let p = self.export_tmp(name, data)?;
+        let r = with_env(|env, act| {
+            let ps = jstr(env, &p.display().to_string())?;
+            let m = jstr(env, mime)?;
+            env.call_method(act, "shareFile", "(Ljava/lang/String;Ljava/lang/String;)V", &[JValue::Object(&ps), JValue::Object(&m)])?;
+            Ok(())
+        });
+        r.map_err(|e| format!("Teilen fehlgeschlagen: {e}"))
+    }
+
+    fn print_pdf(&self, name: &str, data: &[u8]) -> Result<String, String> {
+        let p = self.export_tmp(name, data)?;
+        let r = with_env(|env, act| {
+            let ps = jstr(env, &p.display().to_string())?;
+            let n = jstr(env, name)?;
+            env.call_method(act, "printPdf", "(Ljava/lang/String;Ljava/lang/String;)V", &[JValue::Object(&ps), JValue::Object(&n)])?;
+            Ok(())
+        });
+        r.map(|_| String::new()).map_err(|e| format!("Drucken fehlgeschlagen: {e}"))
     }
 }
 

@@ -16,7 +16,7 @@
         {
           "id": "start-aufbau",
           "title": "Aufbau des Editors",
-          "text": "Oben links stehen Zurück, der Name des Boards und der Speicherstatus. Oben rechts liegen Rückgängig, Wiederholen, die Zoomanzeige und das Menü „…“. Die Werkzeugleiste sitzt je nach Bildschirm oben (PC), links (Tablet) oder unten (Handy).",
+          "text": "Oben links stehen Zurück, der Name des Boards und der Speicherstatus. Oben rechts liegen Rückgängig, Wiederholen, die Zoomanzeige, das Menü „…“ und der Knopf „Exportieren“. Die Werkzeugleiste sitzt je nach Bildschirm oben (PC), links (Tablet) oder unten (Handy).",
           "how": ["Der farbige Punkt neben dem Namen zeigt den Speicherstatus: grün gespeichert, gelb wird gespeichert, rot Fehler.", "Ein Klick auf den Namen benennt das Board um.", "Der kleine Farbpunkt am gewählten Werkzeug zeigt die aktuelle Farbe.", "Das Menü „…“ ist in Ansicht, Hintergrund, Export, Datei sowie Einstellungen & Hilfe gegliedert."],
           "covers": ["extra:aufbau"]
         },
@@ -484,7 +484,7 @@
     {
       "id": "datei",
       "title": "Export und Datei",
-      "intro": "Alles im Menü „…“ (Strg+E).",
+      "intro": "Exportieren über den Knopf oben rechts (Strg+Umschalt+E), alles Weitere im Menü „…“ (Strg+E).",
       "entries": [
         {
           "id": "menu-oeffnen",
@@ -494,23 +494,57 @@
           "covers": ["action:menu", "action:cancel"]
         },
         {
+          "id": "export-fenster",
+          "title": "Das Export-Fenster",
+          "text": "Der Knopf „Exportieren“ (Pfeil aus dem Kasten) ganz rechts in der Kachel oben rechts öffnet alle Export-Formate. Oben wählst du den Bereich, darunter das Format. Auch über „…“ → „Exportieren …“ oder Strg+Umschalt+E.",
+          "how": ["Bereich: „Ganzes Board“ (bei Seiten „Alle Seiten“), „Diese Seite“ oder „Auswahl“ (nur wenn etwas ausgewählt ist).", "Bilder: 1×, 2× oder 4× Auflösung. „Hintergrund“ aus = durchsichtig, wo das Format es kann.", "Mehrere Seiten in einem Bildformat (PNG, SVG …) werden untereinander gesetzt; PDF, PowerPoint und Word bekommen eine Seite je Board-Seite.", "Fahr mit der Maus über ein Format, um zu sehen, wofür es gut ist."],
+          "action": ["export"],
+          "covers": ["menu:Exportieren …", "action:export"]
+        },
+        {
           "id": "export-bild",
-          "title": "Als PNG oder PDF exportieren",
-          "text": "„Als PNG-Bild …“ speichert den Inhalt als Bild, „Als PDF …“ als PDF (bei Seiten-Boards eine PDF-Seite pro Seite). „Aktive Ebene als PNG …“ exportiert nur die aktive Ebene.",
-          "covers": ["menu:Als PNG-Bild …", "menu:Als PDF …", "menu:Aktive Ebene als PNG …"]
+          "title": "Bilder: PNG, JPEG, WebP, AVIF, TIFF, BMP",
+          "text": "PNG ist verlustfrei und kann durchsichtig sein – der Standard. JPEG ist klein für Mail und Messenger, WebP und AVIF sind modern und noch kleiner, TIFF ist für Druck und Archiv, BMP für alte Programme.",
+          "covers": ["export:PNG", "export:JPEG", "export:WebP", "export:AVIF", "export:TIFF", "export:BMP"]
+        },
+        {
+          "id": "export-pdf",
+          "title": "PDF, PDF/A, PowerPoint und Word",
+          "text": "„PDF“ bleibt in jeder Größe scharf (Vektoren) und hat eine Seite je Board-Seite. „PDF (als Bild)“ sieht überall gleich aus, „PDF/A (Archiv)“ ist für die Langzeitablage (Schule, Behörden). „PowerPoint (.pptx)“ macht eine Folie je Seite, „Word (.docx)“ ein Bild je Seite.",
+          "covers": ["export:PDF", "export:PDF (als Bild)", "export:PDF/A (Archiv)", "export:PowerPoint (.pptx)", "export:Word (.docx)"]
+        },
+        {
+          "id": "export-vektor",
+          "title": "Vektor: SVG, EPS, EMF",
+          "text": "SVG lässt sich beliebig vergrößern und in Inkscape, Figma oder im Browser weiterbearbeiten. EPS ist für die Druckvorstufe, EMF zum Einfügen in Word und PowerPoint unter Windows.",
+          "how": ["EPS und EMF kennen keine Transparenz: halbtransparente Farben werden gegen Weiß gemischt."],
+          "covers": ["export:SVG", "export:EPS", "export:EMF (Office)"]
         },
         {
           "id": "export-website",
-          "title": "Ebenen und Website",
-          "text": "„Ebenen und Website (ZIP) …“ exportiert alle Ebenen als PNG plus eine animierte Webseite. „Website-Vorschau“ öffnet diese Seite direkt im Browser.",
+          "title": "Ebenen, Website und Animation",
+          "text": "„Ebenen und Website (ZIP)“ exportiert alle Ebenen als PNG plus eine animierte Webseite, „HTML-Datei (Website)“ dasselbe in einer einzigen Datei. „Website-Vorschau“ öffnet die Seite direkt im Browser. „Aktive Ebene (PNG)“ speichert nur die aktive Ebene. „GIF“ und „APNG (Zeichenverlauf)“ zeigen, wie das Board Strich für Strich entsteht.",
           "only": "Vorschau nicht in der Web-App",
-          "covers": ["menu:Ebenen und Website (ZIP) …", "menu:Website-Vorschau"]
+          "covers": ["export:Ebenen und Website (ZIP)", "export:HTML-Datei (Website)", "export:Website-Vorschau", "export:Aktive Ebene (PNG)", "export:GIF (Zeichenverlauf)", "export:APNG (Zeichenverlauf)"]
+        },
+        {
+          "id": "export-bearbeitbar",
+          "title": "Weiterbearbeiten in anderen Programmen",
+          "text": "„OwnDraw-Datei“ sichert das ganze Board. „Xournal++“ schreibt eine .xopp-Datei mit Seiten und Ebenen. Excalidraw und draw.io öffnen Striche, Formen, Pfeile und Text als eigene Objekte. „OpenRaster (.ora)“ (Krita, GIMP) und „Photoshop (.psd)“ behalten die Ebenen. „InkML“ ist der Standard für Handschrift, „JSON (Rohdaten)“ enthält alle Objekte für Entwickler.",
+          "covers": ["export:OwnDraw-Datei", "export:Xournal++", "export:Excalidraw", "export:draw.io", "export:OpenRaster (.ora)", "export:Photoshop (.psd)", "export:InkML", "export:JSON (Rohdaten)"]
+        },
+        {
+          "id": "export-teilen",
+          "title": "Teilen, Drucken und Kopieren",
+          "text": "„Teilen …“ schickt den Bereich als PNG an andere Apps. „Drucken …“ druckt ihn als PDF (am PC öffnet sich das PDF zum Drucken). „Als Bild kopieren“ und „Als SVG kopieren“ legen ihn in die Zwischenablage, z. B. zum Einfügen in Office oder Inkscape.",
+          "only": "Teilen auf Android und in Browsern mit Teilen-Funktion",
+          "covers": ["export:Teilen …", "export:Drucken …", "export:Als Bild kopieren", "export:Als SVG kopieren"]
         },
         {
           "id": "datei-kopie",
-          "title": "Kopie, Download und Xournal++",
-          "text": "„Kopie speichern unter …“ (PC, Android) bzw. „Herunterladen (.owndraw)“ (Web-App) sichert das Board als Datei. „Xournal++ exportieren …“ schreibt eine .xopp-Datei mit Seiten und Ebenen. .xopp-Dateien lassen sich auch öffnen.",
-          "covers": ["menu:Kopie speichern unter …", "menu:Herunterladen (.owndraw)", "menu:Xournal++ exportieren …"]
+          "title": "Kopie und Download",
+          "text": "„Kopie speichern unter …“ (PC, Android) bzw. „Herunterladen (.owndraw)“ (Web-App) sichert das Board als Datei. .xopp-Dateien lassen sich auch öffnen.",
+          "covers": ["menu:Kopie speichern unter …", "menu:Herunterladen (.owndraw)"]
         },
         {
           "id": "datei-umbenennen",

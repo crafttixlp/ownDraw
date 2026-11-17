@@ -100,7 +100,36 @@ pub enum FileKind {
     Pdf,
     /// Website-Export (ZIP).
     Zip,
+    /// Ein Export-Format des Kerns (Export-Fenster).
+    Export(owndraw_core::export::formats::Fmt),
     Any,
+}
+
+/// Endungen eines Export-Formats als statische Liste.
+fn fmt_exts(f: owndraw_core::export::formats::Fmt) -> &'static [&'static str] {
+    match f.ext() {
+        "png" => &["png"],
+        "jpg" => &["jpg", "jpeg"],
+        "webp" => &["webp"],
+        "avif" => &["avif"],
+        "tiff" => &["tiff", "tif"],
+        "bmp" => &["bmp"],
+        "svg" => &["svg"],
+        "pdf" => &["pdf"],
+        "eps" => &["eps"],
+        "emf" => &["emf"],
+        "pptx" => &["pptx"],
+        "docx" => &["docx"],
+        "excalidraw" => &["excalidraw"],
+        "drawio" => &["drawio"],
+        "ora" => &["ora"],
+        "psd" => &["psd"],
+        "inkml" => &["inkml"],
+        "json" => &["json"],
+        "html" => &["html"],
+        "gif" => &["gif"],
+        _ => &[],
+    }
 }
 
 impl FileKind {
@@ -113,6 +142,7 @@ impl FileKind {
             FileKind::Png => &["png"],
             FileKind::Pdf => &["pdf"],
             FileKind::Zip => &["zip"],
+            FileKind::Export(f) => fmt_exts(f),
             FileKind::Any => &[],
         }
     }
@@ -124,6 +154,7 @@ impl FileKind {
             FileKind::Png => "image/png",
             FileKind::Pdf => "application/pdf",
             FileKind::Zip => "application/zip",
+            FileKind::Export(f) => f.mime(),
             FileKind::Any => "*/*",
         }
     }
@@ -208,6 +239,24 @@ pub trait Platform {
     fn open_url(&self, url: &str);
     /// Touch-Gerät ohne Maus (Android/Tablet)?
     fn is_touch(&self) -> bool;
+
+    /// Kann Dateien an andere Apps teilen (Android: Teilen-Menü, Browser: Web Share)?
+    fn can_share(&self) -> bool {
+        false
+    }
+    /// Teilt eine Datei (Name mit Endung, MIME-Typ, Inhalt).
+    fn share_file(&self, _name: &str, _mime: &str, _data: &[u8]) -> Result<(), String> {
+        Err("Teilen ist hier nicht verfügbar".into())
+    }
+    /// Druckt ein PDF. Vorgabe: im PDF-Betrachter des Systems öffnen (dort drucken). Ok = Hinweis für die Anzeige.
+    fn print_pdf(&self, name: &str, data: &[u8]) -> Result<String, String> {
+        let dir = self.cache_dir().join("drucken");
+        std::fs::create_dir_all(&dir).map_err(|e| format!("Drucken fehlgeschlagen: {e}"))?;
+        let p = dir.join(name.replace(['/', '\\'], "_"));
+        std::fs::write(&p, data).map_err(|e| format!("Drucken fehlgeschlagen: {e}"))?;
+        self.open_url(&p.display().to_string());
+        Ok("PDF geöffnet – dort drucken".into())
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]

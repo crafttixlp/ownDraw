@@ -21,7 +21,7 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     let canvas = lay.canvas;
     let btn = env.btn;
     let compact = env.ff == FormFactor::Compact;
-    let right_w = 3.0 * btn + if compact { 0.0 } else { 64.0 } + 2.0 * PAD;
+    let right_w = 4.0 * btn + if compact { 0.0 } else { 64.0 } + 2.0 * PAD;
     let name_max = (canvas.width() - 2.0 * M - btn - 2.0 * PAD - right_w - 3.0 * M - 14.0).clamp(40.0, 260.0);
 
     // links: Zurück + Titel
@@ -62,7 +62,7 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     });
     ed.st.popup_rects.push(r);
 
-    // rechts: Rückgängig, Wiederholen, Zoom, ⋯
+    // rechts: Rückgängig, Wiederholen, Zoom, ⋯, Exportieren
     let r = tile(ed, ctx, sh, lay, "bar-tr", Pos2::new(canvas.right() - M, canvas.top() + M), Align2::RIGHT_TOP, Some(BarPos::Top), false, |ed, sh, ui, tl| {
         let vert = tl.vert;
         tl.frame.show(ui, |ui| {
@@ -93,6 +93,15 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                 ed.st.menu_btn = Some(more.rect);
                 if more.clicked() {
                     ed.st.menu_open = !ed.st.menu_open;
+                    ed.st.opts_open = false;
+                    ed.st.more_open = false;
+                    ed.st.export.open = false;
+                }
+                let exp = icon_btn(ui, &mut sh.icons, ic::EXPORT, p.text, ed.st.export.open, false, btn, &env.tip("Exportieren", &keys::label(&sh.settings, "export")));
+                ed.st.export.btn = Some(exp.rect);
+                if exp.clicked() {
+                    ed.st.export.open = !ed.st.export.open;
+                    ed.st.menu_open = false;
                     ed.st.opts_open = false;
                     ed.st.more_open = false;
                 }

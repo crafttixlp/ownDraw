@@ -526,6 +526,10 @@ mod tests {
         for l in literals_after(&rows, "menu_row(ui, ") {
             f.insert(format!("menu:{l}"));
         }
+        // Einträge des Export-Fensters
+        for e in crate::ui::editor::export::all_entries() {
+            f.insert(format!("export:{}", e.label()));
+        }
         // Editor-Einstellungen (Abschnitte „Werkzeugleisten“ und „Einrasten“)
         let s = include_str!("settings.rs");
         let a = s.find("section(ui, \"Werkzeugleisten\"").expect("Abschnitt Werkzeugleisten");
@@ -587,7 +591,7 @@ mod tests {
     #[test]
     fn abgleich_findet_funktionen() {
         let f = editor_features();
-        for k in ["tool:Bild", "tool:Haftnotiz", "action:undo", "action:help", "action:pan", "action:snap", "action:tool.pen", "menu:Als PDF …", "menu:Board: dunkel", "menu:Anleitung & Tipps", "setting:Taste", "setting:Winkelraster"] {
+        for k in ["tool:Bild", "tool:Haftnotiz", "action:undo", "action:help", "action:pan", "action:snap", "action:tool.pen", "menu:Exportieren …", "export:PDF", "export:Teilen …", "menu:Board: dunkel", "menu:Anleitung & Tipps", "setting:Taste", "setting:Winkelraster"] {
             assert!(f.contains(k), "{k} nicht erkannt");
         }
         assert!(f.len() > 50, "nur {} Funktionen erkannt", f.len());

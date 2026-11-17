@@ -3,7 +3,7 @@
 <img src="assets/owndraw.png" alt="OwnDraw-Logo" width="96" align="right">
 
 Zeichen- und Whiteboard-App mit Stift für **PC, Handy, Tablet und Browser**. Sie bietet eine unendliche Fläche oder Seiten,
-Ebenen, Formerkennung, Lasso-Auswahl, Export als PNG, PDF, Website und Xournal++. In der Web-Version gibt es
+Ebenen, Formerkennung, Lasso-Auswahl und Export in über 25 Formate (PNG, JPEG, PDF, SVG, PowerPoint, Excalidraw, Website …). In der Web-Version gibt es
 zusätzlich Konten, Lizenzen und **Live-Zusammenarbeit**. OwnDraw ist komplett in Rust geschrieben (egui/eframe), mit einer Oberfläche für alle Plattformen.
 
 | Variante | Plattform | Bezug |
@@ -20,7 +20,10 @@ zusätzlich Konten, Lizenzen und **Live-Zusammenarbeit**. OwnDraw ist komplett i
 - **Fläche:** unendliches Whiteboard oder Seiten (A4/A5/Letter; blanko, liniert, kariert, punktiert) mit Seitenleiste.
 - **Ordnen:** Ebenen, Lasso-Auswahl, Kopieren und Einfügen auch mit anderen Programmen, Drag & Drop, Rückgängig.
 - **Dateien:** Ein Board ist eine Datei (`.owndraw`, ZIP mit Bildern und Vorschau), Autosave immer an. Xournal++ (`.xopp`) kann
-  geöffnet und exportiert werden, dazu Export als PNG, PDF (eine Seite je Board-Seite) und Website-ZIP.
+  geöffnet und exportiert werden. Das Export-Fenster (Knopf oben rechts) bietet ganzes Board, Seite oder Auswahl als
+  PNG, JPEG, WebP, AVIF, TIFF, BMP, SVG, EPS, EMF, PDF (Vektor, Bild, PDF/A), PowerPoint, Word, Excalidraw, draw.io,
+  OpenRaster, Photoshop, InkML, JSON, Website (ZIP oder eine HTML-Datei) und Zeichenverlauf als GIF/APNG, dazu Teilen,
+  Drucken und Kopieren als Bild oder SVG.
 - **Oberfläche:** passt sich an Handy, Tablet und PC an. Leisten lassen sich verschieben und am Rand andocken, mit Hell/Dunkel,
   Akzentfarbe, UI-Größe 75–200 % und Werkzeuge zum Umordnen und Ausblenden.
 - **Updates** (Desktop) nur auf Klick, signiert mit minisign. Zurückspringen auf ältere Versionen ist möglich.

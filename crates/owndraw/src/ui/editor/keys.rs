@@ -172,6 +172,7 @@ const ACTIONS: &[Def] = &[
     press("ungroup", "Gruppierung lösen", "Bearbeiten", &["Ctrl+Shift+G"]),
     press("save", "Speichern", "Datei", &["Ctrl+S"]),
     press("menu", "Menü öffnen", "Datei", &["Ctrl+E"]),
+    press("export", "Exportieren", "Datei", &["Ctrl+Shift+E"]),
     press("help", "Anleitung & Tipps", "Datei", &["F1"]),
     press("cancel", "Menü/Optionen schließen", "Ansicht", &["Escape"]),
     press("fit", "Alles zeigen", "Ansicht", &["0"]),

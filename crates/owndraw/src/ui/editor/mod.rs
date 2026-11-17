@@ -82,6 +82,8 @@ pub enum Tool {
     Table,
     Pin,
     Math,
+    /// Stift-Modus (Schalter): an = nur Stift/Maus zeichnen, Finger verschieben und zoomen.
+    PenMode,
 }
 
 impl Tool {
@@ -100,7 +102,7 @@ impl Tool {
     }
     /// Hat das Werkzeug Optionen (Kontext-Popover bzw. Bottom-Sheet)?
     pub fn has_options(self) -> bool {
-        !matches!(self, Tool::Image | Tool::Picker | Tool::Laser | Tool::Space)
+        !matches!(self, Tool::Image | Tool::Picker | Tool::Laser | Tool::Space | Tool::PenMode)
     }
 }
 
@@ -535,17 +537,38 @@ impl Editor {
             self.pick_image(sh);
             return;
         }
+        if t == Tool::PenMode {
+            if !crate::platform::PEN_MODE && !self.pen_mode() {
+                sh.toast_for("Stift-Modus geht auf Android noch nicht: Stift und Finger sind hier nicht unterscheidbar.", 4.0);
+                return;
+            }
+            self.toggle_pen_mode();
+            sh.toast(if self.pen_mode() { "Stift-Modus an: nur der Stift zeichnet, Finger verschieben" } else { "Stift-Modus aus: auch Finger zeichnen" });
+            return;
+        }
         self.set_tool_ui(t);
+    }
+
+    /// Stift-Modus an/aus: an = Finger zeichnen nicht (verschieben/zoomen), Stift und Maus zeichnen.
+    pub fn toggle_pen_mode(&mut self) {
+        self.board.finger_draw = !self.board.finger_draw;
+        self.board.invalidate();
+    }
+
+    /// Stift-Modus an? (Finger zeichnen nicht)
+    pub fn pen_mode(&self) -> bool {
+        !self.board.finger_draw
     }
 
     /// Wählt ein Werkzeug (ohne Bild, das die Dateiauswahl braucht).
     fn set_tool_ui(&mut self, t: Tool) {
         let cur = self.active_tool();
-        if t != Tool::Ruler {
+        if t != Tool::Ruler && t != Tool::PenMode {
             self.leave_xtool();
         }
         match t {
             Tool::Ruler => return self.toggle_ruler(),
+            Tool::PenMode => return self.toggle_pen_mode(),
             Tool::Laser | Tool::Space => {
                 self.ext.xtool = Some(t);
                 self.board.invalidate();
@@ -583,7 +606,7 @@ impl Editor {
                 }
             }
             Tool::Note => board::NOTE,
-            Tool::Image | Tool::Ruler | Tool::Laser | Tool::Space => return,
+            Tool::Image | Tool::Ruler | Tool::Laser | Tool::Space | Tool::PenMode => return,
             Tool::Connector | Tool::Table | Tool::Pin => {
                 self.select_xtool(t);
                 return;
@@ -937,7 +960,9 @@ impl Editor {
                         TouchPhase::End => extras::Ph::Up,
                         TouchPhase::Cancel => extras::Ph::Cancel,
                     };
-                    match self.ext_hook(id.0, ph, rel(pos).to_pos2(), true) {
+                    // Stift auf dem Touchscreen (Browser): zählt wie Maus/Stift, nicht wie ein Finger
+                    let pen = crate::platform::pen_touch(id.0);
+                    match self.ext_hook(id.0, ph, rel(pos).to_pos2(), !pen) {
                         extras::Hook::Eat => {}
                         extras::Hook::Pass(q) => self.touch(id.0, phase, q, force.unwrap_or(0.5)),
                     }
@@ -1030,7 +1055,12 @@ impl Editor {
     /// Touchscreen: Finger verschieben/zoomen wie auf dem Tablet (Zeichnen mit der Maus bzw. dem Stift als Maus).
     fn touch(&mut self, id: u64, phase: TouchPhase, p: Pos2, force: f32) {
         let ptrs = |t: &Vec<(u64, Pos2)>| -> Vec<Pointer> {
-            t.iter().map(|(i, q)| Pointer { id: *i as i64, x: q.x, y: q.y, pressure: force, tool: ToolType::Finger }).collect()
+            t.iter()
+                .map(|(i, q)| {
+                    let tool = if crate::platform::pen_touch(*i) { ToolType::Stylus } else { ToolType::Finger };
+                    Pointer { id: *i as i64, x: q.x, y: q.y, pressure: force, tool }
+                })
+                .collect()
         };
         match phase {
             TouchPhase::Start => {

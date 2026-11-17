@@ -68,6 +68,57 @@ pub fn install_page_hooks() {
     });
     let _ = w.add_event_listener_with_callback("beforeunload", cb.as_ref().unchecked_ref());
     cb.forget();
+    install_pen_hooks(&w);
+}
+
+// ---------------------------------------------------------------- Stift erkennen (Stift-Modus)
+
+thread_local! {
+    /// Letztes `pointerdown` eines Stifts: (clientX, clientY, Zeit in ms).
+    static PEN_DOWN: std::cell::Cell<Option<(f64, f64, f64)>> = const { std::cell::Cell::new(None) };
+    /// Touch-Kennungen (egui `TouchId`), die gerade von einem Stift stammen.
+    static PEN_TOUCHES: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Ob die Touch-Berührung `id` (egui `TouchId`) ein Stift ist. egui kennt im Browser nur Touch-Ereignisse ohne
+/// Zeigerart; die Art kommt aus `Touch.touchType == "stylus"` (Safari/iPad) oder aus dem vorausgehenden
+/// `pointerdown` mit `pointerType == "pen"` an derselben Stelle (Chrome/Firefox).
+pub fn pen_touch(id: u64) -> bool {
+    PEN_TOUCHES.with(|t| t.borrow().contains(&id))
+}
+
+/// Merkt Stift-Berührungen vor egui (Erfassungsphase am Fenster, egui hört am Canvas).
+fn install_pen_hooks(w: &web_sys::Window) {
+    let opts = web_sys::AddEventListenerOptions::new();
+    opts.set_capture(true);
+    opts.set_passive(true);
+    let down = Closure::<dyn FnMut(web_sys::PointerEvent)>::new(|e: web_sys::PointerEvent| {
+        if e.pointer_type() == "pen" {
+            PEN_DOWN.with(|p| p.set(Some((e.client_x() as f64, e.client_y() as f64, js_sys::Date::now()))));
+        }
+    });
+    let _ = w.add_event_listener_with_callback_and_add_event_listener_options("pointerdown", down.as_ref().unchecked_ref(), &opts);
+    down.forget();
+    let start = Closure::<dyn FnMut(web_sys::TouchEvent)>::new(|e: web_sys::TouchEvent| {
+        let pen = PEN_DOWN.with(|p| p.take());
+        let now = js_sys::Date::now();
+        let list = e.changed_touches();
+        for i in 0..list.length() {
+            let Some(t) = list.item(i) else { continue };
+            let id = egui::TouchId::from(t.identifier()).0;
+            let stylus = js_sys::Reflect::get(&t, &JsValue::from_str("touchType")).ok().and_then(|v| v.as_string()).map(|s| s == "stylus").unwrap_or(false);
+            let near = pen.map(|(x, y, at)| now - at < 500.0 && (x - t.client_x() as f64).hypot(y - t.client_y() as f64) < 24.0).unwrap_or(false);
+            PEN_TOUCHES.with(|v| {
+                let mut v = v.borrow_mut();
+                v.retain(|x| *x != id);
+                if stylus || near {
+                    v.push(id);
+                }
+            });
+        }
+    });
+    let _ = w.add_event_listener_with_callback_and_add_event_listener_options("touchstart", start.as_ref().unchecked_ref(), &opts);
+    start.forget();
 }
 
 /// Öffnet den Dialog „Fehler melden“ aus `index.html` (`window.owndrawFehlerMelden`). `false`, wenn es ihn nicht gibt.

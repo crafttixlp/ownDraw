@@ -565,7 +565,7 @@ fn zahl_form(s: &str) -> Option<(String, String)> {
 pub fn neu_bewerten(art: Art, mut k: Vec<Kandidat>, ctx: &Kontext, lexikon: &[String]) -> Vec<Kandidat> {
     for c in k.iter_mut() {
         c.text = match art {
-            Art::Formel => c.text.replace("\\displaystyle", "").trim().to_string(),
+            Art::Formel => latex_glatt(&c.text),
             _ => c.text.split_whitespace().collect::<Vec<_>>().join(" "),
         };
         let mut adj = 0.0f32;
@@ -584,9 +584,9 @@ pub fn neu_bewerten(art: Art, mut k: Vec<Kandidat>, ctx: &Kontext, lexikon: &[St
                 Some((_, unit)) if unit.is_empty() => adj += 0.3,
                 Some((_, unit)) => {
                     let u = unit.replace(' ', "");
-                    if ctx.einheiten.iter().any(|x| *x == u) {
+                    if ctx.einheiten.contains(&u) {
                         adj += 0.6;
-                    } else if lexikon.iter().any(|x| *x == u) || crate::calc::units::lookup(&u).is_some() {
+                    } else if lexikon.contains(&u) || crate::calc::units::lookup(&u).is_some() {
                         adj += 0.4;
                     } else {
                         adj -= 0.3;
@@ -617,6 +617,48 @@ pub fn neu_bewerten(art: Art, mut k: Vec<Kandidat>, ctx: &Kontext, lexikon: &[St
     out
 }
 
+/// Glättet LaTeX der Modelle: `~`, `\\,` und Abstände weg (`\\mathrm { ~ k N }` → `\\mathrm{kN}`); ein Leerzeichen
+/// bleibt nur dort, wo ein Befehl sonst mit dem folgenden Buchstaben verschmelzen würde (`\\cdot b`).
+pub fn latex_glatt(s: &str) -> String {
+    let s = s.replace("\\ ", " ").replace("\\displaystyle", " ").replace("\\quad", " ").replace("\\,", " ").replace("\\;", " ").replace("\\!", " ").replace('~', " ");
+    let ends_with_cmd = |o: &str| {
+        let letters = o.chars().rev().take_while(|c| c.is_ascii_alphabetic()).count();
+        letters > 0 && o.chars().rev().nth(letters) == Some('\\')
+    };
+    let cs: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    // Klammerebenen: true = Inhalt von \mathrm{…}/\text{…} (Einheiten „k N“ → „kN“)
+    let mut text_group: Vec<bool> = Vec::new();
+    let mut i = 0;
+    while i < cs.len() {
+        let c = cs[i];
+        if c.is_whitespace() {
+            let mut j = i;
+            while j < cs.len() && cs[j].is_whitespace() {
+                j += 1;
+            }
+            let next = cs.get(j).copied().unwrap_or(' ');
+            let prev = out.chars().last().unwrap_or(' ');
+            let in_text = text_group.last().copied().unwrap_or(false);
+            let cmd = ends_with_cmd(&out);
+            // „a b“ (Produkt) bleibt getrennt, sonst würde daraus der Name „ab“; „1 2“ wird „12“
+            if (cmd && next.is_ascii_alphabetic()) || (!cmd && !in_text && prev.is_alphabetic() && next.is_alphanumeric()) {
+                out.push(' ');
+            }
+            i = j;
+            continue;
+        }
+        if c == '{' {
+            text_group.push(["\\mathrm", "\\text", "\\operatorname", "\\textrm"].iter().any(|n| out.ends_with(n)));
+        } else if c == '}' {
+            text_group.pop();
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
 /// Sieht die Formel nach Mathematik aus (Operatoren, Brüche, Hoch-/Tiefstellung, Zahlen mit Rechenzeichen)?
 pub fn mathe_struktur(latex: &str) -> bool {
     let has = |s: &str| latex.contains(s);
@@ -639,11 +681,18 @@ pub fn vorauswahl(best: &[(Art, Option<&Kandidat>)]) -> Art {
             }
         }
     }
+    // Text- und Zeilenerkenner lesen dasselbe Wort: Text (sonst gewinnt leicht eine Formel wie „H_{O}\cup S“)
+    if let (Some(t), Some(z)) = (t, z) {
+        let wort = t.text.chars().count() >= 2 && t.text.chars().all(|c| c.is_alphabetic() || c == ' ' || c == '-');
+        if wort && t.text.eq_ignore_ascii_case(&z.text) {
+            return Art::Text;
+        }
+    }
     match (t, f) {
         (Some(t), Some(f)) => {
-            if mathe_struktur(&f.text) && f.score >= t.score - 0.15 {
-                Art::Formel
-            } else if f.score > t.score + 0.4 {
+            // Steht schon im Text ein Gleichheitszeichen, ist es eine Formel (auch wenn Text sicherer ist)
+            let struktur = mathe_struktur(&f.text) && (f.score >= t.score - 0.15 || (t.text.contains('=') && f.text.contains('=')));
+            if struktur || f.score > t.score + 0.4 {
                 Art::Formel
             } else {
                 Art::Text
@@ -823,6 +872,15 @@ mod tests {
         let (t, f) = (k("Hallo Welt", -0.1), k("H a l l o", -0.9));
         assert_eq!(vorauswahl(&[(Art::Text, Some(&t)), (Art::Formel, Some(&f)), (Art::Zahl, None)]), Art::Text);
         assert_eq!(vorauswahl(&[(Art::Text, None), (Art::Formel, None), (Art::Zahl, None)]), Art::Text);
+        // echte Ausgabe von Pix2Text bei „F = 2 kN“: Text sicherer, trotzdem Formel
+        let (t, f, z) = (k("F = 2 kmV", -0.05), k("\\mathrm{F}=2\\mathrm{kN}", -0.9), k("F = 2 kN", -0.1));
+        assert_eq!(vorauswahl(&[(Art::Text, Some(&t)), (Art::Formel, Some(&f)), (Art::Zahl, Some(&z))]), Art::Formel);
+        assert_eq!(latex_glatt("\\mathrm { F } ~ ~ = ~ ~ 2 ~ \\mathrm { ~ k N }"), "\\mathrm{F}=2\\mathrm{kN}");
+        assert_eq!(latex_glatt("M = a \\cdot b"), "M=a\\cdot b");
+        assert_eq!(latex_glatt("1 2 , 5 \\ \\mathrm { k N }"), "12,5\\mathrm{kN}");
+        let (t, f, z) = (k("Haus", -0.1), k("\\mathrm{H_{O}\\cup S}", -0.05), k("Haus", -0.1));
+        assert_eq!(vorauswahl(&[(Art::Text, Some(&t)), (Art::Formel, Some(&f)), (Art::Zahl, Some(&z))]), Art::Text);
+        assert_eq!(latex_glatt("\\frac { a } { b } \\, x"), "\\frac{a}{b}x");
         assert_eq!(zahl_klartext(" 12,5kN"), "12,5 kN");
         assert_eq!(zahl_klartext("abc"), "abc");
     }

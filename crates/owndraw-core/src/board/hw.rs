@@ -67,7 +67,7 @@ impl Board {
             let lines: Vec<Vec<(f32, f32)>> = ink.iter().zip(&taken).filter(|(_, t)| **t).flat_map(|(it, _)| hw::polylines(it)).collect();
             let ch = hw::typical_height(&lines).unwrap_or(g.height()).max(6.0 * self.dp / self.sc);
             let band = (g.top - 0.35 * ch, g.bottom + 0.35 * ch);
-            let gap = 1.1 * ch;
+            let gap = 1.6 * ch; // Leerzeichen um „=“ sind in Handschrift oft breiter als ein Zeichen
             let mut grew = false;
             for (i, b) in bounds.iter().enumerate() {
                 if taken[i] {
@@ -281,7 +281,7 @@ mod tests {
         let (zeile, _) = sample(&mut b);
         let ink = b.render_ink(&zeile).unwrap();
         assert!(ink.w > ink.h, "Zeile ist breiter als hoch");
-        assert!(ink.gray.iter().any(|g| *g < 50) && ink.gray.iter().any(|g| *g == 255));
+        assert!(ink.gray.iter().any(|g| *g < 50) && ink.gray.contains(&255));
         b.add_math(100.0, 300.0, 20.0, &crate::calc::to_latex("F: 2 kN"));
         b.add_note(100.0, 400.0, "Kraft am Hebel", false);
         let k = b.hw_context(&zeile);

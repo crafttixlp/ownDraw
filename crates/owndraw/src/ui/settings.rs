@@ -439,7 +439,7 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
                         let missing: Vec<String> = need.iter().filter(|m| !info.paket(&m.id).is_some_and(|x| x.da() || x.zustand == "laedt")).map(|m| m.id.clone()).collect();
                         let sum: u64 = need.iter().filter(|m| missing.contains(&m.id)).map(|m| m.groesse()).sum();
                         ui.horizontal_wrapped(|ui| {
-                            if ui.add_enabled_ui(!missing.is_empty(), |ui| style::accent_btn(ui, &format!("Modelle laden ({})", chw::fmt_mb(sum)), btn)).inner.clicked() {
+                            if ui.add_enabled_ui(!missing.is_empty(), |ui| style::accent_btn(ui, &if missing.is_empty() { "Alle Modelle geladen".to_string() } else { format!("Modelle laden ({})", chw::fmt_mb(sum)) }, btn)).inner.clicked() {
                                 crate::hw::download(&missing);
                             }
                             let any = info.pakete.iter().any(|x| x.da());

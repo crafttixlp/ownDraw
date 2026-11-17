@@ -58,6 +58,8 @@ pub struct Conv {
     tex: Vec<(String, u32, f32, egui::TextureHandle, Vec2)>,
     started: f64,
     focus: bool,
+    /// Fensterhöhe im letzten Bild (für die Platzierung).
+    last_h: f32,
 }
 
 fn ai(a: Art) -> usize {
@@ -99,6 +101,7 @@ impl Conv {
             tex: Vec::new(),
             started: now,
             focus: false,
+            last_h: 0.0,
         }
     }
 
@@ -172,7 +175,8 @@ impl Conv {
                 _ => None,
             };
             let all_done = self.res.iter().all(|r| !matches!(r, Res::Run(..) | Res::Pending));
-            if all_done || self.res.iter().any(|r| matches!(r, Res::Done(..))) {
+            // erst mit einem Ergebnis entscheiden (fehlen noch Modelle, wird nach dem Laden gewählt)
+            if self.res.iter().any(|r| matches!(r, Res::Done(..))) {
                 self.tab = core_hw::vorauswahl(&[(Art::Text, best(Art::Text)), (Art::Formel, best(Art::Formel)), (Art::Zahl, best(Art::Zahl))]);
                 if all_done {
                     self.auto_tab = false;
@@ -313,7 +317,21 @@ impl Editor {
         let r = b.bounds_of(&cv.ids).unwrap_or(owndraw_core::geom::RectF::new(0.0, 0.0, 0.0, 0.0));
         let sp = canvas.min + Vec2::new(r.left * b.sc + b.tx, r.bottom * b.sc + b.ty + 14.0);
         let top = canvas.min.y + r.top * b.sc + b.ty - 14.0;
-        let (pos, pivot) = if sp.y + 380.0 < canvas.bottom() || top - 380.0 < canvas.top() { (Pos2::new(sp.x, sp.y.min(canvas.bottom() - 120.0)), Align2::LEFT_TOP) } else { (Pos2::new(sp.x, top), Align2::LEFT_BOTTOM) };
+        // Höhe des Fensters aus dem letzten Bild; passt es weder darunter noch darüber, daneben (Striche bleiben sichtbar)
+        let wh = cv.last_h.max(200.0);
+        let right = canvas.min.x + r.right * b.sc + b.tx + 14.0;
+        let left = canvas.min.x + r.left * b.sc + b.tx - 14.0;
+        let (pos, pivot) = if sp.y + wh < canvas.bottom() - 8.0 {
+            (sp, Align2::LEFT_TOP)
+        } else if top - wh > canvas.top() + 8.0 {
+            (Pos2::new(sp.x, top), Align2::LEFT_BOTTOM)
+        } else if right + w + 40.0 < canvas.right() {
+            (Pos2::new(right, canvas.top() + 8.0), Align2::LEFT_TOP)
+        } else if left - w - 40.0 > canvas.left() {
+            (Pos2::new(left, canvas.top() + 8.0), Align2::RIGHT_TOP)
+        } else {
+            (Pos2::new(sp.x, sp.y.min(canvas.bottom() - 120.0)), Align2::LEFT_TOP)
+        };
         let mut done: Option<bool> = None;
         if ctx.input_mut(|i| super::keys::consume(i, &sh.settings, "cancel")) {
             done = Some(false);
@@ -366,7 +384,9 @@ impl Editor {
                             let need: Vec<&core_hw::Manifest> = core_hw::pakete_fuer_stufe(&ms, cv.stufe).into_iter().filter(|m| !info.paket(&m.id).is_some_and(|p| p.da())).collect();
                             let busy: Vec<&hw::Paket> = need.iter().filter_map(|m| info.paket(&m.id)).filter(|p| p.zustand == "laedt").collect();
                             if !busy.is_empty() {
-                                let (g, t) = busy.iter().fold((0u64, 0u64), |a, p| (a.0 + p.geladen, a.1 + p.gesamt));
+                                // Fortschritt über alle Pakete der Stufe (werden nacheinander geladen)
+                                let alle: Vec<&hw::Paket> = core_hw::pakete_fuer_stufe(&ms, cv.stufe).iter().filter_map(|m| info.paket(&m.id)).collect();
+                                let (g, t) = alle.iter().fold((0u64, 0u64), |a, p| (a.0 + if p.da() { p.gesamt } else { p.geladen }, a.1 + p.gesamt));
                                 ui.add(egui::ProgressBar::new(g as f32 / t.max(1) as f32).text(format!("{} von {}", core_hw::fmt_mb(g), core_hw::fmt_mb(t))));
                             } else if !need.is_empty() {
                                 let sum: u64 = need.iter().map(|m| m.groesse()).sum();
@@ -476,6 +496,9 @@ impl Editor {
                 });
             });
         });
+        if let Some(cv) = self.conv.as_mut() {
+            cv.last_h = cv.last_h.max(rect.height()); // nur wachsen: das Fenster springt beim Reiterwechsel nicht
+        }
         self.st.popup_rects.push(rect);
         if let Some(ids) = load {
             hw::download(&ids);

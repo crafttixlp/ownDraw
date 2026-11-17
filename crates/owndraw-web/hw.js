@@ -17,6 +17,7 @@ const API = "api/models";
 const S = {
   liste: "leer", // leer | laedt | ok | fehler
   fehler: "",
+  protokoll: [], // letzte Erkennungen: Paket, Zeiten, beste Kandidaten
   pakete: [], // Manifeste vom Server
   zustand: {}, // id -> {zustand: fehlt|laedt|da|fehler, geladen, gesamt, fehler}
   jobs: new Map(),
@@ -261,7 +262,7 @@ async function sitzung(id) {
     const { ort, gpu } = await ortHolen(!!mod.webgpu);
     const eps = gpu && mod.webgpu ? ["webgpu", "wasm"] : ["wasm"];
     S.ep = eps[0];
-    const opt = { executionProviders: eps, graphOptimizationLevel: "all" };
+    const opt = { executionProviders: eps, graphOptimizationLevel: "all", logSeverityLevel: 3 };
     const tok = tokenizer(mf, await datei(mf.tokenizer.datei));
     if (mod.typ === "ctc") {
       const enc = await ort.InferenceSession.create(await datei(mod.datei), opt);
@@ -488,7 +489,11 @@ async function erkennen(auftrag, w, h, grau) {
   const t1 = performance.now();
   const x = tensor(s.ort, s.mf.vorverarbeitung || {}, w, h, grau);
   const k = s.mf.modell.typ === "ctc" ? await ctc(s, x, auftrag.nbest) : await ved(s, x, auftrag.nbest);
-  return { ok: true, kandidaten: k, ms: Math.round(performance.now() - t1), laden_ms: Math.round(t1 - t0), ep: S.ep };
+  const r = { ok: true, kandidaten: k, ms: Math.round(performance.now() - t1), laden_ms: Math.round(t1 - t0), ep: S.ep };
+  // kurzes Protokoll der letzten Aufträge (Fehlersuche, Tests)
+  S.protokoll.push({ paket: auftrag.paket, w, h, ms: r.ms, laden_ms: r.laden_ms, ep: S.ep, beste: k.slice(0, 3).map((c) => c.text) });
+  if (S.protokoll.length > 20) S.protokoll.shift();
+  return r;
 }
 
 // ---------------------------------------------------------------- Schnittstelle
@@ -508,6 +513,7 @@ window.owndrawHw = {
       pakete: S.pakete.map((m) => ({ ...m, ...(S.zustand[m.id] || { zustand: "fehlt", geladen: 0, gesamt: gesamt(m) }) })),
     });
   },
+  protokoll() { return JSON.stringify(S.protokoll); },
   liste() { liste(); },
   laden(ids) { laden(JSON.parse(ids)); },
   loeschen() { loeschen(); },

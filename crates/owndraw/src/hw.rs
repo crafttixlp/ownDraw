@@ -147,7 +147,7 @@ pub fn start(_paket: &str, _nbest: usize, _ink: &Ink) -> Option<u32> {
         use wasm_bindgen::JsValue;
         let job = serde_json::json!({"paket": _paket, "nbest": _nbest}).to_string();
         let gray = js_sys::Uint8Array::from(_ink.gray.as_slice());
-        return js::call("erkennen", &[JsValue::from_str(&job), JsValue::from(_ink.w), JsValue::from(_ink.h), gray.into()]).and_then(|v| v.as_f64()).map(|n| n as u32);
+        js::call("erkennen", &[JsValue::from_str(&job), JsValue::from(_ink.w), JsValue::from(_ink.h), gray.into()]).and_then(|v| v.as_f64()).map(|n| n as u32)
     }
     #[cfg(not(target_arch = "wasm32"))]
     None
@@ -157,10 +157,10 @@ pub fn start(_paket: &str, _nbest: usize, _ink: &Ink) -> Option<u32> {
 pub fn poll(_job: u32) -> Option<Result<(Vec<Kandidat>, u32), String>> {
     #[cfg(target_arch = "wasm32")]
     {
-        return match js::call("ergebnis", &[wasm_bindgen::JsValue::from(_job)]).and_then(|v| v.as_string()) {
+        match js::call("ergebnis", &[wasm_bindgen::JsValue::from(_job)]).and_then(|v| v.as_string()) {
             Some(s) => parse_result(&s),
             None => Some(Err("Die Erkennung ist nicht geladen (hw.js fehlt).".into())),
-        };
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
     Some(Err("Handschrift-Erkennung ist nur im Browser verfügbar.".into()))

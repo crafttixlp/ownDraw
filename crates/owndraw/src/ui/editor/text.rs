@@ -22,6 +22,8 @@ pub struct TextEdState {
     pub commit: bool,
     /// Tabellenzelle (id, Zeile, Spalte) statt Text/Notiz (table.rs).
     pub cell: Option<(u64, usize, usize)>,
+    /// Formel am Ort (mathin.rs): einzeilig, Enter übernimmt.
+    pub math: Option<super::mathin::MathIn>,
 }
 
 /// Zeilenhöhe wie beim Zeichnen auf dem Blatt (TextLayout, Faktor 1,15).
@@ -33,7 +35,7 @@ impl Editor {
         let b = &self.board;
         let r = b.new_note_rect(wx, wy, note);
         let bg = if note { board::note_bg(b.color) } else { 0 };
-        self.text = Some(TextEdState { r, note, edit: None, text: String::new(), focus: true, color: b.color, bg, commit: false, cell: None });
+        self.text = Some(TextEdState { r, note, edit: None, text: String::new(), focus: true, color: b.color, bg, commit: false, cell: None, math: None });
     }
 
     /// Abnahme-Hilfe (demo.rs): neuer Text mit Inhalt.
@@ -60,7 +62,7 @@ impl Editor {
     pub fn edit_note(&mut self, id: u64) {
         let Some(it) = self.board.items.iter().find(|it| it.id == id) else { return };
         let Some(n) = it.as_note() else { return };
-        let st = TextEdState { r: (n.x, n.y, n.size, n.w, n.mh), note: n.bg != 0, edit: Some(id), text: n.text.clone(), focus: true, color: it.color, bg: n.bg, commit: false, cell: None };
+        let st = TextEdState { r: (n.x, n.y, n.size, n.w, n.mh), note: n.bg != 0, edit: Some(id), text: n.text.clone(), focus: true, color: it.color, bg: n.bg, commit: false, cell: None, math: None };
         self.text = Some(st);
         self.board.set_hidden(Some(id));
     }
@@ -88,8 +90,13 @@ impl Editor {
         };
         let min_h = if te.note || cell { mh * sc } else { 0.0 };
         let mut done = te.commit || ctx.input_mut(|i| super::keys::consume(i, keymap, "text_done"));
+        let is_math = te.math.is_some();
+        // Formel: einzeilig, Enter übernimmt
+        if is_math && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
+            done = true;
+        }
         let pal = style::pal();
-        let hint = if cell { "Zelle …" } else if te.note { "Notiz schreiben …" } else { "Text schreiben …" };
+        let hint = if is_math { "Formel schreiben …" } else if cell { "Zelle …" } else if te.note { "Notiz schreiben …" } else { "Text schreiben …" };
         let hint_col = if te.note { 0x801F2025u32 } else { (pal.dim & 0x00FF_FFFF) | 0x9900_0000 };
         let accent = pal.accent;
         let (note, bg) = (te.note, te.bg);
@@ -116,7 +123,11 @@ impl Editor {
             };
             frame.show(ui, |ui| {
                 ui.set_min_size(Vec2::new(inner_w, (min_h - 2.0 * pad).max(fpx * LINE)));
-                let ed = egui::TextEdit::multiline(&mut te.text)
+                let mut ed = egui::TextEdit::multiline(&mut te.text);
+                if is_math {
+                    ed = ed.id(super::mathin::field_id());
+                }
+                let ed = ed
                     .hint_text(egui::RichText::new(hint).size(fpx).color(c(hint_col)))
                     .font(egui::FontId::proportional(fpx))
                     .text_color(c(fg))
@@ -152,6 +163,11 @@ impl Editor {
         self.board.set_hidden(None);
         let t = te.text.trim_end();
         let t = t.trim_start_matches('\n');
+        if te.math.is_some() {
+            let mut te = te;
+            let mi = te.math.take().unwrap();
+            return self.finish_math_inline(te, mi);
+        }
         if let Some((id, r, cc)) = te.cell {
             self.board.set_cell_text(id, r, cc, t);
             self.board.invalidate();

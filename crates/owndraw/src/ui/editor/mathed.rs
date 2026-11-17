@@ -117,6 +117,11 @@ impl Editor {
         self.math = Some(MathEd { at: (m.x, m.y), edit: Some(id), src: m.src.clone(), size: m.size, color: it.color, focus: true, tex: None });
     }
 
+    /// Formel-Fenster mit vorgegebenem Quelltext (Wechsel aus der Eingabe am Ort, mathin.rs).
+    pub(super) fn open_latex(&mut self, edit: Option<u64>, at: (f32, f32), size: f32, color: u32, src: &str) {
+        self.math = Some(MathEd { at, edit, src: src.to_string(), size, color, focus: true, tex: None });
+    }
+
     /// Abnahme-Hilfe (demo.rs): Formel-Fenster mit Inhalt.
     pub fn demo_math(&mut self, wx: f32, wy: f32, src: &str) {
         self.start_math(wx, wy);

@@ -67,7 +67,7 @@ impl Editor {
         let (x, y) = t.cell_origin(r, cc);
         let pad = t.pad();
         let rr = (x + pad, y + pad, t.size, (t.cw[cc] - 2.0 * pad).max(t.size), (t.rh[r] - 2.0 * pad).max(t.size));
-        self.text = Some(TextEdState { r: rr, note: false, edit: None, text: t.cell(r, cc).to_string(), focus: true, color: it.color, bg: 0, commit: false, cell: Some((id, r, cc)) });
+        self.text = Some(TextEdState { r: rr, note: false, edit: None, text: t.cell(r, cc).to_string(), focus: true, color: it.color, bg: 0, commit: false, cell: Some((id, r, cc)), math: None });
         self.xs.table.cell = Some((id, r, cc));
     }
 

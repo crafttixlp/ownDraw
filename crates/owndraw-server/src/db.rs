@@ -132,6 +132,11 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if !has_mfa {
         conn.execute_batch("ALTER TABLE sessions ADD COLUMN mfa INTEGER NOT NULL DEFAULT 0;")?;
     }
+    // 4.30: Nachricht des Admins an gesperrte Nutzer.
+    let has_dm = conn.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='disabled_msg'")?.exists([])?;
+    if !has_dm {
+        conn.execute_batch("ALTER TABLE users ADD COLUMN disabled_msg TEXT;")?;
+    }
     Ok(())
 }
 
@@ -224,6 +229,11 @@ pub fn user_by_email(conn: &Connection, email: &str) -> rusqlite::Result<Option<
 
 pub fn user_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<UserRow>> {
     conn.query_row(&format!("SELECT {USER_COLS} FROM users WHERE id=?1"), [id], user_from_row).optional()
+}
+
+/// Sperr-Nachricht des Admins (leer = keine).
+pub fn disabled_msg(conn: &Connection, id: &str) -> rusqlite::Result<String> {
+    Ok(conn.query_row("SELECT disabled_msg FROM users WHERE id=?1", [id], |r| r.get::<_, Option<String>>(0)).optional()?.flatten().unwrap_or_default())
 }
 
 pub fn insert_user(conn: &Connection, email: &str, name: &str, pw_hash: &str, admin: bool) -> ApiResult<UserRow> {

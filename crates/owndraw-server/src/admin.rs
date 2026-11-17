@@ -21,6 +21,7 @@ fn user_json(c: &Connection, u: &UserRow) -> ApiResult<Value> {
         "admin": u.admin,
         "guest": u.guest,
         "disabled": u.disabled,
+        "disabled_msg": if u.disabled { db::disabled_msg(c, &u.id)? } else { String::new() },
         "created": u.created,
         "license": db::license_of(c, &u.id)?.map(|l| l.to_json(t)),
         "used_mb": db::mb(db::used_bytes(c, &u.id)?),
@@ -48,12 +49,13 @@ pub async fn users(State(s): State<AppState>, _a: AdminAuth) -> ApiResult<Json<V
 #[derive(Deserialize)]
 pub struct PatchUser {
     disabled: Option<bool>,
+    /// Nachricht an den Nutzer beim Sperren (optional).
+    disabled_msg: Option<String>,
     admin: Option<bool>,
 }
 
 pub async fn patch_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<String>, J(b): J<PatchUser>) -> ApiResult<Json<Value>> {
     let me = a.0.user.id;
-    let dir = s.cfg.boards_dir();
     let (v, kicked) =
         s.db.call(move |c| {
             let u = db::user_by_id(c, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
@@ -64,16 +66,13 @@ pub async fn patch_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<
                 return Err(ApiError::invalid("Gäste können keine Admins werden."));
             }
             let tx = c.transaction()?;
-            let mut kicked = None;
+            let mut kicked = false;
             if let Some(d) = b.disabled {
-                tx.execute("UPDATE users SET disabled=?2 WHERE id=?1", params![id, d as i64])?;
-                if d {
-                    tx.execute("DELETE FROM sessions WHERE user_id=?1", [&id])?;
-                    // Sperren löscht alle Boards am Server sofort (Mitglieder und Einladungen fallen per CASCADE weg).
-                    let boards = owned_boards(&tx, &id)?;
-                    tx.execute("DELETE FROM boards WHERE owner_id=?1", [&id])?;
-                    kicked = Some(boards);
-                }
+                // Sperren löscht nichts: Boards und Lizenz bleiben, Entsperren stellt alles wieder her.
+                // Sitzungen bleiben bis zum nächsten Aufruf (dann Meldung + Abmeldung, siehe `Auth`).
+                let msg: Option<String> = if d { b.disabled_msg.as_deref().map(str::trim).filter(|m| !m.is_empty()).map(|m| m.chars().take(1000).collect()) } else { None };
+                tx.execute("UPDATE users SET disabled=?2, disabled_msg=?3 WHERE id=?1", params![id, d as i64, msg])?;
+                kicked = d;
             }
             if let Some(ad) = b.admin {
                 tx.execute("UPDATE users SET admin=?2 WHERE id=?1", params![id, ad as i64])?;
@@ -81,19 +80,12 @@ pub async fn patch_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<
             let u = db::user_by_id(&tx, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
             let v = user_json(&tx, &u)?;
             tx.commit()?;
-            if let Some(boards) = &kicked {
-                for b in boards {
-                    let _ = std::fs::remove_file(board_path(&dir, b));
-                }
-            }
-            Ok((v, kicked.map(|bs| (u.id, bs))))
+            Ok((v, kicked.then_some(u.id)))
         })
         .await?;
-    if let Some((uid, boards)) = kicked {
-        for b in &boards {
-            s.hub.kick(b, None, "not_found", "Das Board wurde gelöscht.");
-        }
-        s.hub.kick_user(&uid, "unauthorized", "Dein Konto wurde gesperrt.");
+    if let Some(uid) = kicked {
+        // Offene Live-Verbindungen enden; der Client holt sich dann die Sperrmeldung ab.
+        s.hub.kick_user(&uid, "account_disabled", "Dein Konto ist gesperrt.");
     }
     Ok(Json(v))
 }

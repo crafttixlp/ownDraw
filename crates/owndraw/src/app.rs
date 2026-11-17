@@ -630,6 +630,7 @@ impl App {
         }
         self.handle_reqs(&ctx);
         self.handle_dialog(&ctx);
+        crate::ui::account::blocked_dialog(&ctx, &self.sh);
         self.toast_ui(&ctx);
         if let Some(s) = self.shot.as_mut() {
             s.frame(&ctx);

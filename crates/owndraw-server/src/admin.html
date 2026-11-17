@@ -650,6 +650,7 @@ async function loadUsers() {
       h("div", { class: "main" },
         h("div", {}, h("b", {}, u.name || u.email), u.admin && h("span", { class: "chip acc" }, "Admin"), u.guest && h("span", { class: "chip" }, "Gast"), u.disabled && h("span", { class: "chip bad" }, "gesperrt"), self && h("span", { class: "chip" }, "du")),
         h("div", { class: "meta" }, u.guest ? "Gast ohne Konto, über Einladungslink beigetreten" : u.email),
+        u.disabled && u.disabled_msg && h("div", { class: "meta" }, "Sperr-Nachricht: " + u.disabled_msg),
         h("div", { class: "meta" }, licenseChip(l), " ", l ? (l.code + " · bis " + fmtDay(l.expires_at)) : "", " · Speicherplatz ", u.used_mb + " MB" + quota + " belegt", " · ", u.boards + " Boards", " · seit ", fmtDay(u.created))),
       h("div", { class: "actions" },
         !u.guest && (l && l.active
@@ -664,10 +665,13 @@ async function patchUser(u, body) {
   try { await api("PATCH", "/api/admin/users/" + encodeURIComponent(u.id), body); flash("Gespeichert."); loadUsers(); } catch (e) { fail(e); }
 }
 async function blockUser(u) {
-  const boards = u.boards === 1 ? "Das Board" : "Alle " + u.boards + " Boards";
-  const ok = await confirmDialog("Nutzer sperren?", (u.email || u.name) + " wird abgemeldet und kann sich nicht mehr anmelden. " + (u.boards ? boards + " am Server werden sofort und unwiderruflich gelöscht, auch für alle, mit denen sie geteilt sind." : "Boards werden beim Sperren unwiderruflich gelöscht (derzeit keine vorhanden)."), "Sperren und Boards löschen");
+  const msg = h("textarea", { rows: "3", maxlength: "1000", placeholder: "Zum Beispiel: Bitte melde dich bei mir." });
+  const ok = await dialog("Nutzer sperren?", [
+    h("p", {}, (u.email || u.name) + " kann sich danach nicht mehr anmelden. Beim nächsten Öffnen der Seite oder App sieht " + (u.guest ? "der Gast" : "der Nutzer") + " die Meldung „Dein Konto ist gesperrt“ und wird abgemeldet."),
+    h("p", { class: "hint" }, "Boards und Lizenz bleiben erhalten. Beim Entsperren ist alles wieder da."),
+    h("label", {}, "Nachricht an den Nutzer (optional)"), msg], "Sperren", true);
   if (!ok) return;
-  patchUser(u, { disabled: true });
+  patchUser(u, { disabled: true, disabled_msg: msg.value });
 }
 async function userLicense(u, body) {
   try { await api("POST", "/api/admin/users/" + encodeURIComponent(u.id) + "/license", body); flash(body.active ? "Lizenz aktiviert." : "Lizenz deaktiviert."); loadUsers(); if (state.licenses.length) loadLicenses(); } catch (e) { fail(e); }

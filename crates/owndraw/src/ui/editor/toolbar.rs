@@ -386,7 +386,7 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         Tool::Ruler => ic::RULER,
         Tool::Laser => ic::LASER,
         Tool::Space => ic::SPACE,
-        Tool::Fill | Tool::Picker | Tool::Dim | Tool::Stamp => return None, // gezeichnetes Icon (glyphs.rs)
+        Tool::Fill | Tool::Picker | Tool::Dim | Tool::Stamp | Tool::Calc => return None, // gezeichnetes Icon (glyphs.rs)
         Tool::Connector => ic::CONNECTOR,
         Tool::Table => ic::TABLE,
         Tool::Pin => ic::PIN,
@@ -416,7 +416,7 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
         ui.painter().line_segment([rect.center() + Vec2::new(-h, -h), rect.center() + Vec2::new(h, h)], Stroke::new(2.0, c(tint)));
     }
     // Farbpunkt als Hinweis auf die aktuelle Farbe – nur am aktiven Werkzeug (sonst unruhig)
-    if active && matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin | Tool::Math) {
+    if active && matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin | Tool::Math | Tool::Calc) {
         let pos = rect.right_bottom() - Vec2::new(size * 0.22, size * 0.22);
         ui.painter().circle_filled(pos, 4.5, c(ed.board.color));
         ui.painter().circle_stroke(pos, 4.5, Stroke::new(1.5, c(p.pill)));

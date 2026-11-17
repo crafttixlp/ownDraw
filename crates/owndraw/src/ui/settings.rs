@@ -316,6 +316,9 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
                 *act = SettingsAction::EditTools;
             }
         });
+        row(ui, env, "Rechnen", Some("Aus = keine Ergebnisse, z. B. für Prüfungen."), |ui| {
+            ui.checkbox(&mut settings.calc.on, "Rechnen erlauben");
+        });
         row(ui, env, "Tastenkürzel", Some("Jede Aktion und jedes Werkzeug frei belegen."), |ui| {
             if style::accent_btn(ui, "Tastenkürzel …", btn).clicked() {
                 *page = Page::Keys;

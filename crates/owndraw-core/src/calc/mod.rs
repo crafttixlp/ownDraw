@@ -211,11 +211,15 @@ pub fn page_names(lines: &[&str], o: &Opts, pre: &Prelude) -> (Vec<String>, Vec<
             Some(Out::Error(_)) => {}
             _ => {
                 // Zuweisung bzw. ausgerechnete Größe
+                let def = parts.len() == 2
+                    && parse::expr(parts[1]).is_ok_and(|e| {
+                        let mut w = Vec::new();
+                        e.vars(&mut w);
+                        w.iter().all(|x| known.contains(x) || eval::constant(x).is_some())
+                    });
                 if let Some(n) = first {
-                    if parts.len() == 2 && parse::expr(parts[1]).is_ok_and(|e| { let mut w = Vec::new(); e.vars(&mut w); w.iter().all(|x| known.contains(x) || eval::constant(x).is_some()) }) || matches!(r, Some(Out::Result { err: None, .. })) {
-                        if !known.contains(&n) {
-                            known.push(n);
-                        }
+                    if (def || matches!(r, Some(Out::Result { err: None, .. }))) && !known.contains(&n) {
+                        known.push(n);
                     }
                 }
             }

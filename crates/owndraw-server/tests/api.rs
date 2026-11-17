@@ -512,11 +512,13 @@ async fn admin_rechte() {
     app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"admin": false})).await;
     assert_eq!(app.get("/api/admin/users", Some(&user)).await.status, StatusCode::FORBIDDEN);
 
-    // Sperren beendet Sitzungen und verhindert die Anmeldung
+    // Sperren: beim nächsten Aufruf Meldung, danach abgemeldet; Anmeldung gesperrt
     let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": true})).await;
     assert_eq!(r.json()["disabled"], true);
+    assert_eq!(app.get("/api/me", Some(&user)).await.code(), "account_disabled");
     assert_eq!(app.get("/api/me", Some(&user)).await.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(app.login("u@example.org", "geheim1234").await.status, StatusCode::FORBIDDEN);
+    let r = app.login("u@example.org", "geheim1234").await;
+    assert_eq!((r.status, r.code()), (StatusCode::FORBIDDEN, "account_disabled".to_string()));
     app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": false})).await;
     assert_eq!(app.login("u@example.org", "geheim1234").await.status, StatusCode::OK);
 
@@ -1074,7 +1076,7 @@ async fn admin_schaltet_lizenz_fuer_nutzer() {
 }
 
 #[tokio::test]
-async fn sperren_loescht_boards_sofort() {
+async fn sperren_behaelt_boards_und_zeigt_nachricht() {
     let app = App::new();
     let admin = app.admin().await;
     let user = app.register("u@example.org").await;
@@ -1085,18 +1087,36 @@ async fn sperren_loescht_boards_sofort() {
     let r = app.post(&format!("/api/boards/{bid}/members"), Some(&user), json!({"email": "o@example.org", "role": "edit"})).await;
     assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
     let file = app.state.cfg.boards_dir().join(format!("{bid}.owndraw"));
-    assert!(file.is_file());
 
-    let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": true})).await;
+    let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": true, "disabled_msg": "  Bitte melde dich bei mir.  "})).await;
     assert_eq!(r.status, StatusCode::OK);
-    assert_eq!((r.json()["disabled"].clone(), r.json()["boards"].clone()), (json!(true), json!(0)));
-    assert!(!file.exists());
-    assert_eq!(app.get(&format!("/api/boards/{bid}"), Some(&other)).await.status, StatusCode::NOT_FOUND);
-    assert!(app.get("/api/boards", Some(&other)).await.json().as_array().unwrap().is_empty());
+    let j = r.json();
+    assert_eq!((j["disabled"].clone(), j["boards"].clone(), j["disabled_msg"].clone()), (json!(true), json!(1), json!("Bitte melde dich bei mir.")));
+    assert!(file.is_file());
+    assert_eq!(app.get(&format!("/api/boards/{bid}"), Some(&other)).await.status, StatusCode::OK);
 
-    // Entsperren bringt keine Boards zurück, die Lizenz bleibt
+    // Erster Aufruf: Meldung mit Nachricht, Sitzung danach beendet
+    let r = app.get("/api/boards", Some(&user)).await;
+    assert_eq!((r.status, r.code()), (StatusCode::FORBIDDEN, "account_disabled".to_string()));
+    assert_eq!(r.json()["admin_message"], "Bitte melde dich bei mir.");
+    assert_eq!(app.get("/api/me", Some(&user)).await.code(), "unauthorized");
+    // Anmelden zeigt die Meldung ebenfalls
+    let r = app.login("u@example.org", "geheim1234").await;
+    assert_eq!((r.code(), r.json()["admin_message"].clone()), ("account_disabled".to_string(), json!("Bitte melde dich bei mir.")));
+    // Falsches Passwort verrät die Sperre nicht
+    assert_eq!(app.login("u@example.org", "falsch12345").await.code(), "unauthorized");
+
+    // Entsperren: Boards und Lizenz sind noch da, Nachricht weg
     let r = app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": false})).await;
-    assert_eq!((r.json()["boards"].clone(), r.json()["license"]["active"].clone()), (json!(0), json!(true)));
+    let j = r.json();
+    assert_eq!((j["boards"].clone(), j["license"]["active"].clone(), j["disabled_msg"].clone()), (json!(1), json!(true), json!("")));
+    let c = cookie_of(&app.login("u@example.org", "geheim1234").await);
+    assert_eq!(app.get(&format!("/api/boards/{bid}"), Some(&c)).await.status, StatusCode::OK);
+
+    // Ohne Nachricht: leeres Feld
+    app.patch(&format!("/api/admin/users/{uid}"), Some(&admin), json!({"disabled": true})).await;
+    let r = app.get("/api/me", Some(&c)).await;
+    assert_eq!((r.code(), r.json()["admin_message"].clone()), ("account_disabled".to_string(), json!("")));
 }
 
 // ---------- Fehlerberichte ----------

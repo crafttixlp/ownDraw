@@ -27,6 +27,10 @@ impl ApiError {
     pub fn forbidden(m: impl Into<String>) -> Self {
         Self::new(StatusCode::FORBIDDEN, "forbidden", m)
     }
+    /// Konto gesperrt (403); `admin_message` = Nachricht des Admins (kann leer sein).
+    pub fn account_disabled(admin_message: &str) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "account_disabled", "Dein Konto ist gesperrt.").with_extra(serde_json::json!({ "admin_message": admin_message }))
+    }
     pub fn license_required(m: impl Into<String>) -> Self {
         Self::new(StatusCode::FORBIDDEN, "license_required", m)
     }

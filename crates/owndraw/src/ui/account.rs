@@ -329,6 +329,11 @@ fn field(ui: &mut egui::Ui, label: &str, text: &mut String, password: bool, focu
 
 /// Dialoge (Anmelden, Registrieren, Lizenz, Umbenennen, Löschen).
 pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
+    // Sperrmeldung (siehe `blocked_dialog`) ersetzt offene Konto-Dialoge, z. B. „Anmelden“
+    if api::with(|n| n.blocked.is_some()) {
+        st.dlg = None;
+        return;
+    }
     // Einladung aus dem Link hat Vorrang; während Anmelden/Registrieren bleibt sie nur vorgemerkt
     if st.dlg.is_none() && api::with(|n| n.invite.is_some()) {
         invite_dialog(ctx, sh, st);
@@ -543,6 +548,35 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
     });
     if !close {
         st.dlg = Some(d);
+    }
+}
+
+/// Meldung „Konto gesperrt“ (mit Nachricht des Admins); über allem, auf jeder Seite. Der Nutzer ist danach abgemeldet.
+pub fn blocked_dialog(ctx: &egui::Context, sh: &Shared) {
+    let Some(msg) = api::with(|n| n.blocked.clone()) else { return };
+    let h = sh.env.btn;
+    let p = style::pal();
+    let width = (ctx.content_rect().width() - 24.0).clamp(260.0, 420.0);
+    let mut close = ctx.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape));
+    egui::Modal::new(egui::Id::unique("blocked-dlg")).frame(style::card().inner_margin(egui::Margin::same(style::sp::XL as i8))).show(ctx, |ui| {
+        ui.set_width(width - 2.0 * style::sp::XL - 2.0);
+        ui.spacing_mut().item_spacing.y = style::sp::S;
+        ui.label(egui::RichText::new("Dein Konto ist gesperrt").size(style::fs::SECTION + 5.0).strong());
+        ui.label("Ein Administrator hat dein Konto gesperrt. Du wurdest abgemeldet und kannst dich vorerst nicht mehr anmelden.");
+        if !msg.is_empty() {
+            ui.add_space(4.0);
+            style::caption(ui, "Nachricht vom Administrator");
+            style::info_card(ui, |ui| {
+                ui.label(egui::RichText::new(&msg).color(c(p.text)));
+            });
+        }
+        ui.add_space(10.0);
+        ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            close |= style::primary_btn(ui, "OK", h).clicked();
+        });
+    });
+    if close {
+        api::with(|n| n.blocked = None);
     }
 }
 

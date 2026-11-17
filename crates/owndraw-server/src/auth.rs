@@ -209,10 +209,14 @@ impl FromRequestParts<AppState> for Auth {
                 let uid: Option<String> = c
                     .query_row("SELECT user_id FROM sessions WHERE token_hash=?1 AND expires>?2", params![th2, now()], |r| r.get(0))
                     .optional()?;
-                match uid {
-                    Some(uid) => Ok(db::user_by_id(c, &uid)?.filter(|u| !u.disabled)),
-                    None => Ok(None),
+                let Some(u) = uid.map(|uid| db::user_by_id(c, &uid)).transpose()?.flatten() else { return Ok(None) };
+                if u.disabled {
+                    // Gesperrt: beim ersten Aufruf danach Meldung (mit Nachricht des Admins) und abmelden.
+                    let msg = db::disabled_msg(c, &u.id)?;
+                    c.execute("DELETE FROM sessions WHERE user_id=?1", [&u.id])?;
+                    return Err(ApiError::account_disabled(&msg));
                 }
+                Ok(Some(u))
             })
             .await?
             .ok_or_else(ApiError::unauthorized)?;
@@ -229,7 +233,8 @@ impl FromRequestParts<AppState> for MaybeAuth {
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
         match Auth::from_request_parts(parts, state).await {
             Ok(a) => Ok(MaybeAuth(Some(a))),
-            Err(e) if e.code == "unauthorized" => Ok(MaybeAuth(None)),
+            // Gesperrt: Sitzung ist damit beendet, weiter wie ohne Anmeldung (Login prüft die Sperre selbst).
+            Err(e) if e.code == "unauthorized" || e.code == "account_disabled" => Ok(MaybeAuth(None)),
             Err(e) => Err(e),
         }
     }
@@ -337,7 +342,9 @@ pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: Maybe
         return Err(bad());
     }
     if user.disabled {
-        return Err(ApiError::forbidden("Dieses Konto ist gesperrt."));
+        let id = user.id.clone();
+        let msg = s.db.call(move |c| Ok(db::disabled_msg(c, &id)?)).await?;
+        return Err(ApiError::account_disabled(&msg));
     }
     let u2 = user.clone();
     let guest = cur.0.map(|a| a.user).filter(|u| u.guest).map(|u| u.id);

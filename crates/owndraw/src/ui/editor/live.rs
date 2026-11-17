@@ -199,6 +199,11 @@ impl Live {
                 self.conn = Conn::Gone;
                 return;
             }
+            (4000, "account_disabled") => {
+                self.conn = Conn::Gone;
+                api::check_blocked();
+                return;
+            }
             (4000, "role_changed") => {
                 self.conn = Conn::Retry(now);
                 return;

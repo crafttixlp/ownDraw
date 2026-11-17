@@ -214,6 +214,8 @@ pub struct Net {
     pub moved: Vec<FileRef>,
     /// Vom Server geladene Boards, die die App im Browser speichern soll.
     pub to_local: Vec<ToLocal>,
+    /// Konto wurde gesperrt: Nachricht des Admins (leer = keine). Die App zeigt die Meldung, die Sitzung ist beendet.
+    pub blocked: Option<String>,
     puts: HashMap<String, Put>,
 }
 
@@ -251,6 +253,7 @@ thread_local! {
         moving: false,
         moved: Vec::new(),
         to_local: Vec::new(),
+        blocked: None,
         puts: HashMap::new(),
     });
 }
@@ -354,7 +357,39 @@ impl Resp {
 
 /// Anfrage im Hintergrund; `done` läuft im UI-Thread, danach wird neu gezeichnet.
 pub fn request(method: &'static str, path: String, body: Option<Body>, headers: Vec<(&'static str, String)>, done: impl FnOnce(Result<Resp, String>) + 'static) {
-    tr::request(method, path, body, headers, Box::new(done));
+    tr::request(
+        method,
+        path,
+        body,
+        headers,
+        Box::new(move |r: Result<Resp, String>| {
+            if let Ok(x) = &r {
+                if x.code() == "account_disabled" {
+                    account_blocked(x.json().get("admin_message").and_then(Value::as_str).unwrap_or(""));
+                }
+            }
+            done(r)
+        }),
+    );
+}
+
+/// Server meldet „Konto gesperrt“: Meldung vormerken und lokal abmelden (der Server hat die Sitzung schon beendet).
+fn account_blocked(admin_message: &str) {
+    #[cfg(not(target_arch = "wasm32"))]
+    tr::forget_session();
+    with(|n| {
+        n.blocked = Some(admin_message.trim().to_string());
+        n.server = Server::Ready;
+        n.me = None;
+        n.boards.clear();
+        n.boards_loaded = false;
+        n.live.clear();
+    });
+}
+
+/// Live-Verbindung wegen Sperre getrennt: Sperrmeldung samt Nachricht beim Server abholen.
+pub fn check_blocked() {
+    refresh_me();
 }
 
 fn notice(s: impl Into<String>) {
@@ -366,6 +401,8 @@ fn form_result(r: &Result<Resp, String>) -> bool {
     let ok = matches!(r, Ok(x) if x.ok());
     let err = match r {
         Ok(x) if x.ok() => None,
+        // eigene Meldung (siehe `account_blocked`), nicht zusätzlich im Formular
+        Ok(x) if x.code() == "account_disabled" => None,
         Ok(x) => Some(x.message()),
         Err(e) => Some(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
     };

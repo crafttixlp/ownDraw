@@ -190,6 +190,27 @@
           "covers": ["tool:Formel", "action:tool.math"]
         },
         {
+          "id": "tool-rechnen",
+          "title": "Rechnen",
+          "text": "Schreibe Rechenzeilen in einfacher Schreibweise auf das Blatt; OwnDraw rechnet sie aus und zeigt das Ergebnis farbig. Tippe aufs Blatt und schreibe eine Zeile: Enter legt sie an und öffnet das Feld für die nächste Zeile darunter. Leere Zeile + Enter oder Esc beendet. Einschalten unter Einstellungen → Werkzeuge (Extras).",
+          "how": [
+            "Zuweisung: a: 1 N oder a = 1 N. Formel: M = a·b. Ergebniszeile: M = (das Ergebnis erscheint farbig). Mit Wunscheinheit: M = kN·m.",
+            "Einheiten mit Vorsätzen (k, m, µ …) werden umgerechnet; passen die Einheiten nicht zusammen, erscheint eine Warnung.",
+            "Variablen gelten auf der Seite von oben nach unten: Eine Zeile kennt alles, was darüber steht.",
+          "Zahl direkt vor einem Einheitenzeichen = Einheit (2 m, 5 kN·m); als Variable mit Malpunkt schreiben (2·m). Einbuchstabige Wunscheinheiten eindeutig mit Fragezeichen: v = ? m/s. Temperaturen: 20 °C wird umgerechnet, Differenzen in K angeben.",
+          "Rechenweg (Option): die Zeile zeigt die Formel und die eingesetzten Werte, z. B. M = a·b = 1 N·2 m = 2 N·m; beim Lösen steht darunter, aus welcher Gleichung gelöst wurde. Ergebnis auch ohne Variable: 3·4 + 2 =",
+            "Unbekannte lösen: Ist p = F/A gegeben und p und F sind bekannt, liefert die Zeile A = die Fläche. Auch quadratische Gleichungen und Gleichungssysteme gehen: x + y = 10, x − y = 2, danach x = und y =.",
+            "Funktionen: sqrt, sin, cos, tan (Grad oder Bogenmaß, siehe Optionen), ln, log und Prozent. Zahlen wie 1,5e3 oder 1,5·10^3. Konstanten: π, e, g.",
+            "Schnellknöpfe im Feld fügen · ² √ π ° Ω µ Δ ein.",
+            "Optionen (zweiter Tipp auf den Knopf): Rechenweg anzeigen, Winkel in Grad oder Bogenmaß, gültige Stellen (2–10, Standard 4), Dezimalkomma oder -punkt.",
+            "Bearbeiten: mit dem Werkzeug auf eine Zeile tippen. Die Zeilen sind normale Formeln und lassen sich verschieben, skalieren und einfärben.",
+            "Einstellungen → Werkzeugleisten → „Rechnen erlauben“: Aus = keine Ergebnisse, z. B. für Prüfungen. Zeilen eingeben bleibt möglich."
+          ],
+          "keys": ["A"],
+          "action": ["tool.calc"],
+          "covers": ["tool:Rechnen", "action:tool.calc", "setting:Rechnen", "extra:rechnen-zuweisung", "extra:rechnen-ergebnis", "extra:rechnen-einheiten", "extra:rechnen-unbekannte", "extra:rechnen-funktionen", "extra:rechnen-optionen"]
+        },
+        {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",
@@ -690,6 +711,12 @@
           "id": "tipp-kopie",
           "title": "Mehrfach einfügen",
           "text": "Fügst du mehrmals hintereinander ein, versetzt OwnDraw jede Kopie leicht. So liegen sie nicht übereinander.",
+          "covers": []
+        },
+        {
+          "id": "tipp-rechnen-pruefung",
+          "title": "Rechnen für Prüfungen abschalten",
+          "text": "Soll OwnDraw nicht mitrechnen, z. B. in einer Klassenarbeit, schalte unter Einstellungen → Werkzeugleisten „Rechnen erlauben“ aus. Dann erscheinen keine Ergebnisse; Zeilen eingeben bleibt möglich.",
           "covers": []
         },
         {

@@ -22,6 +22,7 @@ pub enum Glyph {
     Fill,
     Picker,
     Stamp,
+    Calc,
 }
 
 /// Symbol einer Form (`Board::shape_kind` ab 11).
@@ -55,6 +56,7 @@ pub fn of_tool(ed: &super::Editor, t: Tool) -> Option<Glyph> {
         Tool::Fill => Some(Glyph::Fill),
         Tool::Picker => Some(Glyph::Picker),
         Tool::Stamp => Some(Glyph::Stamp),
+        Tool::Calc => Some(Glyph::Calc),
         Tool::Dim => Some(Glyph::Dim),
         Tool::Shape => of_shape(ed.board.shape_kind),
         _ => None,
@@ -138,6 +140,14 @@ pub fn paint(p: &Painter, c: Pos2, size: f32, g: Glyph, col: Color32) {
         Glyph::Picker => {
             seg((-0.46, 0.46), (0.12, -0.12));
             p.circle_stroke(pt(0.28, -0.28), size * 0.2, st);
+        }
+        Glyph::Calc => {
+            // Taschenrechner: Gehäuse, Anzeige, vier Tasten
+            poly(&[(-0.34, -0.48), (0.34, -0.48), (0.34, 0.48), (-0.34, 0.48)], true);
+            seg((-0.18, -0.28), (0.18, -0.28));
+            for (u, v) in [(-0.14, 0.0), (0.14, 0.0), (-0.14, 0.26), (0.14, 0.26)] {
+                p.circle_filled(pt(u, v), size * 0.06, col);
+            }
         }
         Glyph::Stamp => {
             poly(&[(-0.15, 0.14), (-0.15, -0.08), (-0.32, -0.08), (-0.32, -0.46), (0.32, -0.46), (0.32, -0.08), (0.15, -0.08), (0.15, 0.14)], true);

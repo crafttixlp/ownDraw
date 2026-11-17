@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use tiny_skia::{PathBuilder, Pixmap};
 
+mod calcview;
 mod frames;
 mod math;
 mod tools;
@@ -157,6 +158,8 @@ struct CacheSig {
     bg: i32,
     layers: Vec<(i32, bool, u32)>,
     pages: Vec<(u32, u32, PageBg)>,
+    /// Prüfsumme der Rechen-Ergebnisse (Werkzeug „Rechnen“)
+    calc: u64,
 }
 
 /// Zerlegt ein Rechteck der Ansicht in die (hoechstens vier) Stuecke im Ring-Speicher der Groesse w × h mit
@@ -349,6 +352,10 @@ pub struct Board {
     pub finger_draw: bool,
     /// Einrast-Einstellungen (Formerkennung, Griffe).
     pub snap_cfg: recognizer::SnapCfg,
+    /// Rechenkern (Werkzeug „Rechnen“): Ergebnisse von Formelzeilen.
+    pub calc: crate::calc::Opts,
+    /// Ergebnisse des Rechenkerns (Prüfsumme, Ansichten je Formel-id).
+    calc_cache: RefCell<Option<(u64, calcview::CalcViews)>>,
     pub modified: bool,
     /// Auswahl-Modus: 0 = Lasso, 1 = Rechteck.
     pub sel_mode: i32,
@@ -480,6 +487,8 @@ impl Board {
             dark: false,
             finger_draw: false,
             snap_cfg: recognizer::SnapCfg::default(),
+            calc: crate::calc::Opts::default(),
+            calc_cache: RefCell::new(None),
             modified: false,
             sel_mode: 0,
             erase_mode: 0,
@@ -787,13 +796,20 @@ impl Board {
             return ps.bounds();
         }
         let mut b: Option<RectF> = None;
+        let views = self.calc_views();
         for it in &self.items {
             if !self.layers[self.layer_idx(it.layer)].visible {
                 continue;
             }
+            let mut ib = it.bounds();
+            if let (Kind::Math(m), Some(v)) = (&it.kind, views.get(&it.id)) {
+                if m.ang == 0.0 {
+                    ib.union(&self.calc_extent(m, v));
+                }
+            }
             match b.as_mut() {
-                None => b = Some(it.bounds()),
-                Some(r) => r.union(&it.bounds()),
+                None => b = Some(ib),
+                Some(r) => r.union(&ib),
             }
         }
         b
@@ -865,6 +881,7 @@ impl Board {
         let mut bk: Vec<Vec<&Item>> = vec![Vec::new(); n];
         let (mut last_id, mut last_k) = (i32::MIN, 0usize);
         let only = self.export_only.borrow();
+        let views = self.calc_views();
         for it in &self.items {
             if (skip_lift && it.lift) || self.hidden == Some(it.id) || (!pins && matches!(it.kind, Kind::Pin(_))) {
                 continue;
@@ -895,7 +912,10 @@ impl Board {
                 c.save_layer_alpha((l.opacity.max(0.0) * 255.0).round() as u8);
             }
             for it in a {
-                it.draw(c, self.dark);
+                match (&it.kind, views.get(&it.id)) {
+                    (Kind::Math(m), Some(v)) => self.draw_calc(it, m, v, c),
+                    _ => it.draw(c, self.dark),
+                }
             }
             if layered {
                 c.restore();
@@ -2947,6 +2967,7 @@ impl Board {
             bg: self.bg,
             layers: self.layers.iter().map(|l| (l.id, l.visible, l.opacity.to_bits())).collect(),
             pages: self.pages().map(|p| p.pages.iter().map(|g| (g.w.to_bits(), g.h.to_bits(), g.bg)).collect()).unwrap_or_default(),
+            calc: self.calc_sig(),
         }
     }
 

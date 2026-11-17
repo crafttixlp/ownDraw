@@ -11,6 +11,7 @@ pub mod keys;
 mod glyphs;
 mod layers;
 mod mathed;
+mod calced;
 #[cfg(not(target_os = "android"))]
 pub mod live;
 mod menu;
@@ -83,6 +84,8 @@ pub enum Tool {
     Table,
     Pin,
     Math,
+    /// Rechnen: Rechenzeilen tippen, der Kern rechnet aus.
+    Calc,
     /// Stift-Modus (Schalter): an = nur Stift/Maus zeichnen, Finger verschieben und zoomen.
     PenMode,
 }
@@ -160,6 +163,8 @@ pub struct UiState {
     pub stamp_size: usize,
     /// Werkzeug „Formel“ aktiv (Board-Werkzeug TEXT: Tippen fragt nach einer Formel statt nach Text).
     pub math_tool: bool,
+    /// Werkzeug „Rechnen“ aktiv (ebenfalls Board-Werkzeug TEXT).
+    pub calc_tool: bool,
     /// Export-Fenster.
     pub export: export::ExportUi,
 }
@@ -204,6 +209,8 @@ pub struct Editor {
     pub(super) text: Option<text::TextEdState>,
     /// Offener Formel-Editor.
     pub(super) math: Option<mathed::MathEd>,
+    /// Offenes Eingabefeld des Werkzeugs „Rechnen“.
+    pub(super) calc: Option<calced::CalcEd>,
     pub st: UiState,
     pub(super) page_thumbs: pages::PageThumbs,
     /// Lineal/Geodreieck, Laserpointer, Platz schaffen.
@@ -250,6 +257,7 @@ impl Editor {
         board.arrow_style = geti("arrow", 0).clamp(0, owndraw_core::item::ARROW_STYLES.len() as i64 - 1) as i32;
         // Auf Touch-Geräten zeichnet der Finger standardmäßig (Schalter im Werkzeug-Popover).
         board.snap_cfg = sh.settings.snap.to_core();
+        board.calc = sh.settings.calc.to_core();
         board.finger_draw = x.get("finger").and_then(|v| v.as_bool()).unwrap_or_else(|| sh.platform.is_touch());
         Editor {
             doc,
@@ -267,6 +275,7 @@ impl Editor {
             touches: Vec::new(),
             text: None,
             math: None,
+            calc: None,
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
             ext: extras::Extras::default(),
@@ -528,6 +537,7 @@ impl Editor {
             board::SHAPE => Tool::Shape,
             board::NOTE if self.st.note_in_bar => Tool::Note,
             board::TEXT if self.st.math_tool => Tool::Math,
+            board::TEXT if self.st.calc_tool => Tool::Calc,
             _ => Tool::Text,
         }
     }
@@ -612,9 +622,10 @@ impl Editor {
                 self.select_xtool(t);
                 return;
             }
-            Tool::Math => board::TEXT,
+            Tool::Math | Tool::Calc => board::TEXT,
         };
         self.st.math_tool = t == Tool::Math;
+        self.st.calc_tool = t == Tool::Calc;
         if self.board.tool != bt {
             self.board.set_tool(bt);
         }
@@ -708,7 +719,7 @@ impl Editor {
             pages::initial_view(&mut self.board);
         }
 
-        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some();
+        let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some() || self.calc.is_some();
         // Klick auf die Zeichenfläche schließt offene Popups und zeichnet nicht.
         let popup_open = self.st.opts_open || self.st.menu_open || self.st.more_open || self.st.export.open;
         let mut swallow = false;
@@ -840,6 +851,7 @@ impl Editor {
         self.x_frame(&ctx, sh, &lay, layer);
         self.text_editor(&ctx, &sh.settings);
         self.math_editor(&ctx, sh);
+        self.calc_editor(&ctx, sh);
         self.close_popups_on_esc(&ctx, &sh.settings);
         self.drain_events(sh);
 
@@ -871,6 +883,11 @@ impl Editor {
             snap = snap.inverted();
         }
         self.board.set_snap_cfg(snap);
+        let calc = sh.settings.calc.to_core();
+        if self.board.calc != calc {
+            self.board.calc = calc;
+            self.board.invalidate();
+        }
 
         // Zeitgesteuertes Neuzeichnen (Halte-Timer, Ende von Zoom-Gesten, Autosave)
         let mut wait = 30.0f64;
@@ -928,6 +945,7 @@ impl Editor {
                     Some(id) => self.edit_math(id),
                     None => self.start_math(wx, wy),
                 },
+                board::Event::AskText { wx, wy, .. } if self.st.calc_tool => self.start_calc(sh, wx, wy),
                 board::Event::AskText { wx, wy, note } => self.start_text(wx, wy, note),
                 board::Event::EditNote(id) if self.board.items.iter().any(|it| it.id == id && it.as_math().is_some()) => self.edit_math(id),
                 board::Event::EditNote(id) => self.edit_note(id),
@@ -1204,6 +1222,7 @@ impl Editor {
                 Tool::Text | Tool::Note => {
                     self.ext.xtool = None;
                     self.st.math_tool = false;
+                    self.st.calc_tool = false;
                     self.board.set_tool(if t == Tool::Text { board::TEXT } else { board::NOTE });
                 }
                 _ => self.select_tool(sh, t),

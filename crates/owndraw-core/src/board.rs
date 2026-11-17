@@ -349,6 +349,8 @@ pub struct Board {
     pub finger_draw: bool,
     /// Einrast-Einstellungen (Formerkennung, Griffe).
     pub snap_cfg: recognizer::SnapCfg,
+    /// Rechenkern (Werkzeug „Rechnen“): Ergebnisse von Formelzeilen.
+    pub calc: crate::calc::Opts,
     pub modified: bool,
     /// Auswahl-Modus: 0 = Lasso, 1 = Rechteck.
     pub sel_mode: i32,
@@ -480,6 +482,7 @@ impl Board {
             dark: false,
             finger_draw: false,
             snap_cfg: recognizer::SnapCfg::default(),
+            calc: crate::calc::Opts::default(),
             modified: false,
             sel_mode: 0,
             erase_mode: 0,

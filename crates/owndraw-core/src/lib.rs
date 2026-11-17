@@ -2,6 +2,7 @@
 #![allow(clippy::type_complexity, clippy::neg_cmp_op_on_partial_ord, clippy::too_many_arguments, clippy::needless_range_loop, clippy::manual_div_ceil, clippy::unnecessary_sort_by)]
 
 pub mod board;
+pub mod calc;
 pub mod canvas;
 pub mod collab;
 pub mod doc;

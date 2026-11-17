@@ -17,6 +17,9 @@ use parse::{Tok, E};
 use solve::Eqn;
 use std::collections::{HashMap, HashSet};
 
+/// Farbe von Fehlern.
+pub const ERR: u32 = crate::math::ERR_COLOR;
+
 /// Einstellungen des Rechenkerns.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Opts {

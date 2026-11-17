@@ -51,6 +51,12 @@ impl Editor {
         }
     }
 
+    /// Laufende Texteingabe (Tests).
+    #[cfg(test)]
+    pub fn text_input(&self) -> Option<String> {
+        self.text.as_ref().map(|t| t.text.clone())
+    }
+
     pub fn edit_note(&mut self, id: u64) {
         let Some(it) = self.board.items.iter().find(|it| it.id == id) else { return };
         let Some(n) = it.as_note() else { return };

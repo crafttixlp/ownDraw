@@ -696,3 +696,78 @@ impl App {
         self.enter_editor(ctx, ed);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(t: f64, events: Vec<egui::Event>) -> egui::RawInput {
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))),
+            time: Some(t),
+            focused: true,
+            events,
+            ..Default::default()
+        }
+    }
+
+    /// Text-Werkzeug: auf leeres Blatt tippen, dann pro Zeichen die Ereignisse aus `chars` schicken.
+    fn tippe(chars: impl Fn(&str) -> Vec<Vec<egui::Event>>) -> Option<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(Box::new(crate::platform::stub::StubPlatform::with_base(dir.path().to_path_buf())), Settings::default(), None);
+        app.demo = Some("editor".into());
+        let ctx = egui::Context::default();
+        let mut t = 0.0;
+        let mut frame = |app: &mut App, ev: Vec<egui::Event>| {
+            t += 0.05;
+            let mut out = ctx.run_ui(input(t, ev), |ui| app.frame_ui(ui));
+            out.textures_delta.clear();
+        };
+        for _ in 0..5 {
+            frame(&mut app, vec![]);
+        }
+        let ed = app.editor.as_mut().expect("Editor offen");
+        ed.board.items.clear();
+        ed.board.set_tool(owndraw_core::board::TEXT);
+        let p = egui::pos2(640.0, 420.0);
+        frame(&mut app, vec![egui::Event::PointerMoved(p)]);
+        for pressed in [true, false] {
+            frame(&mut app, vec![egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }]);
+        }
+        frame(&mut app, vec![]);
+        for ch in ["L", "o", "l", "a"] {
+            for ev in chars(ch) {
+                frame(&mut app, ev);
+            }
+        }
+        app.editor.as_ref().and_then(|e| e.text_input())
+    }
+
+    /// Regression: Getipptes im Text-Werkzeug erscheint vorwärts („Lola“, nicht „aloL“), mit Tastatur und mit IME.
+    #[test]
+    fn text_werkzeug_tippt_vorwaerts() {
+        let tasten = tippe(|ch| {
+            let key = egui::Key::from_name(&ch.to_uppercase()).unwrap();
+            let k = |pressed| egui::Event::Key { key, physical_key: Some(key), pressed, repeat: false, modifiers: Default::default() };
+            vec![vec![k(true), egui::Event::Text(ch.into())], vec![k(false)]]
+        });
+        assert_eq!(tasten.as_deref(), Some("Lola"));
+        let ime = tippe(|ch| {
+            use egui::{Event::Ime, ImeEvent::*};
+            vec![vec![Ime(Enabled), Ime(Preedit { text: ch.into(), active_range_chars: None })], vec![Ime(Commit(ch.into()))], vec![]]
+        });
+        assert_eq!(ime.as_deref(), Some("Lola"));
+    }
+
+    /// Regression (Browser): Das versteckte Eingabefeld für Bildschirmtastatur/IME darf nicht 1px breit sein,
+    /// sonst bleibt in Chrome der Cursor vorne stehen und Text erscheint rückwärts. Gilt für beide Darstellungswege
+    /// (eframe/WebGL über das CSS in index.html, Software-Runner über `soft/text_agent.rs`).
+    #[test]
+    fn web_text_agent_nicht_1px_breit() {
+        let html = include_str!("../../owndraw-web/index.html");
+        assert!(html.contains("#owndraw-canvas + input { width: 1em !important; padding: 0 !important; }"));
+        let agent = include_str!("platform/web/soft/text_agent.rs");
+        assert!(!agent.contains(r#"set_property("width", "1px")"#));
+        assert!(agent.contains(r#"set_property("width", "1em")"#));
+    }
+}

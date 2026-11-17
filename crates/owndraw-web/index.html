@@ -40,6 +40,9 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 :focus-visible { outline: var(--focus); outline-offset: 2px; }
 /* Canvas über die ganze Seite; eframe übernimmt Größe und Pixeldichte */
 #owndraw-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+/* Verstecktes Eingabefeld von eframe für Bildschirmtastatur/IME: 1px Breite ließ in Chrome den Cursor vorne stehen,
+   getippter Text erschien rückwärts („aloL“ statt „Lola“). Mit etwas Breite rückt der Cursor normal weiter. */
+#owndraw-canvas + input { width: 1em !important; padding: 0 !important; }
 /* Ladebildschirm und Fehlerseite */
 #lade { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s3); text-align: center; padding: var(--s4); overflow: auto; background: var(--bg); }
 #lade img { width: 56px; height: 56px; border-radius: var(--r); }

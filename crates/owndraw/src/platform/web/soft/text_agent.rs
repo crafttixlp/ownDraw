@@ -43,7 +43,10 @@ impl TextAgent {
         style.set_property("pointer-events", "none")?;
         style.set_property("border", "none")?;
         style.set_property("outline", "none")?;
-        style.set_property("width", "1px")?;
+        // Nicht 1px breit: Chrome setzt den Cursor in einem so schmalen Feld nach dem Einfügen nicht weiter,
+        // jedes Zeichen landet dann vorne und der Text erscheint rückwärts („aloL“ statt „Lola“).
+        style.set_property("width", "1em")?;
+        style.set_property("padding", "0")?;
         style.set_property("height", "1px")?;
         style.set_property("caret-color", "transparent")?;
         style.set_property("position", "absolute")?;

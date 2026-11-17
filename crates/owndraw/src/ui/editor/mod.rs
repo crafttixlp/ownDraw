@@ -10,7 +10,7 @@ pub mod keys;
 mod glyphs;
 mod layers;
 mod mathed;
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_os = "android"))]
 pub mod live;
 mod menu;
 mod more;
@@ -214,7 +214,7 @@ pub struct Editor {
     /// Board seit dem letzten Abgleich mit der Live-Sitzung geändert (Browser, Server-Boards).
     pub live_dirty: bool,
     /// Live-Zusammenarbeit (nur Browser, Server-Boards `srv:<id>`).
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(target_os = "android"))]
     pub live: Option<live::Live>,
     /// Verbinder, Tabelle, Kommentar, Zuschnitt (arrange.rs).
     xs: arrange::Xs,
@@ -271,15 +271,15 @@ impl Editor {
             first_frame: true,
             fit_on_open: false,
             live_dirty: false,
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(not(target_os = "android"))]
             live: None,
             xs: arrange::Xs::default(),
         }
     }
 
-    /// Board liegt am Server (Browser: `srv:<id>`)?
+    /// Board liegt am Server (`srv:<id>`, Web-App und Desktop)?
     pub fn is_server(&self) -> bool {
-        crate::platform::WEB && matches!(self.file(), Some(FileRef::Uri(u)) if u.starts_with("srv:"))
+        !cfg!(target_os = "android") && matches!(self.file(), Some(FileRef::Uri(u)) if u.starts_with("srv:"))
     }
 
     pub fn name(&self) -> &str {
@@ -819,7 +819,7 @@ impl Editor {
 
         // Autosave
         self.sync_modified(sh.now);
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         self.live_frame(ui, &ctx, sh, &lay);
         if !self.board.busy() {
             let Self { autosave, board, doc, .. } = self;
@@ -1219,7 +1219,7 @@ impl Editor {
 
     /// Statusanzeige des Autosave für die Leiste.
     pub(super) fn save_state(&self) -> (&'static str, bool) {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(not(target_os = "android"))]
         if let Some(st) = self.srv_save_state() {
             return st;
         }
@@ -1237,11 +1237,11 @@ impl Editor {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_os = "android"))]
 impl Editor {
     /// Live-Sitzung für Server-Boards: Verbindung, Abgleich, fremde Zeiger, Leiste mit Teilnehmern.
     fn live_frame(&mut self, ui: &Ui, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
-        let Some(id) = self.file().and_then(crate::platform::web::api::srv_id).map(String::from) else { return };
+        let Some(id) = self.file().and_then(crate::net::srv_id).map(String::from) else { return };
         let mut lv = self.live.take().unwrap_or_else(|| live::Live::new(&id, self));
         lv.frame(self, ctx, sh);
         lv.paint_cursors(ui, self, sh.now);
@@ -1250,7 +1250,7 @@ impl Editor {
         }
         self.live = Some(lv);
         // Speicherfehler des Autosave per PUT (kommen asynchron) einmal anzeigen
-        let err = crate::platform::web::api::with(|n| n.save_errors.get(&id).cloned());
+        let err = crate::net::with(|n| n.save_errors.get(&id).cloned());
         match err {
             Some(e) if !self.st.error_toast_shown => {
                 self.st.error_toast_shown = true;
@@ -1263,7 +1263,7 @@ impl Editor {
 
     /// Speicheranzeige für Server-Boards.
     fn srv_save_state(&self) -> Option<(&'static str, bool)> {
-        use crate::platform::web::api;
+        use crate::net as api;
         let id = self.file().and_then(api::srv_id)?;
         if let Some(l) = self.live.as_ref().filter(|l| l.is_live()) {
             return Some(l.status());

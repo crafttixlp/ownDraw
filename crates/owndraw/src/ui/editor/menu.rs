@@ -104,7 +104,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     }
 
     style::caption(ui, "Datei");
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(target_os = "android"))]
     server_rows(ui, ed, sh, h, &mut close);
     if crate::platform::WEB && style::menu_row_ic(ui, &mut sh.icons, ic::DOWNLOAD, "Herunterladen (.owndraw)", "", false, h) {
         let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
@@ -157,10 +157,10 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     }
 }
 
-/// Browser: „Teilen …“ (Server-Board, Besitzer mit Lizenz) bzw. „Am Server speichern“ (lokales Board, Lizenz).
-#[cfg(target_arch = "wasm32")]
+/// Web-App/Desktop: „Teilen …“ (Server-Board, Besitzer mit Lizenz) bzw. „Am Server speichern“ (lokales Board, Lizenz).
+#[cfg(not(target_os = "android"))]
 fn server_rows(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, h: f32, close: &mut bool) {
-    use crate::platform::web::api;
+    use crate::net as api;
     if !api::licensed() {
         return;
     }

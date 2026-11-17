@@ -286,7 +286,8 @@ pub fn apply(ctx: &egui::Context, s: &Settings) {
             v.widgets.inactive.weak_bg_fill = c(q.hover);
             v.widgets.inactive.bg_fill = c(q.line);
             v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, c(q.line));
-            v.text_edit_bg_color = Some(c(q.card));
+            // Eingabefelder heben sich vom Karten-/Dialoghintergrund ab (vorher gleiche Farbe: Feld unsichtbar)
+            v.text_edit_bg_color = Some(c(q.bg));
         }
         v.extreme_bg_color = c(q.bg);
         v.selection.bg_fill = c(with_alpha(q.accent, 0x66));

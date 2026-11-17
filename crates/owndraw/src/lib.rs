@@ -7,6 +7,9 @@ mod demo;
 mod kv;
 #[allow(dead_code)]
 mod layout;
+/// Server-Anbindung (Konto, Server-Boards, Live-Zusammenarbeit): Web-App und Desktop, nicht Android.
+#[cfg(not(target_os = "android"))]
+mod net;
 #[allow(dead_code)]
 mod platform;
 mod recent;
@@ -100,6 +103,14 @@ pub fn run_desktop() -> eframe::Result<()> {
                 platform::FileRef::Path(dir) => owndraw_core::migrate::migrate_store(&data_dir(), &dir),
                 platform::FileRef::Uri(_) => Vec::new(),
             };
+            // Server-Anbindung (Konto, Server-Boards, Live): Adresse aus den Einstellungen bzw. `OWNDRAW_SERVER`.
+            // Screenshot-Demos ohne `OWNDRAW_SERVER` bleiben ohne Netz.
+            let server = std::env::var("OWNDRAW_SERVER").ok().filter(|s| !s.trim().is_empty());
+            net::set_config_dir(platform::Platform::config_dir(&*platform));
+            net::set_base_url(server.as_deref().unwrap_or(&settings.server_url));
+            if server.is_some() || std::env::var_os("OWNDRAW_DEMO").is_none() {
+                net::init(&cc.egui_ctx);
+            }
             let mut app = app::App::new(platform, settings, open_file);
             app.add_migrated(migrated);
             Ok(Box::new(app))
@@ -130,7 +141,7 @@ pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
 
 /// Browser-Start (aus `start` im Crate `owndraw-web`): gleiche App, Plattform = [`platform::web::WebPlatform`]
 /// (Gastmodus: Öffnen per Upload, Speichern als Download, Boards in IndexedDB; mit Server: Konto, Boards am
-/// Server, Live-Zusammenarbeit, siehe `platform/web/api.rs`).
+/// Server, Live-Zusammenarbeit, siehe `net/`).
 ///
 /// Darstellung: mit WebGL über eframe (wie bisher); ohne WebGL (Hardwarebeschleunigung aus) per CPU in ein
 /// 2D-Canvas ([`platform::web::soft`]). URL-Parameter `?renderer=software` bzw. `?renderer=webgl` erzwingt einen Weg.

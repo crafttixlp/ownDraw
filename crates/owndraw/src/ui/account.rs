@@ -1,27 +1,32 @@
-//! Konto auf der Startseite (nur Browser mit Server): Anmelden/Registrieren/Abmelden, Lizenz einlösen und
+//! Konto auf der Startseite (Web-App mit Server und Desktop): Anmelden/Registrieren/Abmelden, Lizenz einlösen und
 //! -status, Liste der Boards am Server (eigene + geteilte) mit Öffnen/Umbenennen/Löschen. Ohne Server
-//! (statisches Hosting) bleibt der Gastmodus-Hinweis.
+//! (statisches Hosting) bleibt der Gastmodus-Hinweis. Desktop: Server-Adresse im Anmeldedialog, Einladungslink
+//! einfügen statt Link im Browser öffnen, ohne Verbindung bleibt alles Lokale nutzbar.
 
 use crate::app::Shared;
 use crate::layout::FormFactor;
-use crate::platform::web::api::{self, BoardInfo, Server};
+use crate::net::{self as api, BoardInfo, Server};
 use crate::style::{self, c};
+use crate::ui::{local_in, wd};
 use egui::{Align2, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 enum Dlg {
-    Login { register: bool, email: String, password: String, name: String, focus: bool },
+    /// `server`: Desktop, Adresse des Servers (Web-App: immer die eigene Origin).
+    Login { register: bool, email: String, password: String, name: String, server: String, focus: bool },
+    /// Desktop: Einladungslink einfügen.
+    InviteLink { link: String, focus: bool },
     Redeem { code: String, focus: bool },
     Rename { id: String, name: String },
     Delete { id: String, name: String },
     /// Gastzugang beenden (Bestätigung).
     LeaveGuest,
-    /// Browser-Board auf den Server verschieben (Bestätigung, Größe in Bytes).
+    /// Lokales Board auf den Server verschieben (Bestätigung, Größe in Bytes).
     ToServer { file: crate::platform::FileRef, name: String, size: i64 },
-    /// Server-Board in den Browser holen; `owner` = verschieben (am Server löschen), sonst nur Kopie.
+    /// Server-Board lokal speichern; `owner` = verschieben (am Server löschen), sonst nur Kopie.
     ToLocal { id: String, name: String, owner: bool },
 }
 
-/// Kartenmenü eines Browser-Boards: „Auf den Server verschieben“ (Bestätigungsdialog öffnen).
+/// Kartenmenü eines lokalen Boards: „Auf den Server verschieben“ (Bestätigungsdialog öffnen).
 pub fn ask_to_server(sh: &mut Shared, st: &mut AccountUi, file: &crate::platform::FileRef, name: &str) {
     match sh.platform.read(file) {
         Ok(b) => st.dlg = Some(Dlg::ToServer { file: file.clone(), name: name.to_string(), size: b.len() as i64 }),
@@ -42,6 +47,48 @@ fn date(secs: i64) -> String {
     format!("{}.{}.{}", &s[8..10], &s[5..7], &s[0..4])
 }
 
+/// Desktop: Server-Adresse ohne Schema (für Hinweise).
+fn host() -> String {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let u = api::base_url();
+        u.split_once("://").map(|(_, r)| r.to_string()).unwrap_or(u)
+    }
+    #[cfg(target_arch = "wasm32")]
+    String::new()
+}
+
+/// Vorbelegung des Server-Felds im Anmeldedialog.
+fn server_text() -> String {
+    #[cfg(not(target_arch = "wasm32"))]
+    return api::base_url();
+    #[cfg(target_arch = "wasm32")]
+    String::new()
+}
+
+/// Demo/Screenshots: Dialog `login` oder `einladung` öffnen.
+pub fn demo_dialog(st: &mut AccountUi, which: &str) {
+    st.dlg = Some(match which {
+        "einladung" => Dlg::InviteLink { link: String::new(), focus: true },
+        _ => Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), server: server_text(), focus: true },
+    });
+}
+
+/// Zerlegt einen Einladungslink (`https://server/#invite=<token>`, auch nur das Token) in Server und Token.
+pub fn parse_invite_link(link: &str) -> Option<(Option<String>, String)> {
+    let link = link.trim();
+    let (base, token) = match link.split_once("#invite=") {
+        Some((b, t)) => {
+            let b = b.trim_end_matches('/');
+            (if b.is_empty() { None } else { Some(b.to_string()) }, t)
+        }
+        None if !link.contains('/') && !link.contains(' ') => (None, link),
+        None => return None,
+    };
+    let token = token.trim();
+    (!token.is_empty()).then(|| (base, token.to_string()))
+}
+
 fn mb(v: f64) -> String {
     format!("{v:.1}").replace('.', ",")
 }
@@ -51,7 +98,17 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
     let compact = sh.env.ff == FormFactor::Compact;
     let h = if compact { sh.env.btn } else { 36.0 };
     let (server, me) = api::with(|n| (n.server, n.me.clone()));
-    let login = |register: bool| Dlg::Login { register, email: String::new(), password: String::new(), name: String::new(), focus: true };
+    let login = |register: bool| Dlg::Login { register, email: String::new(), password: String::new(), name: String::new(), server: server_text(), focus: true };
+    // Desktop: Einladungslink einfügen (im Browser öffnet der Link die Web-App direkt)
+    let invite_btn = |ui: &mut egui::Ui, st: &mut AccountUi| {
+        if !crate::platform::WEB && style::outline_btn(ui, "Einladungslink …", h).clicked() {
+            api::with(|n| n.form_error = None);
+            st.dlg = Some(Dlg::InviteLink { link: String::new(), focus: true });
+        }
+    };
+    if !crate::platform::WEB && !api::started() {
+        return;
+    }
     match (server, me) {
         (Server::Ready, Some(me)) if me.guest => {
             let title = format!("Gast-ID: {}", me.name);
@@ -60,6 +117,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                     api::with(|n| n.form_error = None);
                     st.dlg = Some(login(true));
                 }
+                invite_btn(ui, st);
                 if style::outline_btn(ui, "Gastzugang beenden", h).clicked() {
                     st.dlg = Some(Dlg::LeaveGuest);
                 }
@@ -70,21 +128,27 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
             let line = match &me.license {
                 Some(l) if l.active => {
                     let until = l.expires_at.map(|e| format!("gültig bis {}", date(e))).unwrap_or_else(|| "unbefristet gültig".into());
-                    let wo = if sh.settings.new_on_server { "auf dem Server" } else { "in diesem Browser" };
+                    let wo = if sh.settings.new_on_server { "auf dem Server" } else { local_in() };
                     format!("Lizenz {until}. {} von {} MB Speicher belegt. Neue Boards werden standardmäßig {wo} gespeichert. Beim Erstellen und im Kartenmenü kannst du den Speicherort wählen.", mb(l.used_mb), mb(l.quota_mb))
                 }
                 Some(l) => format!(
                     "Lizenz abgelaufen{}. Deine Boards auf dem Server sind nur noch lesbar. Löse einen neuen Code ein, um wieder zu speichern.",
                     l.expires_at.map(|e| format!(" am {}", date(e))).unwrap_or_default()
                 ),
-                None => "Keine Lizenz. Neue Boards werden nur in diesem Browser gespeichert. Lade sie herunter, um sie zu sichern. Mit einer Lizenz speicherst du auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.".into(),
+                None => wd(
+                    "Keine Lizenz. Neue Boards werden nur in diesem Browser gespeichert. Lade sie herunter, um sie zu sichern. Mit einer Lizenz speicherst du auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.",
+                    "Keine Lizenz. Neue Boards werden auf diesem Computer gespeichert. Mit einer Lizenz speicherst und teilst du Boards auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.",
+                )
+                .into(),
             };
             let licensed = me.licensed();
-            super::start::banner(ui, compact, &format!("Angemeldet als {who}"), &line, |ui| {
+            let title = if crate::platform::WEB { format!("Angemeldet als {who}") } else { format!("Angemeldet als {who} · {}", host()) };
+            super::start::banner(ui, compact, &title, &line, |ui| {
                 if !licensed && style::primary_btn(ui, "Lizenz einlösen", h).clicked() {
                     api::with(|n| n.form_error = None);
                     st.dlg = Some(Dlg::Redeem { code: String::new(), focus: true });
                 }
+                invite_btn(ui, st);
                 if style::outline_btn(ui, "Abmelden", h).clicked() {
                     api::logout();
                 }
@@ -94,7 +158,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
             super::start::banner(
                 ui,
                 compact,
-                "Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.",
+                wd("Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.", "Du bist nicht angemeldet. Boards werden auf diesem Computer gespeichert."),
                 "Mit einem Konto wirst du zu Boards eingeladen und arbeitest live mit. Mit einer Lizenz speicherst und teilst du Boards auf dem Server.",
                 |ui| {
                     if style::primary_btn(ui, "Anmelden", h).clicked() {
@@ -105,8 +169,28 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                         api::with(|n| n.form_error = None);
                         st.dlg = Some(login(true));
                     }
+                    invite_btn(ui, st);
                 },
             );
+        }
+        // Desktop: Server noch nicht geantwortet bzw. nicht erreichbar – lokal geht alles weiter
+        (Server::Unknown, _) if !crate::platform::WEB => {
+            super::start::banner(ui, compact, &format!("Verbinde mit {} …", host()), "Konto, Boards auf dem Server und Live-Zusammenarbeit werden geladen.", |ui| {
+                ui.spinner();
+            });
+        }
+        (Server::Offline, _) if !crate::platform::WEB => {
+            let title = format!("Server {} nicht erreichbar", host());
+            super::start::banner(ui, compact, &title, "Du arbeitest offline. Alle Boards auf diesem Computer bleiben voll nutzbar. Konto, Boards auf dem Server und Live-Zusammenarbeit gehen wieder, sobald der Server erreichbar ist.", |ui| {
+                if style::primary_btn(ui, "Erneut versuchen", h).clicked() {
+                    api::retry();
+                }
+                if style::outline_btn(ui, "Anderer Server …", h).clicked() {
+                    api::with(|n| n.form_error = None);
+                    st.dlg = Some(login(false));
+                }
+                invite_btn(ui, st);
+            });
         }
         _ => {
             super::start::banner(ui, compact, "Du bist nicht angemeldet.", "Boards werden nicht gespeichert. Lade sie herunter, um sie zu sichern.", |_| {});
@@ -136,7 +220,7 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) -> bool {
         return true;
     }
     if list.is_empty() {
-        ui.label(egui::RichText::new("Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins aus dem Browser (Kartenmenü „…“).").color(c(p.dim)));
+        ui.label(egui::RichText::new(wd("Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins aus dem Browser (Kartenmenü „…“).", "Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins von diesem Computer (Kartenmenü „…“).")).color(c(p.dim)));
         return true;
     }
     let gap = if compact { 12.0 } else { 18.0 };
@@ -175,7 +259,9 @@ fn tile(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi, b: &BoardInfo, t
         _ => 0x228B8D98,
     };
     pt.rect_filled(head, CornerRadius { nw: 16, ne: 16, sw: 0, se: 0 }, c(col));
-    pt.text(head.left_center() + Vec2::new(14.0, 0.0), Align2::LEFT_CENTER, "☁", egui::FontId::proportional(20.0), c(p.accent));
+    // Wolken-Symbol als Icon (das Zeichen „☁“ fehlt in der Schrift)
+    sh.icons.paint(ui, Rect::from_center_size(head.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(24.0)), owndraw_core::icons::CLOUD, p.accent, false, 20.0);
+    let pt = ui.painter();
     let badge = match b.role.as_str() {
         "owner" => "Eigenes",
         "edit" => "Geteilt",
@@ -208,10 +294,10 @@ fn tile(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi, b: &BoardInfo, t
         let mut acts = vec![(A::Open, style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false })];
         if owner {
             acts.push((A::Rename, style::MenuItem { icon: icons::TEXT, label: "Umbenennen", danger: false }));
-            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: "In Browser verschieben", danger: false }));
+            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: wd("In Browser verschieben", "Auf diesen Computer verschieben"), danger: false }));
             acts.push((A::Delete, style::MenuItem { icon: icons::TRASH, label: "Löschen", danger: true }));
         } else {
-            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: "Kopie im Browser", danger: false }));
+            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: wd("Kopie im Browser", "Kopie auf diesem Computer"), danger: false }));
         }
         let items: Vec<style::MenuItem> = acts.iter().map(|a| style::MenuItem { icon: a.1.icon, label: a.1.label, danger: a.1.danger }).collect();
         match style::card_menu(ui, ic, &items).map(|i| acts[i].0) {
@@ -262,9 +348,12 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
         ui.set_width(width - 2.0 * style::sp::XL - 2.0);
         ui.spacing_mut().item_spacing.y = style::sp::S;
         match &mut d {
-            Dlg::Login { register, email, password, name, focus } => {
+            Dlg::Login { register, email, password, name, server, focus } => {
                 ui.label(egui::RichText::new(if *register { "Konto erstellen" } else { "Anmelden" }).size(style::fs::SECTION + 5.0).strong());
                 ui.add_space(6.0);
+                if !crate::platform::WEB {
+                    field(ui, "Server", server, false, false);
+                }
                 if *register {
                     field(ui, "Name", name, false, *focus);
                     field(ui, "E-Mail", email, false, false);
@@ -281,6 +370,12 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_enabled_ui(valid, |ui| {
                         if (style::primary_btn(ui, if *register { "Konto erstellen" } else { "Anmelden" }, h).clicked() || enter) && valid {
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if !server.trim().is_empty() && server.trim().trim_end_matches('/') != api::base_url() {
+                                api::change_server(server);
+                                sh.settings.server_url = api::base_url();
+                                *server = api::base_url();
+                            }
                             if *register {
                                 api::register(email, password, name);
                             } else {
@@ -299,6 +394,40 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                     *register = !*register;
                     api::with(|n| n.form_error = None);
                 }
+            }
+            Dlg::InviteLink { link, focus } => {
+                ui.label(egui::RichText::new("Einladung öffnen").size(style::fs::SECTION + 5.0).strong());
+                ui.label(egui::RichText::new("Füge den Einladungslink ein, den du bekommen hast. Danach siehst du, wer dich zu welchem Board einlädt.").size(12.5).color(c(p.dim)));
+                ui.add_space(6.0);
+                field(ui, "Einladungslink", link, false, *focus);
+                *focus = false;
+                let parsed = parse_invite_link(link);
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some((Some(b), _)) = &parsed {
+                    if b.trim_end_matches('/') != api::base_url() {
+                        ui.label(egui::RichText::new(format!("Der Link gehört zu {b}. OwnDraw verbindet sich dafür mit diesem Server und meldet dich beim bisherigen ab.")).size(12.5).color(c(p.dim)));
+                    }
+                }
+                if !link.trim().is_empty() && parsed.is_none() {
+                    ui.label(egui::RichText::new("Das sieht nicht wie ein Einladungslink aus. Er enthält „#invite=“.").size(12.5).color(c(p.danger_text)));
+                }
+                ui.add_space(10.0);
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_enabled_ui(parsed.is_some(), |ui| {
+                        if (style::primary_btn(ui, "Weiter", h).clicked() || enter) && parsed.is_some() {
+                            if let Some((_base, token)) = parsed.clone() {
+                                #[cfg(not(target_arch = "wasm32"))]
+                                if let Some(b) = _base.filter(|b| b.trim_end_matches('/') != api::base_url()) {
+                                    api::change_server(&b);
+                                    sh.settings.server_url = api::base_url();
+                                }
+                                api::invite_info(&token);
+                                close = true;
+                            }
+                        }
+                    });
+                    close |= style::outline_btn(ui, "Abbrechen", h).clicked();
+                });
             }
             Dlg::Redeem { code, focus } => {
                 ui.label(egui::RichText::new("Lizenz einlösen").size(style::fs::SECTION + 5.0).strong());
@@ -351,14 +480,18 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 ui.label(egui::RichText::new("Auf den Server verschieben?").size(style::fs::SECTION + 5.0).strong());
                 let free = api::free_bytes();
                 let fits = free.is_some_and(|f| *size <= f);
-                ui.label(format!("„{name}“ wird auf den Server hochgeladen und danach aus diesem Browser entfernt. Erst wenn der Server das Board gespeichert hat, wird es hier entfernt. So gehen keine Daten verloren."));
+                ui.label(if crate::platform::WEB {
+                    format!("„{name}“ wird auf den Server hochgeladen und danach aus diesem Browser entfernt. Erst wenn der Server das Board gespeichert hat, wird es hier entfernt. So gehen keine Daten verloren.")
+                } else {
+                    format!("„{name}“ wird auf den Server hochgeladen. Danach öffnest du es über „Auf dem Server“. Die Datei auf diesem Computer bleibt als Sicherung erhalten, wird aber aus „Zuletzt geöffnet“ entfernt.")
+                });
                 ui.add_space(4.0);
                 let used = format!("Größe: {} · Frei auf dem Server: {}", super::mb_text(*size), free.map(super::mb_text).unwrap_or_else(|| "–".into()));
                 ui.label(egui::RichText::new(used).size(12.5).color(c(p.dim)));
                 ui.label(egui::RichText::new("Auf dem Server ist das Board auf allen Geräten verfügbar und du kannst es teilen und live gemeinsam bearbeiten.").size(12.5).color(c(p.dim)));
                 if !fits {
                     ui.add_space(4.0);
-                    let msg = if free.is_none() { "Für Boards auf dem Server brauchst du eine gültige Lizenz.".to_string() } else { "Nicht genug Speicherplatz auf dem Server. Lösche Boards auf dem Server oder lass dieses Board im Browser.".to_string() };
+                    let msg = if free.is_none() { "Für Boards auf dem Server brauchst du eine gültige Lizenz.".to_string() } else { format!("Nicht genug Speicherplatz auf dem Server. Lösche Boards auf dem Server oder lass dieses Board {}.", local_in()) };
                     ui.add(egui::Label::new(egui::RichText::new(msg).size(12.5).color(c(p.danger_text))).wrap());
                 }
                 ui.add_space(10.0);
@@ -377,13 +510,13 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
             }
             Dlg::ToLocal { id, name, owner, .. } => {
                 if *owner {
-                    ui.label(egui::RichText::new("In diesem Browser speichern?").size(style::fs::SECTION + 5.0).strong());
-                    ui.label(format!("„{name}“ wird in diesem Browser gespeichert und danach vom Server gelöscht. Erst wenn es hier gespeichert ist, wird es am Server gelöscht."));
+                    ui.label(egui::RichText::new(wd("In diesem Browser speichern?", "Auf diesem Computer speichern?")).size(style::fs::SECTION + 5.0).strong());
+                    ui.label(format!("„{name}“ wird {} gespeichert und danach vom Server gelöscht. Erst wenn es hier gespeichert ist, wird es am Server gelöscht.", local_in()));
                     ui.add_space(4.0);
-                    ui.add(egui::Label::new(egui::RichText::new("Danach ist es nur noch in diesem Browser. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server: Wer das Board mit dir geteilt bekommen hat, verliert den Zugriff. Einladungslinks werden ungültig.").size(12.5).color(c(p.dim))).wrap());
+                    ui.add(egui::Label::new(egui::RichText::new(format!("Danach ist es nur noch {}. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server: Wer das Board mit dir geteilt bekommen hat, verliert den Zugriff. Einladungslinks werden ungültig.", local_in())).size(12.5).color(c(p.dim))).wrap());
                 } else {
-                    ui.label(egui::RichText::new("Kopie im Browser speichern?").size(style::fs::SECTION + 5.0).strong());
-                    ui.label(format!("Eine Kopie von „{name}“ wird in diesem Browser gespeichert. Das Board auf dem Server bleibt unverändert. Änderungen an der Kopie sieht niemand sonst."));
+                    ui.label(egui::RichText::new(wd("Kopie im Browser speichern?", "Kopie auf diesem Computer speichern?")).size(style::fs::SECTION + 5.0).strong());
+                    ui.label(format!("Eine Kopie von „{name}“ wird {} gespeichert. Das Board auf dem Server bleibt unverändert. Änderungen an der Kopie sieht niemand sonst.", local_in()));
                 }
                 ui.add_space(10.0);
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), h), egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -441,7 +574,7 @@ fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 style::caption(ui, "Dein Name");
                 let r = ui.add(egui::TextEdit::singleline(name).char_limit(24).desired_width(f32::INFINITY).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
                 r.request_focus();
-                ui.label(egui::RichText::new("Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird in diesem Browser gespeichert. Ein Konto brauchst du dafür nicht.").size(12.0).color(c(p.dim)));
+                ui.label(egui::RichText::new(wd("Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird in diesem Browser gespeichert. Ein Konto brauchst du dafür nicht.", "Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird auf diesem Computer gespeichert. Ein Konto brauchst du dafür nicht.")).size(12.0).color(c(p.dim)));
             }
         } else {
             ui.spinner();
@@ -471,7 +604,7 @@ fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
     });
     if login {
         api::with(|n| n.form_error = None);
-        st.dlg = Some(Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), focus: true });
+        st.dlg = Some(Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), server: server_text(), focus: true });
     }
     if close {
         api::with(|n| {

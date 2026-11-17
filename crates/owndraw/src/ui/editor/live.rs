@@ -1,4 +1,4 @@
-//! Live-Zusammenarbeit im Editor (nur Browser, Server-Boards `srv:<id>`). Protokoll: `docs/web-api.md`.
+//! Live-Zusammenarbeit im Editor (Web-App und Desktop, Server-Boards `srv:<id>`). Protokoll: `docs/web-api.md`.
 //!
 //! - Verbindung `GET /api/collab/{id}` (WebSocket), automatische Wiederverbindung mit wachsender Wartezeit.
 //!   Solange keine Verbindung besteht, speichert der Autosave wie gewohnt per PUT.
@@ -12,7 +12,7 @@
 
 use super::{toolbar, Editor, Lay, M};
 use crate::app::Shared;
-use crate::platform::web::api::{self, SockEv, Socket};
+use crate::net::{self as api, SockEv, Socket};
 use crate::session;
 use crate::style::{self, c};
 use egui::{Align2, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};
@@ -123,7 +123,7 @@ fn color_of(s: &str) -> Color32 {
 
 impl Live {
     pub fn new(board_id: &str, ed: &Editor) -> Live {
-        Live {
+        let mut lv = Live {
             board_id: board_id.to_string(),
             sock: None,
             conn: Conn::Retry(0.0),
@@ -143,7 +143,12 @@ impl Live {
             share: None,
             conflict_open: false,
             view_hint_at: -100.0,
+        };
+        // Demo `share`: Teilen-Dialog gleich öffnen (Screenshots)
+        if std::env::var("OWNDRAW_DEMO").is_ok_and(|d| d.split(',').any(|t| t.trim() == "share")) {
+            lv.open_share();
         }
+        lv
     }
 
     /// Schreibrecht (Rolle „Bearbeiten“/Eigentümer).

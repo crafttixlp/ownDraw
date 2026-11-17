@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `stamps` (alle Stempel).
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `stamps` (alle Stempel), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -163,6 +163,16 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
                 let b = demo_board(i as u32, 0.0, 0.0);
                 start.set_thumb(&f, thumb_texture(ctx, &b, &format!("demo-thumb-{i}")));
             }
+        }
+    }
+    // Konto (mit `OWNDRAW_SERVER`): `login`, `einladung` (Dialoge), `srv=<id>` (Server-Board öffnen),
+    // `share` (Teilen-Dialog im Server-Board)
+    #[cfg(not(target_os = "android"))]
+    for t in &toks {
+        if let Some(id) = t.strip_prefix("srv=") {
+            crate::net::open_board(id);
+        } else if matches!(*t, "login" | "einladung") {
+            crate::ui::account::demo_dialog(&mut app.parts().1.account, t);
         }
     }
     #[cfg(not(target_arch = "wasm32"))]

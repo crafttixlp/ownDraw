@@ -37,6 +37,10 @@ dirs = "6"
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
+# Live-Zusammenarbeit am Desktop (WebSocket zum OwnDraw-Server, TLS wie ureq über rustls + System-Zertifikate)
+tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7"
 
 # Android (WP5): eframe mit NativeActivity, JNI für SAF/Zwischenablage
 [target.'cfg(target_os = "android")'.dependencies]

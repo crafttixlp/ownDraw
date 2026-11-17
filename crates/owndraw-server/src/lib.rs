@@ -9,6 +9,7 @@ pub mod config;
 pub mod db;
 pub mod downloads;
 pub mod error;
+pub mod formulas;
 pub mod invites;
 pub mod notices;
 pub mod state;
@@ -130,6 +131,11 @@ pub fn build_app(state: AppState) -> Router {
         .route("/boards/{id}/invites/{invite_id}", axum::routing::delete(invites::delete))
         .route("/invites/{token}", get(invites::show))
         .route("/invites/{token}/join", post(invites::join))
+        .route("/formulas", get(formulas::list).post(formulas::create))
+        .route("/formulas/{id}", axum::routing::put(formulas::update).delete(formulas::delete))
+        .route("/formulas/{id}/share", post(formulas::share).delete(formulas::unshare))
+        .route("/formulas/{id}/global", post(formulas::set_global))
+        .route("/formulas/code/{code}", get(formulas::preview).post(formulas::subscribe))
         .route("/admin/users", get(admin::users))
         .route("/admin/users/{id}", patch(admin::patch_user).delete(admin::delete_user))
         .route("/admin/users/{id}/license", post(admin::user_license))

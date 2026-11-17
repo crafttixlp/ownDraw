@@ -212,6 +212,20 @@
           "covers": ["tool:Rechnen", "action:tool.calc", "setting:Rechnen", "extra:rechnen-zuweisung", "extra:rechnen-ergebnis", "extra:rechnen-einheiten", "extra:rechnen-unbekannte", "extra:rechnen-funktionen", "extra:rechnen-optionen"]
         },
         {
+          "id": "tool-formelsammlung",
+          "title": "Formelsammlung",
+          "text": "Fertige Formeln für Mechanik und Elektrotechnik, dazu eigene Formeln, Konstanten und Einheiten. Mit „Einfügen“ landet eine Formel als Rechenzeile auf dem Blatt, das Werkzeug „Rechnen“ rechnet sie mit deinen Werten aus.",
+          "how": [
+            "Öffnen: Optionen des Werkzeugs „Rechnen“ → „Formelsammlung …“, im Rechnen-Feld „Formeln …“ oder Menü „…“ → „Formelsammlung …“.",
+            "Vorschläge: Schreibst du z. B. U: 230 V, I: 2 A und dann P =, zeigt das Rechnen-Feld passende Formeln wie P = U·I. Antippen übernimmt sie.",
+            "Eigene Sammlung: „+ Neu“, dann „+ Formel“ mit Name, Formel (z. B. U = R·I), Thema und den Größen mit Einheit und Bedeutung.",
+            "Konstanten (z. B. ρ_Cu = 0,0178 Ω·mm²/m) und eigene Einheiten (z. B. kp = 9,80665 N) gelten beim Rechnen auf allen Seiten, solange „Konstanten/Einheiten verwenden“ eingeschaltet ist.",
+            "Mit Konto liegen eigene Sammlungen am Server und sind auf allen Geräten da. „Teilen & Datei“ → „Code erzeugen“ gibt dir einen Code für die Klasse; andere tragen ihn unter „Code eingeben“ ein und sehen jede Änderung.",
+            "„Exportieren …“ speichert eine Sammlung als Datei (.formeln.json), „Importieren …“ legt sie als eigene Sammlung an."
+          ],
+          "covers": ["menu:Formelsammlung …", "extra:formelsammlung", "extra:formel-vorschlaege", "extra:formel-teilen", "extra:formel-datei"]
+        },
+        {
           "id": "tool-farbe",
           "title": "Farben und Breiten",
           "text": "Stift, Marker, Form und Text haben 8 Farben. Der Farbpunkt am Werkzeugknopf zeigt die aktuelle Farbe. Breite, Pfeilstil, Erkennungsmodus und weitere Vorgaben merkt sich OwnDraw für das nächste Mal.",

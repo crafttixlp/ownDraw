@@ -31,6 +31,9 @@ pub enum PickPurpose {
     NewDoc,
     /// Standard-Ort der Einstellungen.
     DefaultDir,
+    /// Formelsammlung (Index in `formulas::with(|l| l.sets)`) als Datei speichern.
+    FormulasExport(usize),
+    FormulasImport,
 }
 
 /// Aufträge der Oberfläche an die Shell (werden am Frameende abgearbeitet).
@@ -566,6 +569,7 @@ impl App {
         if let Some(d) = self.demo.take() {
             crate::demo::setup(self, &ctx, &d);
         }
+        crate::formulas::tick(&self.sh.platform.config_dir());
         #[cfg(not(target_os = "android"))]
         {
             crate::net::pump();

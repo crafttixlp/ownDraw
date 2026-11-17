@@ -43,6 +43,10 @@ impl ApiError {
     pub fn invalid(m: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, "invalid", m)
     }
+    /// Limit pro Nutzer erreicht (400, Code `too_many`).
+    pub fn too_many(m: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, "too_many", m)
+    }
     pub fn too_large(m: impl Into<String>) -> Self {
         Self::new(StatusCode::PAYLOAD_TOO_LARGE, "too_large", m)
     }

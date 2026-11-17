@@ -93,6 +93,23 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
     used_at INTEGER,
     PRIMARY KEY (user_id, code_hash)
 );
+CREATE TABLE IF NOT EXISTS formula_sets (
+    id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    data TEXT NOT NULL,
+    share_code TEXT UNIQUE,
+    global INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    updated INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS formula_subs (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    set_id TEXT NOT NULL REFERENCES formula_sets(id) ON DELETE CASCADE,
+    created INTEGER NOT NULL,
+    PRIMARY KEY (user_id, set_id)
+);
+CREATE INDEX IF NOT EXISTS idx_formula_sets_owner ON formula_sets(owner);
 CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON members(user_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_user ON licenses(redeemed_by);

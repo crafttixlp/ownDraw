@@ -4,6 +4,8 @@
 mod app;
 mod autosave;
 mod demo;
+/// Formelsammlungen (Werkzeug „Rechnen“).
+mod formulas;
 mod kv;
 #[allow(dead_code)]
 mod layout;

@@ -24,6 +24,13 @@ pub struct CalcEd {
     focus: bool,
 }
 
+impl CalcEd {
+    /// Feld im nächsten Frame fokussieren (z. B. nach Formel aus der Sammlung).
+    pub fn focus_now(&mut self) {
+        self.focus = true;
+    }
+}
+
 /// Schnellknöpfe: Zeichen, die auf der Tastatur fehlen.
 const QUICK: [(&str, &str); 8] = [
     ("·", "Malpunkt"),
@@ -105,6 +112,11 @@ impl Editor {
     }
 
     pub(super) fn calc_editor(&mut self, ctx: &egui::Context, sh: &Shared) {
+        // Vorschläge aus der Formelsammlung (vor dem Ausleihen des Felds berechnen)
+        let sugg: Vec<(String, String)> = match self.calc.as_ref() {
+            Some(ce) if ce.edit.is_none() => super::fbook::suggest_list(self, sh, ce.at, &ce.src),
+            _ => Vec::new(),
+        };
         let Some(ce) = self.calc.as_mut() else { return };
         let b = &self.board;
         let canvas = self.canvas;
@@ -115,7 +127,11 @@ impl Editor {
         let sp = canvas.min + Vec2::new(ce.at.0 * b.sc + b.tx, ce.at.1 * b.sc + b.ty);
         let below = sp.y + ce.size * b.sc * LINE + 8.0;
         let (pos, pivot) = if below + 130.0 < canvas.bottom() { (egui::pos2(sp.x, below), Align2::LEFT_TOP) } else { (egui::pos2(sp.x, sp.y - 8.0), Align2::LEFT_BOTTOM) };
-        let mut cancel = ctx.input_mut(|i| super::keys::consume(i, &sh.settings, "cancel"));
+        let mut cancel = !self.fbook.open && ctx.input_mut(|i| super::keys::consume(i, &sh.settings, "cancel"));
+        let at = ce.at;
+        let typed = ce.src.clone();
+        let mut pick: Option<String> = None;
+        let mut open_book = false;
         let mut enter = false;
         let id = egui::Id::unique("calc-src");
         let r = Editor::float(ctx, "calc-ed", pos, pivot, canvas.shrink(8.0), Order::Foreground, |ui| {
@@ -158,6 +174,18 @@ impl Editor {
                     st.store(ui.ctx(), id);
                     resp.request_focus();
                 }
+                if !sugg.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("Passende Formeln").size(12.0).color(c(pal.dim)));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+                        for (expr, tip) in &sugg {
+                            if style::chip(ui, expr, false, h * 0.9).on_hover_text(tip).clicked() {
+                                pick = Some(expr.clone());
+                            }
+                        }
+                    });
+                }
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     if style::accent_btn(ui, "Zeile einfügen", h).on_hover_text("Enter").clicked() {
@@ -166,10 +194,25 @@ impl Editor {
                     if style::plain_btn(ui, "Fertig", h).on_hover_text("Esc").clicked() {
                         cancel = true;
                     }
+                    if style::plain_btn(ui, "Formeln …", h).on_hover_text("Formelsammlung öffnen").clicked() {
+                        open_book = true;
+                    }
                 });
             });
         });
         self.st.popup_rects.push(r);
+        let _ = (at, typed);
+        if open_book {
+            let q = self.calc.as_ref().map(|c| c.src.trim().trim_end_matches(['=', '?', ' ']).to_string()).unwrap_or_default();
+            self.open_fbook(Some(if q.contains(['=', ':', ' ']) { "" } else { &q }));
+        }
+        if let Some(p) = pick {
+            if let Some(ce) = self.calc.as_mut() {
+                ce.src = p;
+                ce.focus = true;
+            }
+            return;
+        }
         if enter {
             // leere Zeile + Enter schließt
             if !self.commit_calc() {
@@ -191,6 +234,10 @@ pub(super) fn options(ui: &mut egui::Ui, ed: &mut Editor, sh: &mut Shared) {
         ui.label(egui::RichText::new("Rechnen ist ausgeschaltet (Einstellungen).").size(12.0).color(c(pal.danger_text)));
     }
     ui.add_space(4.0);
+    if style::outline_btn(ui, "Formelsammlung …", h).on_hover_text("Formeln suchen und einfügen, eigene Formeln, Konstanten und Einheiten").clicked() {
+        ed.open_fbook(None);
+    }
+    let cp = &mut sh.settings.calc;
     ui.checkbox(&mut cp.steps, "Rechenweg anzeigen");
     style::caption(ui, "Winkel");
     ui.horizontal_wrapped(|ui| {
@@ -214,5 +261,4 @@ pub(super) fn options(ui: &mut egui::Ui, ed: &mut Editor, sh: &mut Shared) {
             }
         }
     });
-    let _ = ed;
 }

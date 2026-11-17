@@ -248,3 +248,19 @@ Ordner `web/`. Ablauf: herunterladen → Signatur prüfen → DB-Backup → nach
 `data/current` umstellen → Prozess beendet sich, Docker (`restart: unless-stopped`) startet neu. Ein kleiner
 Start-Wrapper nimmt `data/current`; startet die neue Version nicht (Health-Check fehlschlägt), zurück auf die alte.
 Auto-Update standardmäßig **aus**.
+
+## Formelsammlungen (ab 4.33.0)
+
+Daten = JSON einer Sammlung im Dateiformat `owndraw-formeln` (`owndraw_core::calc::library::Collection`), vom Server
+nicht ausgewertet (≤ 1 MiB). Login nötig; Gäste dürfen nur lesen und abonnieren. Max. 50 eigene Sammlungen.
+
+| Methode | Pfad | Antwort |
+|---|---|---|
+| GET | `/api/formulas` | `{"sets":[{id,name,owner_name,mine,global,share_code,updated,data}]}`: eigene, abonnierte, für alle bereitgestellte |
+| POST | `/api/formulas` `{name,data}` | `{id,updated}` (Gast 403, ab 51 Sammlungen 400 `too_many`) |
+| PUT | `/api/formulas/{id}` `{name,data}` | `{updated}` (nur Besitzer) |
+| DELETE | `/api/formulas/{id}` | 204: Besitzer löscht, sonst Abo beenden |
+| POST/DELETE | `/api/formulas/{id}/share` | `{code}` (8 Zeichen, bleibt gleich) bzw. Teilen beenden |
+| GET | `/api/formulas/code/{code}` | Vorschau `{id,name,owner_name,data}` |
+| POST | `/api/formulas/code/{code}` | abonnieren → `{id}` |
+| POST | `/api/formulas/{id}/global` `{on}` | nur Admin (2FA): für alle Nutzer bereitstellen |

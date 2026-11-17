@@ -1,0 +1,2029 @@
+{
+ "format": "owndraw-formeln",
+ "name": "Grundsammlung",
+ "desc": "Mitgelieferte Formeln für Mechanik und Elektrotechnik (HTL-Grundstufe).",
+ "formulas": [
+  {
+   "name": "Gleichförmige Bewegung",
+   "expr": "v = s/t",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "s",
+     "unit": "m",
+     "desc": "Weg"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Beschleunigung",
+   "expr": "a = Δv/Δt",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "a",
+     "unit": "m/s²",
+     "desc": "Beschleunigung"
+    },
+    {
+     "sym": "Δv",
+     "unit": "m/s",
+     "desc": "Geschwindigkeitsänderung"
+    },
+    {
+     "sym": "Δt",
+     "unit": "s",
+     "desc": "Zeitspanne"
+    }
+   ]
+  },
+  {
+   "name": "Weg bei gleichmäßiger Beschleunigung",
+   "expr": "s = v_0·t + a·t²/2",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "s",
+     "unit": "m",
+     "desc": "Weg"
+    },
+    {
+     "sym": "v_0",
+     "unit": "m/s",
+     "desc": "Anfangsgeschwindigkeit"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    },
+    {
+     "sym": "a",
+     "unit": "m/s²",
+     "desc": "Beschleunigung"
+    }
+   ]
+  },
+  {
+   "name": "Geschwindigkeit bei gleichmäßiger Beschleunigung",
+   "expr": "v = v_0 + a·t",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "v_0",
+     "unit": "m/s",
+     "desc": "Anfangsgeschwindigkeit"
+    },
+    {
+     "sym": "a",
+     "unit": "m/s²",
+     "desc": "Beschleunigung"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Geschwindigkeit aus dem Weg",
+   "expr": "v = sqrt(v_0² + 2·a·s)",
+   "topic": "Mechanik – Kinematik",
+   "desc": "Gleichmäßig beschleunigt, ohne Zeit.",
+   "vars": [
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "v_0",
+     "unit": "m/s",
+     "desc": "Anfangsgeschwindigkeit"
+    },
+    {
+     "sym": "a",
+     "unit": "m/s²",
+     "desc": "Beschleunigung"
+    },
+    {
+     "sym": "s",
+     "unit": "m",
+     "desc": "Weg"
+    }
+   ]
+  },
+  {
+   "name": "Freier Fall – Fallhöhe",
+   "expr": "h = g·t²/2",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "h",
+     "unit": "m",
+     "desc": "Fallhöhe"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Freier Fall – Geschwindigkeit",
+   "expr": "v = g·t",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Fallgeschwindigkeit aus der Höhe",
+   "expr": "v = sqrt(2·g·h)",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    },
+    {
+     "sym": "h",
+     "unit": "m",
+     "desc": "Fallhöhe"
+    }
+   ]
+  },
+  {
+   "name": "Wurfweite (schiefer Wurf)",
+   "expr": "s_W = v_0²·sin(2·α)/g",
+   "topic": "Mechanik – Kinematik",
+   "desc": "Abwurf und Aufprall auf gleicher Höhe, ohne Luftwiderstand.",
+   "vars": [
+    {
+     "sym": "s_W",
+     "unit": "m",
+     "desc": "Wurfweite"
+    },
+    {
+     "sym": "v_0",
+     "unit": "m/s",
+     "desc": "Anfangsgeschwindigkeit"
+    },
+    {
+     "sym": "α",
+     "unit": "°",
+     "desc": "Abwurfwinkel"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    }
+   ]
+  },
+  {
+   "name": "Winkelgeschwindigkeit",
+   "expr": "ω = 2·π·n",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "ω",
+     "unit": "1/s",
+     "desc": "Winkelgeschwindigkeit"
+    },
+    {
+     "sym": "n",
+     "unit": "1/s",
+     "desc": "Drehzahl"
+    }
+   ]
+  },
+  {
+   "name": "Umfangsgeschwindigkeit",
+   "expr": "v = ω·r",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Umfangsgeschwindigkeit"
+    },
+    {
+     "sym": "ω",
+     "unit": "1/s",
+     "desc": "Winkelgeschwindigkeit"
+    },
+    {
+     "sym": "r",
+     "unit": "m",
+     "desc": "Radius"
+    }
+   ]
+  },
+  {
+   "name": "Zentripetalbeschleunigung",
+   "expr": "a_Z = v²/r",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "a_Z",
+     "unit": "m/s²",
+     "desc": "Zentripetalbeschleunigung"
+    },
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "r",
+     "unit": "m",
+     "desc": "Radius"
+    }
+   ]
+  },
+  {
+   "name": "Periodendauer",
+   "expr": "T = 1/f",
+   "topic": "Mechanik – Kinematik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "T",
+     "unit": "s",
+     "desc": "Periodendauer"
+    },
+    {
+     "sym": "f",
+     "unit": "Hz",
+     "desc": "Frequenz"
+    }
+   ]
+  },
+  {
+   "name": "Grundgesetz der Mechanik",
+   "expr": "F = m·a",
+   "topic": "Mechanik – Dynamik",
+   "desc": "Newton: Kraft = Masse mal Beschleunigung.",
+   "vars": [
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "a",
+     "unit": "m/s²",
+     "desc": "Beschleunigung"
+    }
+   ]
+  },
+  {
+   "name": "Gewichtskraft",
+   "expr": "F_G = m·g",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F_G",
+     "unit": "N",
+     "desc": "Gewichtskraft"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    }
+   ]
+  },
+  {
+   "name": "Reibungskraft",
+   "expr": "F_R = μ·F_N",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F_R",
+     "unit": "N",
+     "desc": "Reibungskraft"
+    },
+    {
+     "sym": "μ",
+     "unit": "1",
+     "desc": "Reibungszahl"
+    },
+    {
+     "sym": "F_N",
+     "unit": "N",
+     "desc": "Normalkraft"
+    }
+   ]
+  },
+  {
+   "name": "Federkraft",
+   "expr": "F = D·s",
+   "topic": "Mechanik – Dynamik",
+   "desc": "Hookesches Gesetz für Federn.",
+   "vars": [
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Federkraft"
+    },
+    {
+     "sym": "D",
+     "unit": "N/m",
+     "desc": "Federkonstante"
+    },
+    {
+     "sym": "s",
+     "unit": "m",
+     "desc": "Auslenkung"
+    }
+   ]
+  },
+  {
+   "name": "Impuls",
+   "expr": "p = m·v",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "p",
+     "unit": "kg·m/s",
+     "desc": "Impuls"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    }
+   ]
+  },
+  {
+   "name": "Zentripetalkraft",
+   "expr": "F_Z = m·v²/r",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F_Z",
+     "unit": "N",
+     "desc": "Zentripetalkraft"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    },
+    {
+     "sym": "r",
+     "unit": "m",
+     "desc": "Radius"
+    }
+   ]
+  },
+  {
+   "name": "Hangabtriebskraft",
+   "expr": "F_H = F_G·sin(α)",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F_H",
+     "unit": "N",
+     "desc": "Hangabtriebskraft"
+    },
+    {
+     "sym": "F_G",
+     "unit": "N",
+     "desc": "Gewichtskraft"
+    },
+    {
+     "sym": "α",
+     "unit": "°",
+     "desc": "Neigungswinkel"
+    }
+   ]
+  },
+  {
+   "name": "Auftriebskraft",
+   "expr": "F_A = ρ·g·V",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F_A",
+     "unit": "N",
+     "desc": "Auftriebskraft"
+    },
+    {
+     "sym": "ρ",
+     "unit": "kg/m³",
+     "desc": "Dichte der Flüssigkeit"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    },
+    {
+     "sym": "V",
+     "unit": "m³",
+     "desc": "verdrängtes Volumen"
+    }
+   ]
+  },
+  {
+   "name": "Gravitationsgesetz",
+   "expr": "F = G·m_1·m_2/r²",
+   "topic": "Mechanik – Dynamik",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Gravitationskraft"
+    },
+    {
+     "sym": "G",
+     "unit": "m³/(kg·s²)",
+     "desc": "Gravitationskonstante"
+    },
+    {
+     "sym": "m_1",
+     "unit": "kg",
+     "desc": "Masse 1"
+    },
+    {
+     "sym": "m_2",
+     "unit": "kg",
+     "desc": "Masse 2"
+    },
+    {
+     "sym": "r",
+     "unit": "m",
+     "desc": "Abstand der Schwerpunkte"
+    }
+   ]
+  },
+  {
+   "name": "Mechanische Arbeit",
+   "expr": "W = F·s",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "W",
+     "unit": "J",
+     "desc": "Arbeit"
+    },
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft in Wegrichtung"
+    },
+    {
+     "sym": "s",
+     "unit": "m",
+     "desc": "Weg"
+    }
+   ]
+  },
+  {
+   "name": "Potenzielle Energie",
+   "expr": "E_pot = m·g·h",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "E_pot",
+     "unit": "J",
+     "desc": "Lageenergie"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    },
+    {
+     "sym": "h",
+     "unit": "m",
+     "desc": "Höhe"
+    }
+   ]
+  },
+  {
+   "name": "Kinetische Energie",
+   "expr": "E_kin = m·v²/2",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "E_kin",
+     "unit": "J",
+     "desc": "Bewegungsenergie"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    }
+   ]
+  },
+  {
+   "name": "Spannenergie",
+   "expr": "E_F = D·s²/2",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "E_F",
+     "unit": "J",
+     "desc": "Spannenergie"
+    },
+    {
+     "sym": "D",
+     "unit": "N/m",
+     "desc": "Federkonstante"
+    },
+    {
+     "sym": "s",
+     "unit": "m",
+     "desc": "Auslenkung"
+    }
+   ]
+  },
+  {
+   "name": "Leistung",
+   "expr": "P = W/t",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "W",
+     "unit": "J",
+     "desc": "Arbeit"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Leistung aus Kraft und Geschwindigkeit",
+   "expr": "P = F·v",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft"
+    },
+    {
+     "sym": "v",
+     "unit": "m/s",
+     "desc": "Geschwindigkeit"
+    }
+   ]
+  },
+  {
+   "name": "Wirkungsgrad",
+   "expr": "η = P_ab/P_zu",
+   "topic": "Mechanik – Arbeit, Energie, Leistung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "η",
+     "unit": "1",
+     "desc": "Wirkungsgrad"
+    },
+    {
+     "sym": "P_ab",
+     "unit": "W",
+     "desc": "abgegebene Leistung"
+    },
+    {
+     "sym": "P_zu",
+     "unit": "W",
+     "desc": "zugeführte Leistung"
+    }
+   ]
+  },
+  {
+   "name": "Drehmoment",
+   "expr": "M = F·r",
+   "topic": "Mechanik – Drehbewegung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "M",
+     "unit": "N·m",
+     "desc": "Drehmoment"
+    },
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft"
+    },
+    {
+     "sym": "r",
+     "unit": "m",
+     "desc": "Hebelarm"
+    }
+   ]
+  },
+  {
+   "name": "Leistung bei Drehbewegung",
+   "expr": "P = M·ω",
+   "topic": "Mechanik – Drehbewegung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "M",
+     "unit": "N·m",
+     "desc": "Drehmoment"
+    },
+    {
+     "sym": "ω",
+     "unit": "1/s",
+     "desc": "Winkelgeschwindigkeit"
+    }
+   ]
+  },
+  {
+   "name": "Leistung aus Drehzahl",
+   "expr": "P = 2·π·n·M",
+   "topic": "Mechanik – Drehbewegung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "n",
+     "unit": "1/s",
+     "desc": "Drehzahl"
+    },
+    {
+     "sym": "M",
+     "unit": "N·m",
+     "desc": "Drehmoment"
+    }
+   ]
+  },
+  {
+   "name": "Rotationsenergie",
+   "expr": "E_rot = J·ω²/2",
+   "topic": "Mechanik – Drehbewegung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "E_rot",
+     "unit": "J",
+     "desc": "Rotationsenergie"
+    },
+    {
+     "sym": "J",
+     "unit": "kg·m²",
+     "desc": "Trägheitsmoment"
+    },
+    {
+     "sym": "ω",
+     "unit": "1/s",
+     "desc": "Winkelgeschwindigkeit"
+    }
+   ]
+  },
+  {
+   "name": "Trägheitsmoment Vollzylinder",
+   "expr": "J = m·r²/2",
+   "topic": "Mechanik – Drehbewegung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "J",
+     "unit": "kg·m²",
+     "desc": "Trägheitsmoment"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "r",
+     "unit": "m",
+     "desc": "Radius"
+    }
+   ]
+  },
+  {
+   "name": "Übersetzungsverhältnis",
+   "expr": "i = n_1/n_2",
+   "topic": "Mechanik – Drehbewegung",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "i",
+     "unit": "1",
+     "desc": "Übersetzung"
+    },
+    {
+     "sym": "n_1",
+     "unit": "1/s",
+     "desc": "Drehzahl Antrieb"
+    },
+    {
+     "sym": "n_2",
+     "unit": "1/s",
+     "desc": "Drehzahl Abtrieb"
+    }
+   ]
+  },
+  {
+   "name": "Druck",
+   "expr": "p = F/A",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "p",
+     "unit": "Pa",
+     "desc": "Druck"
+    },
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft"
+    },
+    {
+     "sym": "A",
+     "unit": "m²",
+     "desc": "Fläche"
+    }
+   ]
+  },
+  {
+   "name": "Hydrostatischer Druck",
+   "expr": "p = ρ·g·h",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "p",
+     "unit": "Pa",
+     "desc": "Druck"
+    },
+    {
+     "sym": "ρ",
+     "unit": "kg/m³",
+     "desc": "Dichte"
+    },
+    {
+     "sym": "g",
+     "unit": "m/s²",
+     "desc": "Fallbeschleunigung (9,81 m/s²)"
+    },
+    {
+     "sym": "h",
+     "unit": "m",
+     "desc": "Tiefe"
+    }
+   ]
+  },
+  {
+   "name": "Dichte",
+   "expr": "ρ = m/V",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "ρ",
+     "unit": "kg/m³",
+     "desc": "Dichte"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "V",
+     "unit": "m³",
+     "desc": "Volumen"
+    }
+   ]
+  },
+  {
+   "name": "Normalspannung",
+   "expr": "σ = F/A",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "σ",
+     "unit": "N/mm²",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft"
+    },
+    {
+     "sym": "A",
+     "unit": "mm²",
+     "desc": "Querschnitt"
+    }
+   ]
+  },
+  {
+   "name": "Dehnung",
+   "expr": "ε = Δl/l_0",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "ε",
+     "unit": "1",
+     "desc": "Dehnung"
+    },
+    {
+     "sym": "Δl",
+     "unit": "mm",
+     "desc": "Längenänderung"
+    },
+    {
+     "sym": "l_0",
+     "unit": "mm",
+     "desc": "Ausgangslänge"
+    }
+   ]
+  },
+  {
+   "name": "Hookesches Gesetz",
+   "expr": "σ = E·ε",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "σ",
+     "unit": "N/mm²",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "E",
+     "unit": "N/mm²",
+     "desc": "Elastizitätsmodul"
+    },
+    {
+     "sym": "ε",
+     "unit": "1",
+     "desc": "Dehnung"
+    }
+   ]
+  },
+  {
+   "name": "Biegespannung",
+   "expr": "σ_b = M_b/W_b",
+   "topic": "Mechanik – Festigkeit und Druck",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "σ_b",
+     "unit": "N/mm²",
+     "desc": "Biegespannung"
+    },
+    {
+     "sym": "M_b",
+     "unit": "N·mm",
+     "desc": "Biegemoment"
+    },
+    {
+     "sym": "W_b",
+     "unit": "mm³",
+     "desc": "Widerstandsmoment"
+    }
+   ]
+  },
+  {
+   "name": "Wärmemenge",
+   "expr": "Q = m·c·ΔT",
+   "topic": "Wärmelehre",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Q",
+     "unit": "J",
+     "desc": "Wärmemenge"
+    },
+    {
+     "sym": "m",
+     "unit": "kg",
+     "desc": "Masse"
+    },
+    {
+     "sym": "c",
+     "unit": "J/(kg·K)",
+     "desc": "spezifische Wärmekapazität"
+    },
+    {
+     "sym": "ΔT",
+     "unit": "K",
+     "desc": "Temperaturänderung"
+    }
+   ]
+  },
+  {
+   "name": "Längenausdehnung",
+   "expr": "Δl = α·l_0·ΔT",
+   "topic": "Wärmelehre",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Δl",
+     "unit": "mm",
+     "desc": "Längenänderung"
+    },
+    {
+     "sym": "α",
+     "unit": "1/K",
+     "desc": "Längenausdehnungskoeffizient"
+    },
+    {
+     "sym": "l_0",
+     "unit": "mm",
+     "desc": "Ausgangslänge"
+    },
+    {
+     "sym": "ΔT",
+     "unit": "K",
+     "desc": "Temperaturänderung"
+    }
+   ]
+  },
+  {
+   "name": "Ohmsches Gesetz",
+   "expr": "U = R·I",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    }
+   ]
+  },
+  {
+   "name": "Elektrische Leistung",
+   "expr": "P = U·I",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    }
+   ]
+  },
+  {
+   "name": "Leistung aus Strom und Widerstand",
+   "expr": "P = I²·R",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    }
+   ]
+  },
+  {
+   "name": "Leistung aus Spannung und Widerstand",
+   "expr": "P = U²/R",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    }
+   ]
+  },
+  {
+   "name": "Elektrische Energie",
+   "expr": "W = P·t",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "W",
+     "unit": "J",
+     "desc": "Energie"
+    },
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Ladung",
+   "expr": "Q = I·t",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Q",
+     "unit": "C",
+     "desc": "Ladung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    }
+   ]
+  },
+  {
+   "name": "Leiterwiderstand",
+   "expr": "R = ρ·l/A",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "Konstanten ρ_Cu und ρ_Al stehen in der Grundsammlung.",
+   "vars": [
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    },
+    {
+     "sym": "ρ",
+     "unit": "Ω·mm²/m",
+     "desc": "spezifischer Widerstand"
+    },
+    {
+     "sym": "l",
+     "unit": "m",
+     "desc": "Leiterlänge"
+    },
+    {
+     "sym": "A",
+     "unit": "mm²",
+     "desc": "Querschnitt"
+    }
+   ]
+  },
+  {
+   "name": "Leitwert",
+   "expr": "G = 1/R",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "G",
+     "unit": "S",
+     "desc": "Leitwert"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    }
+   ]
+  },
+  {
+   "name": "Widerstand und Temperatur",
+   "expr": "R_w = R_k·(1 + α·ΔT)",
+   "topic": "Elektrotechnik – Grundlagen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "R_w",
+     "unit": "Ω",
+     "desc": "Warmwiderstand"
+    },
+    {
+     "sym": "R_k",
+     "unit": "Ω",
+     "desc": "Kaltwiderstand (20 °C)"
+    },
+    {
+     "sym": "α",
+     "unit": "1/K",
+     "desc": "Temperaturbeiwert"
+    },
+    {
+     "sym": "ΔT",
+     "unit": "K",
+     "desc": "Temperaturänderung"
+    }
+   ]
+  },
+  {
+   "name": "Reihenschaltung",
+   "expr": "R_ges = R_1 + R_2",
+   "topic": "Elektrotechnik – Schaltungen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "R_ges",
+     "unit": "Ω",
+     "desc": "Gesamtwiderstand"
+    },
+    {
+     "sym": "R_1",
+     "unit": "Ω",
+     "desc": "Widerstand 1"
+    },
+    {
+     "sym": "R_2",
+     "unit": "Ω",
+     "desc": "Widerstand 2"
+    }
+   ]
+  },
+  {
+   "name": "Parallelschaltung",
+   "expr": "R_ges = R_1·R_2/(R_1 + R_2)",
+   "topic": "Elektrotechnik – Schaltungen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "R_ges",
+     "unit": "Ω",
+     "desc": "Gesamtwiderstand"
+    },
+    {
+     "sym": "R_1",
+     "unit": "Ω",
+     "desc": "Widerstand 1"
+    },
+    {
+     "sym": "R_2",
+     "unit": "Ω",
+     "desc": "Widerstand 2"
+    }
+   ]
+  },
+  {
+   "name": "Spannungsteiler (unbelastet)",
+   "expr": "U_2 = U·R_2/(R_1 + R_2)",
+   "topic": "Elektrotechnik – Schaltungen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "U_2",
+     "unit": "V",
+     "desc": "Teilspannung an R_2"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Gesamtspannung"
+    },
+    {
+     "sym": "R_1",
+     "unit": "Ω",
+     "desc": "Widerstand 1"
+    },
+    {
+     "sym": "R_2",
+     "unit": "Ω",
+     "desc": "Widerstand 2"
+    }
+   ]
+  },
+  {
+   "name": "Stromteiler",
+   "expr": "I_1 = I·R_2/(R_1 + R_2)",
+   "topic": "Elektrotechnik – Schaltungen",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "I_1",
+     "unit": "A",
+     "desc": "Teilstrom durch R_1"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Gesamtstrom"
+    },
+    {
+     "sym": "R_1",
+     "unit": "Ω",
+     "desc": "Widerstand 1"
+    },
+    {
+     "sym": "R_2",
+     "unit": "Ω",
+     "desc": "Widerstand 2"
+    }
+   ]
+  },
+  {
+   "name": "Kapazität und Ladung",
+   "expr": "Q = C·U",
+   "topic": "Elektrotechnik – Kondensator",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Q",
+     "unit": "C",
+     "desc": "Ladung"
+    },
+    {
+     "sym": "C",
+     "unit": "F",
+     "desc": "Kapazität"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    }
+   ]
+  },
+  {
+   "name": "Plattenkondensator",
+   "expr": "C = ε_0·ε_r·A/d",
+   "topic": "Elektrotechnik – Kondensator",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "C",
+     "unit": "F",
+     "desc": "Kapazität"
+    },
+    {
+     "sym": "ε_0",
+     "unit": "F/m",
+     "desc": "elektrische Feldkonstante"
+    },
+    {
+     "sym": "ε_r",
+     "unit": "1",
+     "desc": "Permittivitätszahl"
+    },
+    {
+     "sym": "A",
+     "unit": "m²",
+     "desc": "Fläche"
+    },
+    {
+     "sym": "d",
+     "unit": "m",
+     "desc": "Plattenabstand"
+    }
+   ]
+  },
+  {
+   "name": "Energie im Kondensator",
+   "expr": "W = C·U²/2",
+   "topic": "Elektrotechnik – Kondensator",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "W",
+     "unit": "J",
+     "desc": "Energie"
+    },
+    {
+     "sym": "C",
+     "unit": "F",
+     "desc": "Kapazität"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    }
+   ]
+  },
+  {
+   "name": "Zeitkonstante RC",
+   "expr": "τ = R·C",
+   "topic": "Elektrotechnik – Kondensator",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "τ",
+     "unit": "s",
+     "desc": "Zeitkonstante"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    },
+    {
+     "sym": "C",
+     "unit": "F",
+     "desc": "Kapazität"
+    }
+   ]
+  },
+  {
+   "name": "Kondensator laden",
+   "expr": "u_C = U_0·(1 − exp(−t/τ))",
+   "topic": "Elektrotechnik – Kondensator",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "u_C",
+     "unit": "V",
+     "desc": "Kondensatorspannung"
+    },
+    {
+     "sym": "U_0",
+     "unit": "V",
+     "desc": "Ladespannung"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    },
+    {
+     "sym": "τ",
+     "unit": "s",
+     "desc": "Zeitkonstante"
+    }
+   ]
+  },
+  {
+   "name": "Kondensator entladen",
+   "expr": "u_C = U_0·exp(−t/τ)",
+   "topic": "Elektrotechnik – Kondensator",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "u_C",
+     "unit": "V",
+     "desc": "Kondensatorspannung"
+    },
+    {
+     "sym": "U_0",
+     "unit": "V",
+     "desc": "Anfangsspannung"
+    },
+    {
+     "sym": "t",
+     "unit": "s",
+     "desc": "Zeit"
+    },
+    {
+     "sym": "τ",
+     "unit": "s",
+     "desc": "Zeitkonstante"
+    }
+   ]
+  },
+  {
+   "name": "Induktivität einer Zylinderspule",
+   "expr": "L = μ_0·μ_r·N²·A/l",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "L",
+     "unit": "H",
+     "desc": "Induktivität"
+    },
+    {
+     "sym": "μ_0",
+     "unit": "H/m",
+     "desc": "magnetische Feldkonstante"
+    },
+    {
+     "sym": "μ_r",
+     "unit": "1",
+     "desc": "Permeabilitätszahl"
+    },
+    {
+     "sym": "N",
+     "unit": "1",
+     "desc": "Windungszahl"
+    },
+    {
+     "sym": "A",
+     "unit": "m²",
+     "desc": "Fläche"
+    },
+    {
+     "sym": "l",
+     "unit": "m",
+     "desc": "Spulenlänge"
+    }
+   ]
+  },
+  {
+   "name": "Energie in der Spule",
+   "expr": "W = L·I²/2",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "W",
+     "unit": "J",
+     "desc": "Energie"
+    },
+    {
+     "sym": "L",
+     "unit": "H",
+     "desc": "Induktivität"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    }
+   ]
+  },
+  {
+   "name": "Zeitkonstante RL",
+   "expr": "τ = L/R",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "τ",
+     "unit": "s",
+     "desc": "Zeitkonstante"
+    },
+    {
+     "sym": "L",
+     "unit": "H",
+     "desc": "Induktivität"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    }
+   ]
+  },
+  {
+   "name": "Induktionsgesetz",
+   "expr": "U_i = N·ΔΦ/Δt",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "U_i",
+     "unit": "V",
+     "desc": "induzierte Spannung"
+    },
+    {
+     "sym": "N",
+     "unit": "1",
+     "desc": "Windungszahl"
+    },
+    {
+     "sym": "ΔΦ",
+     "unit": "Wb",
+     "desc": "Flussänderung"
+    },
+    {
+     "sym": "Δt",
+     "unit": "s",
+     "desc": "Zeitspanne"
+    }
+   ]
+  },
+  {
+   "name": "Magnetischer Fluss",
+   "expr": "Φ = B·A",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Φ",
+     "unit": "Wb",
+     "desc": "magnetischer Fluss"
+    },
+    {
+     "sym": "B",
+     "unit": "T",
+     "desc": "Flussdichte"
+    },
+    {
+     "sym": "A",
+     "unit": "m²",
+     "desc": "Fläche"
+    }
+   ]
+  },
+  {
+   "name": "Magnetische Feldstärke (Spule)",
+   "expr": "H = I·N/l",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "H",
+     "unit": "A/m",
+     "desc": "Feldstärke"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    },
+    {
+     "sym": "N",
+     "unit": "1",
+     "desc": "Windungszahl"
+    },
+    {
+     "sym": "l",
+     "unit": "m",
+     "desc": "Feldlinienlänge"
+    }
+   ]
+  },
+  {
+   "name": "Flussdichte",
+   "expr": "B = μ_0·μ_r·H",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "B",
+     "unit": "T",
+     "desc": "Flussdichte"
+    },
+    {
+     "sym": "μ_0",
+     "unit": "H/m",
+     "desc": "magnetische Feldkonstante"
+    },
+    {
+     "sym": "μ_r",
+     "unit": "1",
+     "desc": "Permeabilitätszahl"
+    },
+    {
+     "sym": "H",
+     "unit": "A/m",
+     "desc": "Feldstärke"
+    }
+   ]
+  },
+  {
+   "name": "Kraft auf stromdurchflossenen Leiter",
+   "expr": "F = B·I·l",
+   "topic": "Elektrotechnik – Spule und Magnetfeld",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "F",
+     "unit": "N",
+     "desc": "Kraft"
+    },
+    {
+     "sym": "B",
+     "unit": "T",
+     "desc": "Flussdichte"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    },
+    {
+     "sym": "l",
+     "unit": "m",
+     "desc": "wirksame Leiterlänge"
+    }
+   ]
+  },
+  {
+   "name": "Kreisfrequenz",
+   "expr": "ω = 2·π·f",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "ω",
+     "unit": "1/s",
+     "desc": "Kreisfrequenz"
+    },
+    {
+     "sym": "f",
+     "unit": "Hz",
+     "desc": "Frequenz"
+    }
+   ]
+  },
+  {
+   "name": "Effektivwert (Sinus)",
+   "expr": "U_eff = U_s/sqrt(2)",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "U_eff",
+     "unit": "V",
+     "desc": "Effektivwert"
+    },
+    {
+     "sym": "U_s",
+     "unit": "V",
+     "desc": "Scheitelwert"
+    }
+   ]
+  },
+  {
+   "name": "Kapazitiver Blindwiderstand",
+   "expr": "X_C = 1/(2·π·f·C)",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "X_C",
+     "unit": "Ω",
+     "desc": "Blindwiderstand"
+    },
+    {
+     "sym": "f",
+     "unit": "Hz",
+     "desc": "Frequenz"
+    },
+    {
+     "sym": "C",
+     "unit": "F",
+     "desc": "Kapazität"
+    }
+   ]
+  },
+  {
+   "name": "Induktiver Blindwiderstand",
+   "expr": "X_L = 2·π·f·L",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "X_L",
+     "unit": "Ω",
+     "desc": "Blindwiderstand"
+    },
+    {
+     "sym": "f",
+     "unit": "Hz",
+     "desc": "Frequenz"
+    },
+    {
+     "sym": "L",
+     "unit": "H",
+     "desc": "Induktivität"
+    }
+   ]
+  },
+  {
+   "name": "Scheinwiderstand (Reihe R–X)",
+   "expr": "Z = sqrt(R² + X²)",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Z",
+     "unit": "Ω",
+     "desc": "Scheinwiderstand"
+    },
+    {
+     "sym": "R",
+     "unit": "Ω",
+     "desc": "Widerstand"
+    },
+    {
+     "sym": "X",
+     "unit": "Ω",
+     "desc": "Blindwiderstand"
+    }
+   ]
+  },
+  {
+   "name": "Scheinleistung",
+   "expr": "S = U·I",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "S",
+     "unit": "VA",
+     "desc": "Scheinleistung"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    }
+   ]
+  },
+  {
+   "name": "Wirkleistung",
+   "expr": "P = U·I·cos(φ)",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    },
+    {
+     "sym": "φ",
+     "unit": "°",
+     "desc": "Phasenverschiebungswinkel"
+    }
+   ]
+  },
+  {
+   "name": "Blindleistung",
+   "expr": "Q = U·I·sin(φ)",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "Q",
+     "unit": "var",
+     "desc": "Blindleistung"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Spannung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Stromstärke"
+    },
+    {
+     "sym": "φ",
+     "unit": "°",
+     "desc": "Phasenverschiebungswinkel"
+    }
+   ]
+  },
+  {
+   "name": "Resonanzfrequenz",
+   "expr": "f_0 = 1/(2·π·sqrt(L·C))",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "f_0",
+     "unit": "Hz",
+     "desc": "Resonanzfrequenz"
+    },
+    {
+     "sym": "L",
+     "unit": "H",
+     "desc": "Induktivität"
+    },
+    {
+     "sym": "C",
+     "unit": "F",
+     "desc": "Kapazität"
+    }
+   ]
+  },
+  {
+   "name": "Drehstrom-Wirkleistung",
+   "expr": "P = sqrt(3)·U·I·cos(φ)",
+   "topic": "Elektrotechnik – Wechselstrom",
+   "desc": "",
+   "vars": [
+    {
+     "sym": "P",
+     "unit": "W",
+     "desc": "Leistung"
+    },
+    {
+     "sym": "U",
+     "unit": "V",
+     "desc": "Außenleiterspannung"
+    },
+    {
+     "sym": "I",
+     "unit": "A",
+     "desc": "Außenleiterstrom"
+    },
+    {
+     "sym": "φ",
+     "unit": "°",
+     "desc": "Phasenverschiebungswinkel"
+    }
+   ]
+  }
+ ],
+ "consts": [
+  {
+   "sym": "G",
+   "value": "6,674e-11 m³/(kg·s²)",
+   "desc": "Gravitationskonstante"
+  },
+  {
+   "sym": "ρ_Cu",
+   "value": "0,0178 Ω·mm²/m",
+   "desc": "spezifischer Widerstand Kupfer (20 °C)"
+  },
+  {
+   "sym": "ρ_Al",
+   "value": "0,0287 Ω·mm²/m",
+   "desc": "spezifischer Widerstand Aluminium (20 °C)"
+  },
+  {
+   "sym": "α_Cu",
+   "value": "0,0039 1/K",
+   "desc": "Temperaturbeiwert Kupfer"
+  },
+  {
+   "sym": "c_W",
+   "value": "4190 J/(kg·K)",
+   "desc": "spezifische Wärmekapazität Wasser"
+  }
+ ],
+ "units": [
+  {
+   "sym": "kp",
+   "value": "9,80665 N",
+   "desc": "Kilopond (veraltet)"
+  }
+ ]
+}

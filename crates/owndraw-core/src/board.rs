@@ -449,6 +449,10 @@ pub struct Board {
     prev_frame: Option<[f32; 5]>,
     g_a0: f32,
     g_ang0: f32,
+    /// Drehen: Drehpunkt und bisher angewendeter Winkel dieses Ziehens (unabhängig vom Rahmen, der zwischendurch
+    /// neu berechnet werden kann)
+    g_pv: (f32, f32),
+    g_done: f32,
     g_scale: f32,
     g_ux: f32,
     g_uy: f32,
@@ -565,6 +569,8 @@ impl Board {
             prev_frame: None,
             g_a0: 0.0,
             g_ang0: 0.0,
+            g_pv: (0.0, 0.0),
+            g_done: 0.0,
             g_scale: 1.0,
             g_ux: 1.0,
             g_uy: 0.0,
@@ -2549,6 +2555,8 @@ impl Board {
                 let (cx, cy) = self.ls(0.0, 0.0);
                 self.g_a0 = (self.dsy - cy).atan2(self.dsx - cx);
                 self.g_ang0 = self.sel_ang;
+                self.g_pv = (self.sel_cx, self.sel_cy);
+                self.g_done = 0.0;
                 self.drag = 4;
                 return;
             }
@@ -2739,7 +2747,8 @@ impl Board {
                 });
             }
         } else if self.drag == 4 {
-            let a = (wy - self.sel_cy).atan2(wx - self.sel_cx);
+            let (cx, cy) = self.g_pv;
+            let a = (wy - cy).atan2(wx - cx);
             let mut dl = a - self.g_a0;
             let pi = std::f32::consts::PI;
             while dl > pi {
@@ -2753,9 +2762,14 @@ impl Board {
             if let Some(r) = recognizer::SnapCfg::snap_deg(na.to_degrees(), c.handle_step, c.handle_tol).filter(|_| c.handles) {
                 na = r.to_radians();
             }
-            let d = na - self.sel_ang;
-            let (cx, cy) = (self.sel_cx, self.sel_cy);
+            // Nur den Unterschied zum bereits Gedrehten anwenden – bezogen auf dieses Ziehen, nicht auf sel_ang:
+            // wird der Rahmen zwischendurch neu berechnet (sel_ang = 0), drehte sich die Auswahl sonst je Bewegung
+            // um den ganzen Winkel weiter.
+            let d = (na - self.g_ang0) - self.g_done;
+            self.g_done += d;
             self.sel_mut(|it| it.rot(d, cx, cy));
+            self.sel_cx = cx;
+            self.sel_cy = cy;
             self.sel_ang = na;
         }
     }
@@ -3723,6 +3737,32 @@ mod tests {
         b.frame_ok = false;
         b.ensure_frame();
         b
+    }
+
+    #[test]
+    fn dreh_griff_folgt_dem_zeiger() {
+        // Auch wenn der Rahmen während des Ziehens neu berechnet wird (z. B. Dicke-Regler), dreht die Auswahl
+        // genau so weit wie der Zeiger und nicht je Bewegung um den ganzen Winkel weiter.
+        let mut b = sel_board(Item::shape(item::POLY, vec![300.0, 200.0, 400.0, 200.0, 400.0, 300.0, 300.0, 300.0], INK, 2.37));
+        b.snap_cfg.handles = false;
+        let (cx, cy) = b.ls(0.0, 0.0);
+        let (rx, ry) = b.ls(0.0, -b.sel_h / 2.0 - 6.0 - 32.0);
+        let r = cy - ry;
+        b.on_touch(&Motion::single(Action::Down, rx, ry, 0.5, ToolType::Mouse));
+        assert_eq!(b.drag, 4);
+        let ecke = |b: &Board| b.items[0].as_shape().unwrap().q[0..2].to_vec();
+        for i in 1..=20 {
+            let a = -std::f32::consts::FRAC_PI_2 + i as f32 * 0.1;
+            b.on_touch(&Motion::single(Action::Move, cx + r * a.cos(), cy + r * a.sin(), 0.5, ToolType::Mouse));
+            b.set_sel_width(2.4, false);
+        }
+        b.on_touch(&Motion::single(Action::Up, cx, cy - r, 0.5, ToolType::Mouse));
+        // erwartet: Ecke (300,200) um 2 rad (≈114,6°) um (350,250) gedreht
+        let (s, c) = 2.0f32.sin_cos();
+        let (dx, dy) = (-50.0, -50.0);
+        let soll = [350.0 + dx * c - dy * s, 250.0 + dx * s + dy * c];
+        let ist = ecke(&b);
+        assert!((ist[0] - soll[0]).abs() < 0.5 && (ist[1] - soll[1]).abs() < 0.5, "{ist:?} statt {soll:?}");
     }
 
     #[test]

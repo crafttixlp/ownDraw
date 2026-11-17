@@ -579,11 +579,13 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                             ed.board.delete_sel();
                         }
                         ui.spacing_mut().slider_width = if vert { 90.0 } else { 110.0 };
-                        // Strichstärke der ausgewählten Striche/Formen
+                        // Strichstärke der ausgewählten Striche/Formen. Regler nicht klemmen/runden, solange niemand ihn
+                        // bedient: sonst meldet er wegen f32/f64-Rundung jedes Bild „geändert“, setzt die Dicke neu und
+                        // berechnet den Auswahlrahmen neu (Drehen lief dadurch davon).
                         if let Some(w0) = ed.board.sel_width() {
                             let mut w = w0;
                             ui.add_space(6.0);
-                            let r = ui.add(slider(egui::Slider::new(&mut w, 0.5..=40.0).logarithmic(true).max_decimals(1), vert, "Dicke")).on_hover_text(format!("Strichstärke der Auswahl: {w0:.1}"));
+                            let r = ui.add(slider(egui::Slider::new(&mut w, 0.5..=40.0).logarithmic(true).max_decimals(1).clamping(egui::SliderClamping::Never), vert, "Dicke")).on_hover_text(format!("Strichstärke der Auswahl: {w0:.1}"));
                             // Ein Rückgängig-Schritt je Ziehen (bei Beginn), sonst je Änderung (Tastatur/Klick)
                             if r.drag_started() {
                                 ed.board.set_sel_width(w0, true);
@@ -598,7 +600,7 @@ fn selection_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &La
                             let sc = ed.board.sc;
                             let mut v = s0 * sc;
                             ui.add_space(6.0);
-                            let r = ui.add(slider(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0), vert, "Größe")).on_hover_text(format!("Schriftgröße bei aktuellem Zoom: {:.0}", s0 * sc));
+                            let r = ui.add(slider(egui::Slider::new(&mut v, 6.0..=160.0).logarithmic(true).max_decimals(0).clamping(egui::SliderClamping::Never), vert, "Größe")).on_hover_text(format!("Schriftgröße bei aktuellem Zoom: {:.0}", s0 * sc));
                             if r.drag_started() {
                                 ed.board.set_sel_note_size(s0, true);
                             }

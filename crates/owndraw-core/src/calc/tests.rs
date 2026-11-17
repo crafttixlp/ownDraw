@@ -24,6 +24,11 @@ fn beispiel_le() {
 }
 
 #[test]
+fn beispiel_anleitung() {
+    assert_eq!(last(&["a: 4", "b: 5", "M = a + b", "M ="]), "9");
+}
+
+#[test]
 fn grundrechnen() {
     assert_eq!(last(&["3·4 + 2 ="]), "14");
     assert_eq!(last(&["(1 + 2)·3 ="]), "9");

@@ -19,6 +19,20 @@ pub fn note_unsaved(_unsaved: bool) {
     web::set_unsaved(_unsaved);
 }
 
+/// Stammt die Touch-Berührung `id` (egui `TouchId`) von einem Stift? (Stift-Modus)
+///
+/// Nur im Browser erkennbar. Desktop (X11/Wayland) meldet einen Grafiktablett- oder Touchscreen-Stift als Maus,
+/// das gilt dort ohnehin als Stift. Android: winit gibt die Zeigerart nicht weiter, ein Stift kommt wie ein Finger an.
+pub fn pen_touch(_id: u64) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    return web::pen_touch(_id);
+    #[cfg(not(target_arch = "wasm32"))]
+    false
+}
+
+/// Kann der Stift-Modus Stift und Finger hier unterscheiden? (Android: nein, siehe [`pen_touch`])
+pub const PEN_MODE: bool = !cfg!(target_os = "android");
+
 use std::io;
 use std::path::PathBuf;
 

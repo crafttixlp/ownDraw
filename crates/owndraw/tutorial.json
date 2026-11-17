@@ -204,6 +204,14 @@
           "covers": ["tool:Lineal", "action:tool.ruler", "extra:lineal"]
         },
         {
+          "id": "tool-stiftmodus",
+          "title": "Stift-Modus",
+          "text": "Schalter für Tablets und Touchscreens: Ist der Stift-Modus an, zeichnet nur der Stift (und die Maus). Finger verschieben und zoomen dann nur, die aufliegende Hand malt nichts. Ist er aus, zeichnest du auch mit dem Finger.",
+          "how": ["Schalte das Werkzeug unter Einstellungen → Werkzeuge oder über „+ Weitere Werkzeuge“ ein. Ein Tipp auf den Knopf schaltet den Modus um, ein durchgestrichener Finger heißt: an.", "Gleicher Schalter wie „Mit dem Finger zeichnen“ in den Stift-Optionen, nur schneller erreichbar. Kürzel: H.", "Im Browser wird der Stift an der Zeigerart erkannt (z. B. iPad mit Apple Pencil, Android-Tablet mit Stift). Am Linux-PC zählt ein Grafiktablett- oder Touchscreen-Stift wie die Maus. Auf Android (App) lässt sich Stift und Finger noch nicht unterscheiden, dort ist der Modus gesperrt."],
+          "action": ["tool.penmode"],
+          "covers": ["tool:Stift-Modus", "action:tool.penmode", "extra:stiftmodus"]
+        },
+        {
           "id": "tool-laser",
           "title": "Laserpointer",
           "text": "Zeigt mit einer roten Leuchtspur auf etwas. Die Spur verblasst nach 1,5 Sekunden, wird nicht gespeichert und landet nicht im Rückgängig.",
@@ -589,7 +597,7 @@
         {
           "id": "input-stift",
           "title": "Stift",
-          "text": "Ein Stift zeichnet immer, auch wenn Fingerzeichnen aus ist. Die Hand darf aufliegen: Während der Stift zeichnet, werden Finger ignoriert. Radierseite und Seitentaste radieren.",
+          "text": "Ein Stift zeichnet immer, auch wenn Fingerzeichnen aus ist (Stift-Modus). Die Hand darf aufliegen: Während der Stift zeichnet, werden Finger ignoriert. Radierseite und Seitentaste radieren.",
           "covers": ["extra:stift"]
         },
         {

@@ -249,7 +249,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
         }
         Tool::Note => colors(ui, ed, sh),
         Tool::Ruler => super::ruler::options(ui, ed, sh),
-        Tool::Image | Tool::Laser | Tool::Space => {}
+        Tool::Image | Tool::Laser | Tool::Space | Tool::PenMode => {}
         Tool::Connector => {
             style::caption(ui, "Art");
             ui.horizontal_wrapped(|ui| {

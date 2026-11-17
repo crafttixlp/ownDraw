@@ -382,12 +382,17 @@ fn tool_icon(ed: &Editor, t: Tool) -> Option<i32> {
         Tool::Table => ic::TABLE,
         Tool::Pin => ic::PIN,
         Tool::Math => ic::FORMULA,
+        Tool::PenMode => ic::FINGER,
     })
 }
 
 fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
     let p = style::pal();
-    let active = t != Tool::Image && (ed.active_tool() == t || (t == Tool::Ruler && ed.ext.ruler.visible));
+    let active = match t {
+        Tool::Image => false,
+        Tool::PenMode => ed.pen_mode(),
+        _ => ed.active_tool() == t || (t == Tool::Ruler && ed.ext.ruler.visible),
+    };
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     style::btn_bg(ui, rect, &resp, active);
     let tint = if active { p.accent } else { p.text };
@@ -395,6 +400,11 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
     match tool_icon(ed, t) {
         Some(id) => sh.icons.paint(ui, rect, id, tint, false, isz),
         None => super::glyphs::paint_tool(ui.painter(), rect, ed, t, isz, c(tint)),
+    }
+    if t == Tool::PenMode && active {
+        // Finger durchgestrichen: Finger zeichnen nicht
+        let h = isz * 0.5;
+        ui.painter().line_segment([rect.center() + Vec2::new(-h, -h), rect.center() + Vec2::new(h, h)], Stroke::new(2.0, c(tint)));
     }
     // Farbpunkt als Hinweis auf die aktuelle Farbe – nur am aktiven Werkzeug (sonst unruhig)
     if active && matches!(t, Tool::Pen | Tool::Marker | Tool::Shape | Tool::Text | Tool::Note | Tool::Fill | Tool::Stamp | Tool::Dim | Tool::Connector | Tool::Pin | Tool::Math) {
@@ -407,6 +417,8 @@ fn tool_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool, size: f32) {
     if resp.on_hover_text(tip).clicked() {
         if t == Tool::Image {
             ed.pick_image(sh);
+        } else if t == Tool::PenMode {
+            ed.select_tool(sh, t);
         } else if active {
             ed.st.opts_open = !ed.st.opts_open;
             ed.st.menu_open = false;
@@ -453,6 +465,9 @@ fn more_btn(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, size: f32, vert: bool
 impl Editor {
     fn tool_tip(&self, env: &crate::layout::Env, t: Tool, set: &settings::Settings) -> String {
         let mut s = env.tip(t.label(), &keys::label(set, &t.action()));
+        if t == Tool::PenMode {
+            s.push_str(if self.pen_mode() { " · an: nur der Stift zeichnet" } else { " · aus: Finger zeichnen" });
+        }
         if t.has_options() && self.active_tool() == t {
             s.push_str(" · erneut tippen für Optionen");
         }

@@ -121,6 +121,34 @@ impl Default for Snapping {
     }
 }
 
+/// Einstellungen des Werkzeugs „Rechnen“ (entsprechen `owndraw_core::calc::Opts`).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CalcPrefs {
+    /// „Rechnen erlauben“ (aus = keine Ergebnisse, z. B. für Prüfungen).
+    pub on: bool,
+    /// Winkel in Grad (sonst Bogenmaß).
+    pub deg: bool,
+    /// Gültige Stellen (2–10).
+    pub digits: u8,
+    /// Dezimalkomma statt Punkt.
+    pub comma: bool,
+    /// Rechenweg anzeigen.
+    pub steps: bool,
+}
+
+impl Default for CalcPrefs {
+    fn default() -> Self {
+        CalcPrefs { on: true, deg: true, digits: 4, comma: true, steps: false }
+    }
+}
+
+impl CalcPrefs {
+    pub fn to_core(self) -> owndraw_core::calc::Opts {
+        owndraw_core::calc::Opts { on: self.on, deg: self.deg, digits: self.digits.clamp(2, 10), comma: self.comma, steps: self.steps }
+    }
+}
+
 impl Snapping {
     pub fn to_core(self) -> owndraw_core::recognizer::SnapCfg {
         owndraw_core::recognizer::SnapCfg {
@@ -196,6 +224,8 @@ pub struct Settings {
     pub update_repo: String,
     /// Einrasten von Winkeln.
     pub snap: Snapping,
+    /// Werkzeug „Rechnen“: Optionen und Schalter „Rechnen erlauben“.
+    pub calc: CalcPrefs,
     /// Unbekannte/zusätzliche Werte anderer Module (z. B. Werkzeug-Vorgaben aus prefs.txt).
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -239,6 +269,7 @@ impl Default for Settings {
             update_skip: None,
             update_repo: "crafttixlp/ownDraw".into(),
             snap: Snapping::default(),
+            calc: CalcPrefs::default(),
             extra: Default::default(),
         }
     }
@@ -265,6 +296,7 @@ impl Settings {
             }
         }
         self.snap.sanitize();
+        self.calc.digits = self.calc.digits.clamp(2, 10);
         if self.update_repo.trim().is_empty() {
             self.update_repo = Settings::default().update_repo;
         }

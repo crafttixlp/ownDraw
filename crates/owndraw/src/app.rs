@@ -20,8 +20,8 @@ use std::path::PathBuf;
 /// Wofür ein System-Dialog geöffnet wurde.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PickPurpose {
-    ExportPng,
-    ExportPdf,
+    /// Export in ein Format des Kerns (Optionen aus dem Export-Fenster).
+    Export(owndraw_core::export::formats::Fmt),
     ExportZip,
     ExportLayer(usize),
     SaveCopy,

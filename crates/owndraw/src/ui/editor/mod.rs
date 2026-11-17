@@ -5,6 +5,7 @@ mod arrange;
 pub mod clip;
 mod crop;
 pub mod drop;
+pub mod export;
 mod extras;
 pub mod keys;
 mod glyphs;
@@ -159,6 +160,8 @@ pub struct UiState {
     pub stamp_size: usize,
     /// Werkzeug „Formel“ aktiv (Board-Werkzeug TEXT: Tippen fragt nach einer Formel statt nach Text).
     pub math_tool: bool,
+    /// Export-Fenster.
+    pub export: export::ExportUi,
 }
 
 /// Berechnete Lage der schwebenden Elemente (pro Frame).
@@ -404,8 +407,10 @@ impl Editor {
             None => sh.toast("Export fehlgeschlagen"),
         };
         match purpose {
-            PickPurpose::ExportPng => write(sh, &with_ext(f, "png"), self.board.export_png(), "Export gespeichert"),
-            PickPurpose::ExportPdf => write(sh, &with_ext(f, "pdf"), self.board.export_pdf(), "Export gespeichert"),
+            PickPurpose::Export(fmt) => match self.export_bytes(fmt) {
+                Ok(d) => write(sh, &with_ext(f, fmt.ext()), Some(d), "Export gespeichert"),
+                Err(e) => sh.toast(&e),
+            },
             PickPurpose::ExportZip => {
                 let mut cur = std::io::Cursor::new(Vec::new());
                 let ok = owndraw_core::export::write_zip(&self.board, &self.doc.meta.name, &mut cur);
@@ -468,12 +473,8 @@ impl Editor {
             return;
         }
         let base = crate::app::safe_file_name(&self.doc.meta.name);
-        let (purpose, name, k) = match kind {
-            0 => (PickPurpose::ExportPng, format!("{base}.png"), FileKind::Png),
-            1 => (PickPurpose::ExportPdf, format!("{base}.pdf"), FileKind::Pdf),
-            _ => (PickPurpose::ExportZip, format!("{base}-website.zip"), FileKind::Zip),
-        };
-        sh.reqs.push(Req::PickSave { purpose, name, kind: k });
+        let _ = kind;
+        sh.reqs.push(Req::PickSave { purpose: PickPurpose::ExportZip, name: format!("{base}-website.zip"), kind: FileKind::Zip });
     }
 
     pub fn export_layer(&mut self, sh: &mut Shared, i: usize) {
@@ -709,7 +710,7 @@ impl Editor {
 
         let modal = sh.dialog.is_some() || self.st.edit_tools.is_some() || self.math.is_some();
         // Klick auf die Zeichenfläche schließt offene Popups und zeichnet nicht.
-        let popup_open = self.st.opts_open || self.st.menu_open || self.st.more_open;
+        let popup_open = self.st.opts_open || self.st.menu_open || self.st.more_open || self.st.export.open;
         let mut swallow = false;
         if popup_open && !modal {
             let press = ctx.input(|i| i.pointer.any_pressed()).then(|| ctx.input(|i| i.pointer.interact_pos())).flatten();
@@ -720,6 +721,7 @@ impl Editor {
                     self.st.opts_open = false;
                     self.st.menu_open = false;
                     self.st.more_open = false;
+                    self.st.export.open = false;
                     swallow = true;
                 }
             }
@@ -833,6 +835,7 @@ impl Editor {
         toolbar::show(self, &ctx, sh, &lay, &tools);
         options::show(self, &ctx, sh, &lay);
         menu::show(self, &ctx, sh, &lay);
+        export::show(self, &ctx, sh, &lay);
         more::show(self, &ctx, sh, &lay);
         self.x_frame(&ctx, sh, &lay, layer);
         self.text_editor(&ctx, &sh.settings);
@@ -885,10 +888,11 @@ impl Editor {
     }
 
     fn close_popups_on_esc(&mut self, ctx: &egui::Context, s: &Settings) {
-        if (self.st.opts_open || self.st.menu_open || self.st.more_open) && self.text.is_none() && ctx.input_mut(|i| keys::consume(i, s, "cancel")) {
+        if (self.st.opts_open || self.st.menu_open || self.st.more_open || self.st.export.open) && self.text.is_none() && ctx.input_mut(|i| keys::consume(i, s, "cancel")) {
             self.st.opts_open = false;
             self.st.menu_open = false;
             self.st.more_open = false;
+            self.st.export.open = false;
         }
     }
 
@@ -1237,6 +1241,13 @@ impl Editor {
             "menu" => {
                 self.st.menu_open = true;
                 self.st.opts_open = false;
+                self.st.export.open = false;
+            }
+            "export" => {
+                self.st.export.open = true;
+                self.st.menu_open = false;
+                self.st.opts_open = false;
+                self.st.more_open = false;
             }
             "help" => sh.reqs.push(crate::app::Req::OpenTutorial),
             "fit" => self.board.fit(),

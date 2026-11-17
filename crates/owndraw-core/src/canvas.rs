@@ -735,3 +735,126 @@ pub fn arc_to(pb: &mut PathBuilder, l: f32, t: f32, r: f32, b: f32, start_deg: f
         a = a1;
     }
 }
+
+/// Vektor-Befehl fuer SVG/PDF/EPS/EMF-Export. Koordinaten liegen im Ausgaberaum (bereits transformiert).
+#[derive(Clone)]
+pub enum VOp {
+    /// Pfad fuellen (Nicht-Null-Regel), Farbe 0xAARRGGBB.
+    Fill(Path, u32),
+    /// Pfad nachziehen; `width` im Ausgaberaum, Verbindungen immer rund.
+    Stroke { path: Path, color: u32, width: f32, round_cap: bool, dash: Option<(f32, f32)> },
+    /// Bild; `m` bildet Bildpixel (0..w, 0..h) in den Ausgaberaum ab. Das Bild ist vormultipliziert (tiny-skia).
+    Image(Pixmap, Transform),
+    /// Zustand sichern (endet mit Restore).
+    Save,
+    /// Gruppe mit Deckkraft 0..255 (endet mit Restore).
+    Group(u8),
+    Restore,
+    /// Alles bis zum passenden Restore auf den Pfad zuschneiden.
+    Clip(Path),
+}
+
+impl Recording {
+    /// Wandelt die Aufnahme in Vektor-Befehle um. `w`, `h` = Groesse des Ausgaberaums (fuer draw_color).
+    pub fn vector_ops(&self, w: f32, h: f32) -> Vec<VOp> {
+        let mut out = Vec::with_capacity(self.0.len());
+        for cmd in &self.0 {
+            match cmd {
+                Cmd::Color(col) => {
+                    if let Some(r) = Rect::from_xywh(0.0, 0.0, w.max(1e-3), h.max(1e-3)) {
+                        out.push(VOp::Fill(PathBuilder::from_rect(r), *col));
+                    }
+                }
+                Cmd::Path(p, paint, m) => vector_path(&mut out, p, paint, *m),
+                Cmd::Caps(segs, col, m) => {
+                    if let Some(p) = capsules_path(segs).and_then(|p| p.transform(*m)) {
+                        out.push(VOp::Fill(p, *col));
+                    }
+                }
+                Cmd::Pix(raw, [l, t, r, b], m) => {
+                    // Sicherheit: siehe RawPix (Bild lebt bis nach dem Umwandeln, der Aufrufer haelt `keep`)
+                    let px: &Pixmap = unsafe { &*raw.0 };
+                    if px.width() == 0 || px.height() == 0 {
+                        continue;
+                    }
+                    let sx = (r - l) / px.width() as f32;
+                    let sy = (b - t) / px.height() as f32;
+                    if sx == 0.0 || sy == 0.0 || !sx.is_finite() || !sy.is_finite() {
+                        continue;
+                    }
+                    out.push(VOp::Image(px.clone(), m.pre_translate(*l, *t).pre_scale(sx, sy)));
+                }
+                Cmd::Save => out.push(VOp::Save),
+                Cmd::Layer(a) => out.push(VOp::Group(*a)),
+                Cmd::Restore => out.push(VOp::Restore),
+                Cmd::Clip(p, m) => {
+                    if let Some(p) = p.clone().transform(*m) {
+                        out.push(VOp::Clip(p));
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
+fn vector_path(out: &mut Vec<VOp>, p: &Path, paint: &Paint, m: Transform) {
+    match paint.style {
+        Style::Fill => {
+            if let Some(q) = p.clone().transform(m) {
+                out.push(VOp::Fill(q, paint.color));
+            }
+        }
+        Style::Stroke => {
+            // gleichmaessige Skalierung (+ Drehung): Strich bleibt Strich, sonst Umriss fuellen
+            let det = m.sx * m.sy - m.kx * m.ky;
+            let uniform = (m.sx - m.sy).abs() <= 1e-4 * m.sx.abs().max(1e-6) && (m.kx + m.ky).abs() <= 1e-4 * m.sx.abs().max(1e-6) && det > 0.0;
+            if uniform {
+                if let Some(q) = p.clone().transform(m) {
+                    let s = det.sqrt();
+                    out.push(VOp::Stroke { path: q, color: paint.color, width: paint.stroke_width.max(0.0) * s, round_cap: paint.cap == Cap::Round, dash: paint.dash.map(|(a, b)| (a * s, b * s)) });
+                }
+                return;
+            }
+            let cap = if paint.cap == Cap::Round { LineCap::Round } else { LineCap::Butt };
+            let mut st = Stroke { width: paint.stroke_width.max(0.0), line_cap: cap, line_join: LineJoin::Round, ..Stroke::default() };
+            if let Some((on, off)) = paint.dash {
+                if on > 0.0 && off > 0.0 {
+                    st.dash = StrokeDash::new(vec![on, off], 0.0);
+                }
+            }
+            if let Some(q) = p.stroke(&st, 1.0).and_then(|q| q.transform(m)) {
+                out.push(VOp::Fill(q, paint.color));
+            }
+        }
+    }
+}
+
+/// Vereinigung der Kapseln als ein Pfad: alle Umrisse mit gleichem Umlaufsinn, damit die Nicht-Null-Regel
+/// Ueberlappungen nur einmal deckt (wichtig fuer halbtransparente Marker).
+pub fn capsules_path(segs: &[[f32; 5]]) -> Option<Path> {
+    const K: f32 = 0.552_284_8;
+    let mut pb = PathBuilder::new();
+    for g in segs {
+        let (ax, ay, bx, by, r) = (g[0], g[1], g[2], g[3], g[4]);
+        if !(r > 0.0) || !r.is_finite() {
+            continue;
+        }
+        let (dx, dy) = (bx - ax, by - ay);
+        let len = (dx * dx + dy * dy).sqrt();
+        let (ux, uy) = if len > 1e-6 { (dx / len, dy / len) } else { (1.0, 0.0) };
+        let (nx, ny) = (-uy, ux);
+        let (ur, nr, k) = ((ux * r, uy * r), (nx * r, ny * r), K);
+        pb.move_to(ax + nr.0, ay + nr.1);
+        pb.line_to(bx + nr.0, by + nr.1);
+        // Halbkreis um b: b+n -> b+u -> b-n
+        pb.cubic_to(bx + nr.0 + ur.0 * k, by + nr.1 + ur.1 * k, bx + ur.0 + nr.0 * k, by + ur.1 + nr.1 * k, bx + ur.0, by + ur.1);
+        pb.cubic_to(bx + ur.0 - nr.0 * k, by + ur.1 - nr.1 * k, bx - nr.0 + ur.0 * k, by - nr.1 + ur.1 * k, bx - nr.0, by - nr.1);
+        pb.line_to(ax - nr.0, ay - nr.1);
+        // Halbkreis um a: a-n -> a-u -> a+n
+        pb.cubic_to(ax - nr.0 - ur.0 * k, ay - nr.1 - ur.1 * k, ax - ur.0 - nr.0 * k, ay - ur.1 - nr.1 * k, ax - ur.0, ay - ur.1);
+        pb.cubic_to(ax - ur.0 + nr.0 * k, ay - ur.1 + nr.1 * k, ax + nr.0 - ur.0 * k, ay + nr.1 - ur.1 * k, ax + nr.0, ay + nr.1);
+        pb.close();
+    }
+    pb.finish()
+}

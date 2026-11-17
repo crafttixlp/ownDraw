@@ -9,6 +9,14 @@ use std::path::{Path, PathBuf};
 use tiny_skia::Pixmap;
 use zip::write::SimpleFileOptions;
 
+pub mod formats;
+pub mod interchange;
+pub mod layered;
+pub mod office;
+pub mod pdfv;
+pub mod raster;
+pub mod vector;
+
 /// Minimale PDF-Datei mit einer Seite (Groesse pw × ph Punkt), die das Bild ganzflaechig zeigt (RGB, FlateDecode).
 pub fn pdf_from_pixmap(pm: &Pixmap, pw: f32, ph: f32) -> Vec<u8> {
     pdf_pages(1, |_| Some((pm.clone(), pw, ph))).unwrap_or_default()
@@ -130,6 +138,17 @@ pub fn build_preview(cache_dir: &Path, v: &Board) -> Option<PathBuf> {
     let index = dir.join("index.html");
     std::fs::write(&index, html("Vorschau", v.bg_color(), p.w, p.h, &p.ls, &files)).ok()?;
     Some(index)
+}
+
+/// Website-Export als einzelne HTML-Datei: Ebenenbilder als data-URIs statt ebenen/*.png (für `interchange::html_single`).
+pub(crate) fn html_single_impl(v: &Board, title: &str) -> Option<String> {
+    let p = plan(v, 1920.0)?;
+    let mut files = Vec::new();
+    for l in &p.ls {
+        let png = v.render_layer(l, &p.b, p.k)?.encode_png().ok()?;
+        files.push(format!("data:image/png;base64,{}", interchange::b64(&png)));
+    }
+    Some(html(title, v.bg_color(), p.w, p.h, &p.ls, &files))
 }
 
 struct Plan {

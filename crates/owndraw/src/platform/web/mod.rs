@@ -364,7 +364,11 @@ impl WebPlatform {
                 "gif" => "image/gif",
                 _ => "image/png",
             },
-            FileKind::Any => "application/octet-stream",
+            FileKind::Any => {
+                // Export-Formate anhand der Endung
+                let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+                owndraw_core::export::formats::ALL.iter().find(|f| f.ext() == ext).map(|f| f.mime()).unwrap_or("application/octet-stream")
+            }
             k => k.mime(),
         };
         let doc = document().ok_or_else(|| io::Error::other("kein document"))?;
@@ -585,5 +589,69 @@ impl Platform for WebPlatform {
     }
     fn is_touch(&self) -> bool {
         web_sys::window().and_then(|w| w.match_media("(pointer: coarse)").ok().flatten()).map(|m| m.matches()).unwrap_or(false)
+    }
+
+    fn can_share(&self) -> bool {
+        web_sys::window().map(|w| js_sys::Reflect::has(&w.navigator(), &JsValue::from_str("canShare")).unwrap_or(false)).unwrap_or(false)
+    }
+
+    /// Web Share API mit Datei (navigator.share({ files })), ohne neue web-sys-Features (über Reflect).
+    fn share_file(&self, name: &str, mime: &str, data: &[u8]) -> Result<(), String> {
+        use js_sys::{Array, Function, Object, Reflect, Uint8Array};
+        let fail = || "Dieser Browser kann keine Dateien teilen – nutze stattdessen den Export".to_string();
+        let w = web_sys::window().ok_or_else(fail)?;
+        let nav: JsValue = w.navigator().into();
+        let ctor: Function = Reflect::get(&w, &JsValue::from_str("File")).map_err(|_| fail())?.dyn_into().map_err(|_| fail())?;
+        let opts = Object::new();
+        Reflect::set(&opts, &JsValue::from_str("type"), &JsValue::from_str(mime)).map_err(|_| fail())?;
+        let args = Array::of3(&Array::of1(&Uint8Array::from(data)), &JsValue::from_str(name), &opts);
+        let file = Reflect::construct(&ctor, &args).map_err(|_| fail())?;
+        let share = Object::new();
+        Reflect::set(&share, &JsValue::from_str("files"), &Array::of1(&file)).map_err(|_| fail())?;
+        Reflect::set(&share, &JsValue::from_str("title"), &JsValue::from_str(name)).map_err(|_| fail())?;
+        let can: Function = Reflect::get(&nav, &JsValue::from_str("canShare")).map_err(|_| fail())?.dyn_into().map_err(|_| fail())?;
+        if !can.call1(&nav, &share).map(|v| v.is_truthy()).unwrap_or(false) {
+            return Err(fail());
+        }
+        let f: Function = Reflect::get(&nav, &JsValue::from_str("share")).map_err(|_| fail())?.dyn_into().map_err(|_| fail())?;
+        let p: js_sys::Promise = f.call1(&nav, &share).map_err(|_| fail())?.dyn_into().map_err(|_| fail())?;
+        // Abbrechen durch den Nutzer ist kein Fehler
+        spawn_local(async move {
+            let _ = JsFuture::from(p).await;
+        });
+        Ok(())
+    }
+
+    /// Drucken: PDF in einem unsichtbaren iframe laden und dessen Druckdialog öffnen.
+    fn print_pdf(&self, _name: &str, data: &[u8]) -> Result<String, String> {
+        use js_sys::{Function, Reflect};
+        let fail = |e: &str| format!("Drucken fehlgeschlagen: {e}");
+        let doc = document().ok_or_else(|| fail("kein document"))?;
+        let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(data));
+        let opts = web_sys::BlobPropertyBag::new();
+        opts.set_type("application/pdf");
+        let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts).map_err(|_| fail("Blob"))?;
+        let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(|_| fail("URL"))?;
+        if let Some(old) = doc.get_element_by_id("owndraw-print") {
+            old.remove();
+        }
+        let fr = doc.create_element("iframe").map_err(|_| fail("iframe"))?;
+        fr.set_id("owndraw-print");
+        let _ = fr.set_attribute("style", "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0");
+        let _ = fr.set_attribute("src", &url);
+        let fr2 = fr.clone();
+        let onload = Closure::once_into_js(move || {
+            let win = Reflect::get(&fr2, &JsValue::from_str("contentWindow")).unwrap_or(JsValue::NULL);
+            let printed = Reflect::get(&win, &JsValue::from_str("print")).ok().and_then(|p| p.dyn_into::<Function>().ok()).map(|p| p.call0(&win).is_ok()).unwrap_or(false);
+            if !printed {
+                // z. B. Safari: PDF in neuem Tab öffnen, dort drucken
+                if let Some(w) = web_sys::window() {
+                    let _ = w.open_with_url_and_target(&fr2.get_attribute("src").unwrap_or_default(), "_blank");
+                }
+            }
+        });
+        let _ = Reflect::set(&fr, &JsValue::from_str("onload"), &onload);
+        doc.body().ok_or_else(|| fail("kein body"))?.append_child(&fr).map_err(|_| fail("iframe"))?;
+        Ok(String::new())
     }
 }

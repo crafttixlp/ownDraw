@@ -1,4 +1,4 @@
-//! „⋯“-Menü: Ebenen, Seiten, Hintergrund, Export, Kopie/Xournal++, Einstellungen, Schließen.
+//! „⋯“-Menü: Ebenen, Seiten, Hintergrund, Exportieren (öffnet das Export-Fenster), Kopie, Einstellungen, Schließen.
 
 use super::{pages, Editor, Lay, M};
 use crate::app::{PickPurpose, Req, Shared};
@@ -81,25 +81,9 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     }
 
     style::caption(ui, "Export");
-    if style::menu_row_ic(ui, &mut sh.icons, ic::IMAGE, "Als PNG-Bild …", "", false, h) {
-        ed.export(sh, 0);
-        close = true;
-    }
-    if style::menu_row_ic(ui, &mut sh.icons, ic::EXPORT, "Als PDF …", "", false, h) {
-        ed.export(sh, 1);
-        close = true;
-    }
-    if style::menu_row_ic(ui, &mut sh.icons, ic::LAYERS, "Ebenen und Website (ZIP) …", "", false, h) {
-        ed.export(sh, 2);
-        close = true;
-    }
-    if !crate::platform::WEB && style::menu_row_ic(ui, &mut sh.icons, ic::PLAY, "Website-Vorschau", "", false, h) {
-        ed.preview(sh);
-        close = true;
-    }
-    let act = ed.board.active.min(ed.board.layers.len().saturating_sub(1));
-    if style::menu_row_ic(ui, &mut sh.icons, ic::LAYERS, "Aktive Ebene als PNG …", "", false, h) {
-        ed.export_layer(sh, act);
+    if style::menu_row_ic(ui, &mut sh.icons, ic::EXPORT, "Exportieren …", &keys::label(&sh.settings, "export"), false, h) {
+        // gleiches Fenster wie der Knopf in der Kachel
+        ed.st.export.open = true;
         close = true;
     }
 
@@ -118,11 +102,6 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     if !crate::platform::WEB && style::menu_row_ic(ui, &mut sh.icons, ic::COPY, "Kopie speichern unter …", "", false, h) {
         let name = format!("{}.owndraw", crate::app::safe_file_name(ed.name()));
         sh.reqs.push(Req::PickSave { purpose: PickPurpose::SaveCopy, name, kind: FileKind::Owndraw });
-        close = true;
-    }
-    if style::menu_row_ic(ui, &mut sh.icons, ic::EXPORT, "Xournal++ exportieren …", "", false, h) {
-        let name = format!("{}.xopp", crate::app::safe_file_name(ed.name()));
-        sh.reqs.push(Req::PickSave { purpose: PickPurpose::ExportXopp, name, kind: FileKind::Xopp });
         close = true;
     }
     style::caption(ui, "Einstellungen & Hilfe");

@@ -264,6 +264,19 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
             }
             ed.demo_calc(sh, &l, (120.0, 470.0), "v = 72 km/h");
         }
+        if has("fsugg") {
+            // Formel-Vorschläge im Rechnen-Feld
+            let sh = app.parts().0;
+            sh.settings.tool_on.insert("calc".into(), true);
+            ed.board.calc = sh.settings.calc.to_core();
+            ed.select_tool(sh, crate::ui::editor::Tool::Calc);
+            let l: Vec<(f32, f32, &str)> = ["U: 230 V", "I: 2 A"].iter().enumerate().map(|(i, s)| (120.0, 140.0 + i as f32 * 55.0, *s)).collect();
+            ed.demo_calc(sh, &l, (120.0, 250.0), "P =");
+        }
+        if let Some(t) = toks.iter().find_map(|s| s.strip_prefix("fbook")) {
+            // Formelsammlung: fbook (Formeln), fbook=konst, fbook=teilen, fbook=neu (Formular)
+            ed.demo_fbook(t.trim_start_matches('='));
+        }
         if has("ruler") {
             ed.demo_ruler();
         }

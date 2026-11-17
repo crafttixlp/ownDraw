@@ -361,7 +361,7 @@ pub fn lex(src: &str) -> Result<Vec<Tok>, String> {
                     i = j;
                 } else {
                     // Klartext: Buchstaben/Ziffern; LaTeX ohne Klammer: ein Zeichen (unterscheidet sich nur bei längeren Indizes)
-                    while i < c.len() && (c[i].is_alphanumeric()) {
+                    while i < c.len() && c[i].is_alphanumeric() && !"⁰¹²³⁴⁵⁶⁷⁸⁹".contains(c[i]) {
                         s.push(c[i]);
                         i += 1;
                     }

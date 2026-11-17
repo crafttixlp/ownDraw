@@ -8,6 +8,7 @@
 //! Variablen gelten von oben nach unten; spätere Zuweisungen überschreiben frühere.
 
 mod eval;
+pub mod library;
 mod parse;
 mod solve;
 pub mod units;
@@ -117,6 +118,111 @@ fn join(parts: Vec<String>, colon: bool, eq: &str) -> String {
 /// Ist die Zeile eine Rechenzeile (enthält „=“ bzw. „name:“ und ist lesbar)?
 pub fn is_calc_line(src: &str) -> bool {
     parse::lex(src).is_ok_and(|t| parse::split_eq(&t).len() > 1)
+}
+
+/// Vorgaben aus der Formelsammlung, die auf jeder Seite gelten: Konstanten (`g` = `9,81 m/s²`) und eigene
+/// Einheiten (`kp` = `9,80665 N`). Werte in getippter Schreibweise.
+#[derive(Clone, Debug, Default, PartialEq, Hash)]
+pub struct Prelude {
+    pub consts: Vec<(String, String)>,
+    pub units: Vec<(String, String)>,
+}
+
+impl Prelude {
+    pub fn is_empty(&self) -> bool {
+        self.consts.is_empty() && self.units.is_empty()
+    }
+}
+
+/// Wert einer getippten Größe (`9,81 m/s²`) ohne Variablen. Ergebnis: (Faktor zu SI, Dimension).
+pub fn quantity(src: &str, o: &Opts) -> Result<(f64, units::Dim), String> {
+    let t = parse::lex(src)?;
+    let e = parse::expr(&t)?;
+    let env = Env::new();
+    let q = eval::eval(&e, &Ctx { env: &env, extra: &[], o })?;
+    Ok((q.v, q.d))
+}
+
+/// Wie `page`, aber mit Konstanten und eigenen Einheiten der Formelsammlung.
+pub fn page_with(lines: &[&str], o: &Opts, pre: &Prelude) -> Vec<Option<Out>> {
+    if pre.is_empty() {
+        return page(lines, o);
+    }
+    units::with_custom(Vec::new(), || {
+        for (sym, val) in &pre.units {
+            let sym = sym.trim();
+            if sym.is_empty() || units::lookup(sym).is_some() {
+                continue;
+            }
+            if let Ok((f, d)) = quantity(val, o) {
+                units::push_custom(sym, f, d);
+            }
+        }
+        let consts: Vec<String> = pre.consts.iter().filter(|(n, v)| !n.trim().is_empty() && !v.trim().is_empty()).map(|(n, v)| format!("{}: {}", n.trim(), v.trim())).collect();
+        let mut all: Vec<&str> = consts.iter().map(|s| s.as_str()).collect();
+        all.extend_from_slice(lines);
+        let mut r = page(&all, o);
+        r.drain(..consts.len());
+        r
+    })
+}
+
+/// Namen, die in einer Zeile vorkommen (Variablen aller Seiten der Gleichung), in Reihenfolge, ohne Doppelte.
+pub fn line_vars(src: &str) -> Vec<String> {
+    let Ok(t) = parse::lex(src) else { return Vec::new() };
+    let mut v = Vec::new();
+    for p in parse::split_eq(&t) {
+        if let Ok(e) = parse::expr(p) {
+            let mut w = Vec::new();
+            e.vars(&mut w);
+            for n in w {
+                if !v.contains(&n) && n != "π" && n != "pi" {
+                    v.push(n);
+                }
+            }
+        }
+    }
+    v
+}
+
+/// Was eine Seite weiß: Namen mit bekanntem Wert und gefragte Namen (Ergebniszeilen ohne Wert, z. B. `P =`).
+pub fn page_names(lines: &[&str], o: &Opts, pre: &Prelude) -> (Vec<String>, Vec<String>) {
+    let res = page_with(lines, o, pre);
+    let mut known: Vec<String> = pre.consts.iter().map(|c| c.0.trim().to_string()).collect();
+    let mut asked = Vec::new();
+    for (src, r) in lines.iter().zip(&res) {
+        let Ok(t) = parse::lex(src) else { continue };
+        let parts = parse::split_eq(&t);
+        if parts.len() < 2 {
+            continue;
+        }
+        let first = match parts[0] {
+            [Tok::Id(n)] => Some(n.clone()),
+            _ => None,
+        };
+        match r {
+            Some(Out::Result { err: Some(_), .. }) => {
+                if let Some(n) = first {
+                    if !asked.contains(&n) {
+                        asked.push(n);
+                    }
+                }
+            }
+            Some(Out::Error(_)) => {}
+            _ => {
+                // Zuweisung bzw. ausgerechnete Größe
+                if let Some(n) = first {
+                    if parts.len() == 2 && parse::expr(parts[1]).is_ok_and(|e| { let mut w = Vec::new(); e.vars(&mut w); w.iter().all(|x| known.contains(x) || eval::constant(x).is_some()) }) || matches!(r, Some(Out::Result { err: None, .. })) {
+                        if !known.contains(&n) {
+                            known.push(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    asked.retain(|n| !known.contains(n));
+    (known, asked)
 }
 
 struct Def {

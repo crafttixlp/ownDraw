@@ -1454,3 +1454,108 @@ async fn mitteilung_mit_board_fuer_gaeste_sichtbar() {
     assert_eq!(app.get("/api/notices", None).await.json()[0]["board"], Value::Null);
     assert_eq!(app.get("/api/admin/notices", Some(&admin)).await.json()[0]["board_missing"], true);
 }
+
+#[tokio::test]
+async fn formelsammlungen() {
+    let app = App::new();
+    let a = app.register("fa@example.org").await;
+    let b = app.register("fb@example.org").await;
+    assert_eq!(app.get("/api/formulas", None).await.status, StatusCode::UNAUTHORIZED);
+
+    // anlegen + listen
+    let r = app.post("/api/formulas", Some(&a), json!({"name": "Mathe", "data": {"formulas": [1, 2]}})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let id = r.json()["id"].as_str().unwrap().to_string();
+    assert!(r.json()["updated"].is_i64());
+    let l = app.get("/api/formulas", Some(&a)).await.json();
+    let s = &l["sets"][0];
+    assert_eq!((s["name"].as_str(), s["mine"].as_bool(), s["global"].as_bool()), (Some("Mathe"), Some(true), Some(false)));
+    assert_eq!(s["data"], json!({"formulas": [1, 2]}));
+    assert!(s["share_code"].is_null());
+    assert_eq!(app.get("/api/formulas", Some(&b)).await.json()["sets"], json!([]));
+    assert_eq!(app.post("/api/formulas", Some(&a), json!({"name": "", "data": 1})).await.code(), "invalid");
+
+    // Fremder darf nicht ändern; Besitzer schon; 404
+    let path = format!("/api/formulas/{id}");
+    let body = |n: &str| Some(json!({"name": n, "data": []}));
+    assert_eq!(app.api(Method::PUT, &path, Some(&b), body("X")).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.api(Method::PUT, &path, Some(&a), body("Physik")).await.status, StatusCode::OK);
+    assert_eq!(app.api(Method::PUT, "/api/formulas/nix", Some(&a), body("X")).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.post(&format!("{path}/share"), Some(&b), json!({})).await.status, StatusCode::FORBIDDEN);
+
+    // teilen (stabiler Code) + per Code abonnieren
+    let code = app.post(&format!("{path}/share"), Some(&a), json!({})).await.json()["code"].as_str().unwrap().to_string();
+    assert_eq!(code.len(), 8);
+    assert!(code.chars().all(|c| "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains(c)));
+    assert_eq!(app.post(&format!("{path}/share"), Some(&a), json!({})).await.json()["code"], code.as_str());
+    assert_eq!(app.get(&format!("/api/formulas/code/{}", code.to_lowercase()), Some(&b)).await.json()["name"], "Physik");
+    assert_eq!(app.get("/api/formulas/code/ZZZZZZZZ", Some(&b)).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.post(&format!("/api/formulas/code/{}", code.to_lowercase()), Some(&b), json!({})).await.json()["id"], id.as_str());
+    assert_eq!(app.post(&format!("/api/formulas/code/{code}"), Some(&a), json!({})).await.json()["id"], id.as_str());
+    let lb = app.get("/api/formulas", Some(&b)).await.json();
+    assert_eq!((lb["sets"][0]["mine"].as_bool(), lb["sets"][0]["owner_name"].as_str()), (Some(false), Some("Test")));
+    assert!(lb["sets"][0]["share_code"].is_null());
+    assert_eq!(app.get("/api/formulas", Some(&a)).await.json()["sets"][0]["share_code"], code.as_str());
+
+    // Abo entfernen: Set bleibt beim Besitzer
+    assert_eq!(app.api(Method::DELETE, &path, Some(&b), None).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(app.get("/api/formulas", Some(&b)).await.json()["sets"], json!([]));
+    assert_eq!(app.get("/api/formulas", Some(&a)).await.json()["sets"].as_array().unwrap().len(), 1);
+
+    // Gast: lesen/abonnieren ja, anlegen nein
+    app.state
+        .db
+        .call(|c| {
+            c.execute("INSERT INTO users(id,email,name,pw_hash,created,guest) VALUES('g1','g1','Gast','',0,1)", [])?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let gc = app.state.db.call(|c| {
+        c.execute("INSERT INTO sessions(token_hash,user_id,created,expires) VALUES(?1,'g1',0,9999999999)", [owndraw_server::auth::hash_token("gasttoken")])?;
+        Ok(())
+    }).await;
+    gc.unwrap();
+    let g = "owndraw_session=gasttoken";
+    assert_eq!(app.post("/api/formulas", Some(g), json!({"name": "x", "data": 1})).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(app.post(&format!("/api/formulas/code/{code}"), Some(g), json!({})).await.status, StatusCode::OK);
+    assert_eq!(app.get("/api/formulas", Some(g)).await.json()["sets"].as_array().unwrap().len(), 1);
+
+    // global: nur Admin; Reihenfolge eigene, abonnierte, globale
+    assert_eq!(app.post(&format!("{path}/global"), Some(&a), json!({"on": true})).await.status, StatusCode::FORBIDDEN);
+    let admin = app.admin().await;
+    assert_eq!(app.post(&format!("{path}/global"), Some(&admin), json!({"on": true})).await.status, StatusCode::OK);
+    let lb = app.get("/api/formulas", Some(&b)).await.json();
+    assert_eq!((lb["sets"].as_array().unwrap().len(), lb["sets"][0]["global"].as_bool()), (1, Some(true)));
+    let bid = app.post("/api/formulas", Some(&b), json!({"name": "Zzz", "data": 1})).await.json()["id"].as_str().unwrap().to_string();
+    let lb = app.get("/api/formulas", Some(&b)).await.json();
+    assert_eq!((lb["sets"][0]["id"].as_str(), lb["sets"][1]["id"].as_str()), (Some(bid.as_str()), Some(id.as_str())));
+    assert_eq!(app.post("/api/formulas/nix/global", Some(&admin), json!({"on": true})).await.status, StatusCode::NOT_FOUND);
+
+    // Besitzer löscht: Abos weg
+    assert_eq!(app.api(Method::DELETE, &path, Some(&a), None).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(app.get("/api/formulas", Some(g)).await.json()["sets"], json!([]));
+    let n = app.state.db.call(|c| Ok(c.query_row("SELECT COUNT(*) FROM formula_subs", [], |r| r.get::<_, i64>(0))?)).await.unwrap();
+    assert_eq!(n, 0);
+}
+
+#[tokio::test]
+async fn formelsammlungen_limits() {
+    let app = App::new();
+    let a = app.register("fl@example.org").await;
+    // Größenlimit 1 MiB
+    let big = "x".repeat(1024 * 1024);
+    let r = app.post("/api/formulas", Some(&a), json!({"name": "gross", "data": big})).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
+    let ok = "x".repeat(1024 * 1024 - 2);
+    assert_eq!(app.post("/api/formulas", Some(&a), json!({"name": "knapp", "data": ok})).await.status, StatusCode::OK);
+    // Ungültiges JSON
+    let r = app.send(Method::POST, "/api/formulas", Some(&a), &[("content-type", "application/json")], Body::from("{\"name\":\"a\",\"data\":"), true).await;
+    assert_eq!(r.code(), "invalid");
+    // max. 50 Sets
+    for i in 1..50 {
+        assert_eq!(app.post("/api/formulas", Some(&a), json!({"name": format!("s{i}"), "data": []})).await.status, StatusCode::OK);
+    }
+    let r = app.post("/api/formulas", Some(&a), json!({"name": "zu viel", "data": []})).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::BAD_REQUEST, "too_many"));
+}

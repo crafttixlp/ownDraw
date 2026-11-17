@@ -12,6 +12,7 @@ mod glyphs;
 mod layers;
 mod mathed;
 mod calced;
+mod fbook;
 #[cfg(not(target_os = "android"))]
 pub mod live;
 mod menu;
@@ -211,6 +212,10 @@ pub struct Editor {
     pub(super) math: Option<mathed::MathEd>,
     /// Offenes Eingabefeld des Werkzeugs „Rechnen“.
     pub(super) calc: Option<calced::CalcEd>,
+    /// Stand der Formelsammlungen, der im Board gilt (Konstanten/Einheiten).
+    formula_rev: u64,
+    /// Fenster „Formelsammlung“.
+    pub(super) fbook: fbook::FBook,
     pub st: UiState,
     pub(super) page_thumbs: pages::PageThumbs,
     /// Lineal/Geodreieck, Laserpointer, Platz schaffen.
@@ -276,6 +281,8 @@ impl Editor {
             text: None,
             math: None,
             calc: None,
+            formula_rev: u64::MAX,
+            fbook: fbook::FBook::default(),
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
             ext: extras::Extras::default(),
@@ -460,6 +467,7 @@ impl Editor {
                 }
                 Err(e) => sh.toast(&format!("Bild konnte nicht geladen werden: {e}")),
             },
+            PickPurpose::FormulasExport(_) | PickPurpose::FormulasImport => self.apply_fbook_pick(sh, purpose, &f),
             PickPurpose::OpenDoc | PickPurpose::NewDoc | PickPurpose::DefaultDir => {}
         }
     }
@@ -848,6 +856,7 @@ impl Editor {
         menu::show(self, &ctx, sh, &lay);
         export::show(self, &ctx, sh, &lay);
         more::show(self, &ctx, sh, &lay);
+        fbook::show(self, &ctx, sh);
         self.x_frame(&ctx, sh, &lay, layer);
         self.text_editor(&ctx, &sh.settings);
         self.math_editor(&ctx, sh);
@@ -887,6 +896,15 @@ impl Editor {
         if self.board.calc != calc {
             self.board.calc = calc;
             self.board.invalidate();
+        }
+        let frev = crate::formulas::rev() ^ (sh.settings.extra.get("formulas_off").map(|v| v.to_string().len() as u64).unwrap_or(0) << 48);
+        if self.formula_rev != frev {
+            self.formula_rev = frev;
+            let pre = crate::formulas::prelude(&sh.settings);
+            if self.board.calc_pre != pre {
+                self.board.calc_pre = pre;
+                self.board.invalidate();
+            }
         }
 
         // Zeitgesteuertes Neuzeichnen (Halte-Timer, Ende von Zoom-Gesten, Autosave)

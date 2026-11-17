@@ -354,6 +354,8 @@ pub struct Board {
     pub snap_cfg: recognizer::SnapCfg,
     /// Rechenkern (Werkzeug „Rechnen“): Ergebnisse von Formelzeilen.
     pub calc: crate::calc::Opts,
+    /// Konstanten und eigene Einheiten der aktiven Formelsammlungen (gelten auf jeder Seite).
+    pub calc_pre: crate::calc::Prelude,
     /// Ergebnisse des Rechenkerns (Prüfsumme, Ansichten je Formel-id).
     calc_cache: RefCell<Option<(u64, calcview::CalcViews)>>,
     pub modified: bool,
@@ -488,6 +490,7 @@ impl Board {
             finger_draw: false,
             snap_cfg: recognizer::SnapCfg::default(),
             calc: crate::calc::Opts::default(),
+            calc_pre: crate::calc::Prelude::default(),
             calc_cache: RefCell::new(None),
             modified: false,
             sel_mode: 0,

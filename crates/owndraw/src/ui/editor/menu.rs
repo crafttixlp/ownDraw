@@ -86,6 +86,10 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         ed.st.export.open = true;
         close = true;
     }
+    if style::menu_row_ic(ui, &mut sh.icons, ic::FORMULA, "Formelsammlung …", "", false, h) {
+        ed.open_fbook(None);
+        close = true;
+    }
 
     style::caption(ui, "Datei");
     #[cfg(not(target_os = "android"))]

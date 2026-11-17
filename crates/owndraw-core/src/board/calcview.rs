@@ -41,6 +41,7 @@ impl Board {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         let o = &self.calc;
         (o.deg, o.digits, o.comma, o.steps).hash(&mut h);
+        self.calc_pre.hash(&mut h);
         let mut any = false;
         for it in &self.items {
             if let Kind::Math(m) = &it.kind {
@@ -77,6 +78,22 @@ impl Board {
         self.calc_lines().into_iter().filter_map(|(id, o)| o.map(|o| (id, o))).collect()
     }
 
+    /// Bekannte und gefragte Größen der Seite am Weltpunkt (für Formel-Vorschläge im Rechnen-Werkzeug).
+    pub fn calc_names_at(&self, wx: f32, wy: f32) -> (Vec<String>, Vec<String>) {
+        let want = self.pages().and_then(|p| p.nearest_page(wx, wy));
+        let mut g: Vec<(f32, f32, &str)> = Vec::new();
+        for it in &self.items {
+            let Kind::Math(m) = &it.kind else { continue };
+            if !self.layer_shown(it.layer) || self.pages().and_then(|p| p.page_of(it)) != want {
+                continue;
+            }
+            g.push((m.y + m.h() / 2.0, m.x, &m.src));
+        }
+        g.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)));
+        let srcs: Vec<&str> = g.iter().map(|x| x.2).collect();
+        calc::page_names(&srcs, &self.calc, &self.calc_pre)
+    }
+
     fn calc_lines(&self) -> Vec<(u64, Option<Out>)> {
         // Formeln je Seite in Lesereihenfolge (oben nach unten, bei gleicher Höhe links nach rechts)
         let mut groups: HashMap<Option<usize>, Vec<(f32, f32, u64, &str)>> = HashMap::new();
@@ -94,7 +111,7 @@ impl Board {
             // Zeilen: gleiche Höhe = Mitte innerhalb halber Zeilenhöhe
             g.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)));
             let srcs: Vec<&str> = g.iter().map(|x| x.3).collect();
-            let res = calc::page(&srcs, &self.calc);
+            let res = calc::page_with(&srcs, &self.calc, &self.calc_pre);
             out.extend(g.iter().map(|x| x.2).zip(res));
         }
         out

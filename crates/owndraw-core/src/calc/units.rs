@@ -108,6 +108,24 @@ const PREFIX: [(&str, f64); 21] = [
     ("z", 1e-21),
 ];
 
+thread_local! {
+    /// Eigene Einheiten aus der Formelsammlung (Zeichen, Faktor zu SI, Dimension); gelten während `with_custom`.
+    static CUSTOM: std::cell::RefCell<Vec<(String, f64, Dim)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Führt `f` mit zusätzlichen eigenen Einheiten aus (ohne Vorsätze). Eingebaute Einheiten haben Vorrang.
+pub fn with_custom<R>(units: Vec<(String, f64, Dim)>, f: impl FnOnce() -> R) -> R {
+    let old = CUSTOM.with(|c| std::mem::replace(&mut *c.borrow_mut(), units));
+    let r = f();
+    CUSTOM.with(|c| *c.borrow_mut() = old);
+    r
+}
+
+/// Fügt eine eigene Einheit hinzu (nur innerhalb von `with_custom`).
+pub fn push_custom(sym: &str, f: f64, d: Dim) {
+    CUSTOM.with(|c| c.borrow_mut().push((sym.to_string(), f, d)));
+}
+
 /// Eine gefundene Einheit (mit Vorsatz).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Unit {
@@ -134,6 +152,9 @@ pub fn lookup(s: &str) -> Option<Unit> {
     };
     if let Some(def) = DEFS.iter().find(|u| u.sym == s) {
         return Some(mk(def, "", 1.0));
+    }
+    if let Some(u) = CUSTOM.with(|c| c.borrow().iter().find(|u| u.0 == s).cloned()) {
+        return Some(Unit { sym: u.0, f: u.1, d: u.2, ang: false, celsius: false });
     }
     for (p, pf) in PREFIX {
         if let Some(rest) = s.strip_prefix(p) {

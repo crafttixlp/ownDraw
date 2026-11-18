@@ -10,6 +10,7 @@ pub mod export;
 mod extras;
 pub mod keys;
 mod glyphs;
+mod hold;
 mod layers;
 mod mathed;
 mod mathin;
@@ -231,6 +232,10 @@ pub struct Editor {
     hover: Option<Pos2>,
     /// Ort des letzten Rechtsklicks/Lang-Tippens (Einfügen-Menü).
     menu_pos: Option<Pos2>,
+    /// Langes Drücken auf ein Objekt (siehe `hold.rs`).
+    hold: Option<hold::Hold>,
+    /// Kontextmenü nach langem Drücken hier öffnen (Bildschirmpunkt).
+    hold_menu: Option<Pos2>,
     first_frame: bool,
     /// Beim ersten Frame „Alles zeigen“ (Demo/Abnahme).
     pub fit_on_open: bool,
@@ -296,6 +301,8 @@ impl Editor {
             canvas: Rect::NOTHING,
             hover: None,
             menu_pos: None,
+            hold: None,
+            hold_menu: None,
             first_frame: true,
             fit_on_open: false,
             live_dirty: false,
@@ -783,6 +790,7 @@ impl Editor {
         if !modal && !swallow {
             let pan_key = ctx.input(|i| keys::held(i, &sh.settings, "pan"));
             self.handle_pointer(&ctx, rect, layer, pan_key);
+            self.hold_check(sh.now);
         }
         if !modal && self.text.is_none() && self.xs.crop.is_none() && !ctx.egui_wants_keyboard_input() {
             self.shortcuts(&ctx, sh);
@@ -952,6 +960,12 @@ impl Editor {
         if let Some(d) = self.board.next_deadline() {
             wait = wait.min((d - sh.now).max(0.0) + 0.005);
         }
+        if let Some(d) = self.hold_deadline() {
+            wait = wait.min((d - sh.now).max(0.0) + 0.005);
+        }
+        if self.hold_menu.is_some() {
+            ctx.request_repaint();
+        }
         if self.board.needs_redraw {
             ctx.request_repaint();
         } else {
@@ -1023,6 +1037,14 @@ impl Editor {
         for ev in events {
             match ev {
                 Event::Touch { id, phase, pos, force, .. } => {
+                    let hp = match phase {
+                        TouchPhase::Start if on_board(pos) && self.text.is_none() => hold::Ph::Down,
+                        TouchPhase::Move => hold::Ph::Move,
+                        _ => hold::Ph::Up,
+                    };
+                    if self.hold_track(id.0, hp, pos, rel(pos).to_pos2(), now) {
+                        continue;
+                    }
                     // Ein Finger, der auf einer Leiste beginnt, gehört nicht zur Zeichenfläche.
                     // Während der Texteingabe beendet ein Tippen daneben nur die Eingabe.
                     if phase == TouchPhase::Start && (!on_board(pos) || self.text.is_some()) {
@@ -1046,6 +1068,9 @@ impl Editor {
                 }
                 _ if has_touch && matches!(ev, Event::PointerMoved(_) | Event::PointerButton { .. }) => {}
                 Event::PointerMoved(p) => {
+                    if self.hold_track(arrange::MOUSE, hold::Ph::Move, p, rel(p).to_pos2(), now) {
+                        continue;
+                    }
                     self.x_move(arrange::MOUSE, rel(p).to_pos2());
                     let r = match self.ext_hook(extras::MOUSE, extras::Ph::Move, rel(p).to_pos2(), false) {
                         extras::Hook::Eat => continue,
@@ -1060,6 +1085,12 @@ impl Editor {
                 }
                 Event::PointerButton { pos, button, pressed, .. } => {
                     let r = rel(pos);
+                    if button == PointerButton::Primary {
+                        let hp = if pressed && on_board(pos) { hold::Ph::Down } else { hold::Ph::Up };
+                        if self.hold_track(arrange::MOUSE, hp, pos, r.to_pos2(), now) {
+                            continue;
+                        }
+                    }
                     if pressed {
                         if self.drawing || self.panning.is_some() || !on_board(pos) || self.text.is_some() || self.ext_grabs(extras::MOUSE) {
                             continue;

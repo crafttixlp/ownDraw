@@ -6,7 +6,7 @@ members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-android", "c
 default-members = ["crates/owndraw-core", "crates/owndraw", "crates/owndraw-server"]
 
 [workspace.package]
-version = "4.37.0"
+version = "4.38.0"
 edition = "2021"
 license = "MIT"
 

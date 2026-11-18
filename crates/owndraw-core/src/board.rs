@@ -1223,6 +1223,13 @@ impl Board {
         self.changed();
     }
 
+    /// Liegt unter dem Bildschirmpunkt ein auswaehlbares Objekt (wie bei [`Self::select_at_screen`])?
+    pub fn hit_at_screen(&self, x: f32, y: f32) -> bool {
+        let (wx, wy) = self.screen_to_world(x, y);
+        let r = 10.0 * self.dp / self.sc;
+        self.top_at(wx, wy, r).or_else(|| self.bounds_at(wx, wy)).is_some()
+    }
+
     /// Waehlt das oberste Objekt unter dem Bildschirmpunkt aus und wechselt dafuer vorruebergehend
     /// zum Auswahlwerkzeug (Rueckkehr beim Abwaehlen). Liefert true, wenn ein Objekt getroffen wurde.
     pub fn select_at_screen(&mut self, x: f32, y: f32, notes_only: bool) -> bool {

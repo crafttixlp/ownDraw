@@ -262,9 +262,18 @@ pub fn context_menu(editor: &mut Editor, resp: &egui::Response, sh: &mut Shared)
     if resp.secondary_clicked() || resp.long_touched() {
         editor.menu_pos = resp.interact_pointer_pos();
     }
+    // Langes Drücken auf ein Objekt (jedes Werkzeug): Menü am Haltepunkt öffnen
+    let mut pop = egui::Popup::context_menu(resp);
+    if let Some(p) = editor.take_hold_menu() {
+        editor.menu_pos = Some(p);
+        pop = pop.open_memory(Some(egui::SetOpenCommand::Bool(true)));
+    }
+    if let Some(p) = editor.menu_pos {
+        pop = pop.at_position(p);
+    }
     let has_sel = !editor.board.sel.is_empty() && editor.board.tool == board::SELECT;
     let mut action = 0u8;
-    resp.context_menu(|ui| {
+    pop.show(|ui| {
         if has_sel {
             if ui.button("Kopieren").clicked() {
                 action = 1;

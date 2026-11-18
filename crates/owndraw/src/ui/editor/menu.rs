@@ -53,6 +53,14 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         ed.board.fit();
         close = true;
     }
+    // Browser (v. a. Android): Adress- und Navigationsleiste ausblenden
+    if crate::platform::fullscreen_available() {
+        let fs = crate::platform::is_fullscreen();
+        if style::menu_row_ic(ui, &mut sh.icons, if fs { ic::FULLSCREEN_EXIT } else { ic::FULLSCREEN }, if fs { "Vollbild beenden" } else { "Vollbild" }, "", false, h) {
+            crate::platform::toggle_fullscreen();
+            close = true;
+        }
+    }
     // Hintergrund
     style::caption(ui, if pages_mode { "Hintergrund dieser Seite" } else { "Hintergrund" });
     ui.horizontal_wrapped(|ui| {

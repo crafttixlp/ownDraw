@@ -1,6 +1,6 @@
 #!/bin/bash
 # Baut OwnDraw für den Browser (WebAssembly, Gastmodus) nach dist/web/ (index.html, owndraw_web.js,
-# owndraw_web_bg.wasm, owndraw.png). Kein trunk.
+# owndraw_web_bg.wasm, owndraw.png, manifest.webmanifest). Kein trunk.
 # Voraussetzungen: rustup target add wasm32-unknown-unknown
 #                  cargo install wasm-bindgen-cli --version <Version von wasm-bindgen aus Cargo.lock>
 #                  optional: wasm-opt (binaryen) zum Verkleinern
@@ -35,4 +35,5 @@ sed "s/__OWNDRAW_VERSION__/$VERSION/g" crates/owndraw-web/index.html > "$OUT/ind
 echo "$VERSION" > "$OUT/version.txt"
 cp assets/owndraw.png "$OUT/"
 cp crates/owndraw-web/hw.js "$OUT/"
+cp crates/owndraw-web/manifest.webmanifest "$OUT/"
 ls -la "$OUT"

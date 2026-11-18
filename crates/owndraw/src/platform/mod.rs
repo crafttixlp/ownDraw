@@ -30,6 +30,29 @@ pub fn pen_touch(_id: u64) -> bool {
     false
 }
 
+/// Gibt es hier einen Vollbild-Knopf? Nur im Browser mit Fullscreen-API (z. B. Chrome/Firefox auf Android, nicht
+/// Safari auf dem iPhone) und nicht, wenn die App schon als Web-App im Vollbild läuft (Manifest `display: fullscreen`).
+pub fn fullscreen_available() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    return web::fullscreen_available();
+    #[cfg(not(target_arch = "wasm32"))]
+    false
+}
+
+/// Ist die Seite gerade im Vollbild (Fullscreen-API)?
+pub fn is_fullscreen() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    return web::is_fullscreen();
+    #[cfg(not(target_arch = "wasm32"))]
+    false
+}
+
+/// Vollbild ein- oder ausschalten (Browser). Muss kurz nach einer Nutzereingabe laufen (Tippen/Klick).
+pub fn toggle_fullscreen() {
+    #[cfg(target_arch = "wasm32")]
+    web::toggle_fullscreen();
+}
+
 /// Kann der Stift-Modus Stift und Finger hier unterscheiden? (Android: nein, siehe [`pen_touch`])
 pub const PEN_MODE: bool = !cfg!(target_os = "android");
 

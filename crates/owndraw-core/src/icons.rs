@@ -71,6 +71,9 @@ pub const CLOSE: i32 = 88;
 pub const FOLDER: i32 = 89;
 pub const CLOUD: i32 = 90;
 pub const BLOCK81: [i32; 10] = [GEAR, HELP, DOWNLOAD, SHARE, BUG, SLIDERS, SEARCH, CLOSE, FOLDER, CLOUD];
+/// Vollbild an/aus (Browser-Menü). Hohe Nummern, damit parallel ergänzte Icons nicht kollidieren.
+pub const FULLSCREEN: i32 = 100;
+pub const FULLSCREEN_EXIT: i32 = 101;
 
 const DASH_SEL: Option<(f32, f32)> = Some((3.0, 3.2));
 
@@ -454,6 +457,20 @@ pub fn draw(c: &mut Canvas, id: i32, tint: u32, filled: bool) {
             pb.quad_to(20.8, 18.0, 17.0, 18.0);
             pb.close();
         }
+        // vier Ecken nach außen
+        FULLSCREEN => {
+            poly(&mut pb, false, &[4.0, 9.0, 4.0, 4.0, 9.0, 4.0]);
+            poly(&mut pb, false, &[15.0, 4.0, 20.0, 4.0, 20.0, 9.0]);
+            poly(&mut pb, false, &[20.0, 15.0, 20.0, 20.0, 15.0, 20.0]);
+            poly(&mut pb, false, &[9.0, 20.0, 4.0, 20.0, 4.0, 15.0]);
+        }
+        // vier Ecken nach innen
+        FULLSCREEN_EXIT => {
+            poly(&mut pb, false, &[4.0, 9.0, 9.0, 9.0, 9.0, 4.0]);
+            poly(&mut pb, false, &[15.0, 4.0, 15.0, 9.0, 20.0, 9.0]);
+            poly(&mut pb, false, &[20.0, 15.0, 15.0, 15.0, 15.0, 20.0]);
+            poly(&mut pb, false, &[9.0, 20.0, 9.0, 15.0, 4.0, 15.0]);
+        }
         _ => {
             poly(&mut pb, false, &[12.0, 5.0, 12.0, 19.0]);
             poly(&mut pb, false, &[5.0, 12.0, 19.0, 12.0]);
@@ -481,7 +498,7 @@ mod tests {
 
     #[test]
     fn alle_icons_sichtbar() {
-        for id in (0..=37).chain(BLOCK60).chain([FORMULA]).chain(BLOCK81) {
+        for id in (0..=37).chain(BLOCK60).chain([FORMULA]).chain(BLOCK81).chain([FULLSCREEN, FULLSCREEN_EXIT]) {
             for filled in [false, true] {
                 let pm = render(id, 48, 0xFFFFFFFF, filled).expect("pixmap");
                 let n = pm.pixels().iter().filter(|p| p.alpha() > 0).count();

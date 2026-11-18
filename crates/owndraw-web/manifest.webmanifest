@@ -1,0 +1,16 @@
+{
+  "name": "OwnDraw",
+  "short_name": "OwnDraw",
+  "description": "Zeichnen, Notizen und Whiteboard im Browser",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#f6f6f8",
+  "theme_color": "#f6f6f8",
+  "icons": [
+    { "src": "owndraw.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }
+  ]
+}

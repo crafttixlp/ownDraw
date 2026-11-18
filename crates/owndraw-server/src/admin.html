@@ -1118,7 +1118,7 @@ function renderModels(d) {
         ? [p.id, " · ", fmtBytes(p.groesse), " · Version ", p.version || "–", " · Stufen ", (p.stufen || []).join(", ") || "–", " · ", p.lizenz,
            p.lizenz_datei && [" (", h("a", { href: "/api/models/" + encodeURIComponent(p.id) + "/" + encodeURIComponent(p.lizenz_datei), target: "_blank", rel: "noopener" }, "Lizenztext"), ")"]]
         : p.fehler),
-      p.ok && (p.hinweis || p.quelle) && h("div", { class: "meta" }, p.hinweis, p.quelle && [" Quelle: ", h("a", { href: p.quelle, target: "_blank", rel: "noopener noreferrer" }, p.quelle)])),
+      p.ok && (p.hinweis || p.quelle) && h("div", { class: "meta" }, p.hinweis, p.quelle && [" Quelle: ", /^https?:\/\//i.test(p.quelle) ? h("a", { href: p.quelle, target: "_blank", rel: "noopener noreferrer" }, p.quelle) : p.quelle])),
     h("div", { class: "actions" }, h("button", { class: "danger", onclick: () => deleteModel(p) }, "Löschen"))))
     : [emptyState("Noch keine Modelle", "Lade ein Paket aus dem Katalog, per URL oder als Archiv.")]));
   const kat = d.katalog || [];

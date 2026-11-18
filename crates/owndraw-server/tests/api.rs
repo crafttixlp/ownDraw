@@ -578,6 +578,42 @@ async fn rate_limit_fuer_login() {
 }
 
 #[tokio::test]
+async fn login_sperre_je_konto_ueber_adressen_hinweg() {
+    let app = App::with(|c| c.rate_limit = 1000);
+    let try_from = |ip: String, pw: &'static str| {
+        let app = &app;
+        async move {
+            app.send(
+                Method::POST,
+                "/api/auth/login",
+                None,
+                &[("x-forwarded-for", ip.as_str()), ("content-type", "application/json")],
+                Body::from(json!({"email": "opfer@example.org", "password": pw}).to_string()),
+                true,
+            )
+            .await
+        }
+    };
+    // 10 Fehlversuche von 10 verschiedenen Adressen (Konto gibt es nicht: gleiches Verhalten, keine Enumeration)
+    for i in 0..10 {
+        assert_eq!(try_from(format!("203.0.113.{i}"), "falsch123").await.status, StatusCode::UNAUTHORIZED);
+    }
+    let r = try_from("198.51.100.1".into(), "falsch123").await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::TOO_MANY_REQUESTS, "rate_limited"));
+    // anderes Konto ist nicht betroffen
+    let r = app.login("anders@example.org", "irgendwas1").await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn sicherheits_header() {
+    let app = App::new();
+    let r = app.send(Method::GET, "/admin", None, &[], Body::empty(), false).await;
+    assert_eq!(r.headers.get("x-frame-options").unwrap(), "SAMEORIGIN");
+    assert_eq!(r.headers.get("x-content-type-options").unwrap(), "nosniff");
+}
+
+#[tokio::test]
 async fn statisches_admin_und_platzhalter() {
     let app = App::new();
     let r = app.send(Method::GET, "/", None, &[], Body::empty(), false).await;

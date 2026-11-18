@@ -105,6 +105,7 @@ pub async fn list(State(s): State<AppState>, a: Auth) -> ApiResult<Json<Value>> 
 
 pub async fn create(State(s): State<AppState>, a: Auth, Big(b): Big<SetBody>) -> ApiResult<Json<Value>> {
     no_guests(&a)?;
+    crate::features::check(&s, Some(&a.user), owndraw_core::features::FORMULAS).await?;
     let (name, data) = (b.name.trim().to_string(), check_body(&b)?);
     let uid = a.user.id;
     let (id, t) = s
@@ -221,6 +222,7 @@ pub async fn preview(State(s): State<AppState>, _a: Auth, Path(code): Path<Strin
 }
 
 pub async fn subscribe(State(s): State<AppState>, a: Auth, Path(code): Path<String>) -> ApiResult<Json<Value>> {
+    crate::features::check(&s, Some(&a.user), owndraw_core::features::FORMULAS).await?;
     let uid = a.user.id;
     let id = s
         .db

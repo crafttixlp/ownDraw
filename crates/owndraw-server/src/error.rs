@@ -31,6 +31,10 @@ impl ApiError {
     pub fn account_disabled(admin_message: &str) -> Self {
         Self::new(StatusCode::FORBIDDEN, "account_disabled", "Dein Konto ist gesperrt.").with_extra(serde_json::json!({ "admin_message": admin_message }))
     }
+    /// Vom Admin gesperrte Funktion (`features.rs`).
+    pub fn feature_off(m: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "feature_off", m)
+    }
     pub fn license_required(m: impl Into<String>) -> Self {
         Self::new(StatusCode::FORBIDDEN, "license_required", m)
     }

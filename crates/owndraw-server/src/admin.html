@@ -115,6 +115,10 @@ header a.webapp:hover, header button.small:hover { background: var(--hover); col
 .boardprev { margin-top: var(--s3); border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); display: grid; place-items: center; min-height: 80px; max-height: 260px; overflow: hidden; }
 .boardprev img { display: block; max-width: 100%; max-height: 258px; object-fit: contain; }
 .boardprev span { color: var(--muted); font-size: var(--fs-sm); padding: var(--s3); text-align: center; }
+.flist { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 var(--s4); margin-top: var(--s3); }
+.flist label { margin: 0; display: flex; align-items: center; gap: var(--s3); color: var(--text); font-size: var(--fs-md); font-weight: 400; min-height: var(--tap); cursor: pointer; padding: var(--s1) 0; border-top: 1px solid var(--line); }
+.flist label .d { display: block; color: var(--muted); font-size: var(--fs-sm); }
+.flist label.off > span > b { color: var(--muted); text-decoration: line-through; }
 .empty { color: var(--muted); padding: var(--s5) var(--s3); text-align: center; border: 1px dashed var(--line); border-radius: var(--r); }
 .empty b { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
 .empty span { font-size: var(--fs-sm); }
@@ -272,6 +276,7 @@ dialog .row { justify-content: flex-end; margin-top: var(--s5); }
       <button class="tab" role="tab" id="tab-licenses" data-tab="licenses" aria-selected="false">Lizenzen</button>
       <button class="tab" role="tab" id="tab-notices" data-tab="notices" aria-selected="false">Mitteilungen</button>
       <button class="tab" role="tab" id="tab-bugs" data-tab="bugs" aria-selected="false">Fehlerberichte <span id="bugChip" class="chip acc" hidden></span></button>
+      <button class="tab" role="tab" id="tab-features" data-tab="features" aria-selected="false">Funktionen <span id="featChip" class="chip warn" hidden></span></button>
       <button class="tab" role="tab" id="tab-maint" data-tab="maint" aria-selected="false">Wartung <span id="maintChip" class="chip warn" hidden>aktiv</span></button>
       <button class="tab" role="tab" id="tab-update" data-tab="update" aria-selected="false">Updates</button>
       <button class="tab" role="tab" id="tab-models" data-tab="models" aria-selected="false">Erkennungsmodelle</button>
@@ -343,6 +348,20 @@ dialog .row { justify-content: flex-end; margin-top: var(--s5); }
         <div id="bugList"></div>
         <p class="hint">Screenshots liegen im Datenordner unter <code>bugreports/</code>.</p>
       </div>
+    </section>
+
+    <section id="panel-features" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Werkzeuge</h2>
+        <p class="hint">Ausgeschaltete Werkzeuge verschwinden für Nutzer und Gäste aus Werkzeugleiste, „Weitere Werkzeuge“, Einstellungen und Tastenkürzeln. Schon gezeichnete Objekte bleiben sichtbar und mit „Auswahl“ bearbeitbar. Mindestens ein Werkzeug bleibt frei.</p>
+        <div class="row" style="margin-top:var(--s3)"><button id="fAllOn" class="small">Alles wieder einschalten</button></div>
+        <div id="fTools" class="flist"></div>
+      </div>
+      <div class="card">
+        <h2>Funktionen</h2>
+        <div id="fFeatures" class="flist"></div>
+      </div>
+      <p class="hint">Gilt für die Web-App und die Desktop-App mit diesem Server, nach dem nächsten Laden bzw. Anmelden. Administratoren sehen immer alles, damit du ausgeschaltete Werkzeuge weiter testen kannst. Die Android-App ist noch ohne Server-Anbindung und daher nicht betroffen.</p>
     </section>
 
     <section id="panel-maint" role="tabpanel" hidden>
@@ -508,6 +527,7 @@ async function showApp(me) {
   showView("appView"); $("who").textContent = me.email;
   selectTab(state.tab);
   if (state.tab !== "maint") loadMaint(true);
+  if (state.tab !== "features") loadFeatures(true);
   if (state.tab !== "bugs") loadBugs(true);
 }
 // Nach dem Passwort: 2FA einrichten, Code abfragen oder (schon bestätigt) direkt zur Verwaltung.
@@ -588,6 +608,7 @@ const TAB_INFO = {
   licenses: ["Lizenzen", "Mit einer Lizenz können Nutzer Boards auf dem Server speichern. Hier erzeugst und verwaltest du die Codes."],
   notices: ["Mitteilungen", "Nachrichten, die Besucher beim Start der Web-App sehen."],
   bugs: ["Fehlerberichte", "Meldungen aus der Web-App („Fehler melden“), auch von Gästen ohne Konto."],
+  features: ["Funktionen", "Schalte Werkzeuge und Funktionen aus, die noch nicht richtig funktionieren. Nutzer sehen sie dann nicht mehr."],
   maint: ["Wartung", "Sperre den Server kurz für Besucher, zum Beispiel bei Arbeiten."],
   update: ["Updates", "Halte den Server auf dem neuesten Stand."],
   models: ["Erkennungsmodelle", "Modelle für die Handschrift-Erkennung, die die Web-App vom Server lädt."],
@@ -600,11 +621,11 @@ function selectTab(name) {
     if (on && t.scrollIntoView) t.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   $("pageTitle").textContent = TAB_INFO[name][0]; $("pageSub").textContent = TAB_INFO[name][1];
-  for (const n of ["stats", "users", "licenses", "notices", "bugs", "maint", "update", "models"]) $("panel-" + n).hidden = n !== name;
+  for (const n of ["stats", "users", "licenses", "notices", "bugs", "features", "maint", "update", "models"]) $("panel-" + n).hidden = n !== name;
   flash("");
   stopStats();
   if (name === "stats") startStats();
-  else if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "bugs") loadBugs(); else if (name === "maint") loadMaint(); else if (name === "models") loadModels(); else loadUpdate();
+  else if (name === "users") loadUsers(); else if (name === "licenses") loadLicenses(); else if (name === "notices") loadNotices(); else if (name === "bugs") loadBugs(); else if (name === "features") loadFeatures(); else if (name === "maint") loadMaint(); else if (name === "models") loadModels(); else loadUpdate();
 }
 for (const t of document.querySelectorAll(".tab[data-tab]")) t.addEventListener("click", () => selectTab(t.dataset.tab));
 
@@ -1002,6 +1023,41 @@ $("mOn").addEventListener("click", async () => {
   putMaint(true);
 });
 $("mOff").addEventListener("click", () => putMaint(false));
+
+// ---------- Funktionen (Freigaben) ----------
+function featChip(f) {
+  const n = f.off.length;
+  $("featChip").hidden = !n; $("featChip").textContent = n + " aus";
+}
+function renderFeatures(f) {
+  state.features = f;
+  featChip(f);
+  const row = (c) => {
+    const on = !f.off.includes(c.id);
+    const cb = h("input", { type: "checkbox", checked: on, onchange: () => setFeature(c.id, cb.checked, cb) });
+    return h("label", { class: on ? "" : "off", title: on ? "Für Nutzer frei – zum Ausschalten tippen" : "Für Nutzer ausgeschaltet – zum Einschalten tippen" },
+      cb, h("span", {}, h("b", {}, c.name), !on && h("span", { class: "chip warn" }, "aus"), c.desc && h("span", { class: "d" }, c.desc)));
+  };
+  $("fTools").replaceChildren(...f.catalog.filter((c) => c.kind === "tool").map(row));
+  $("fFeatures").replaceChildren(...f.catalog.filter((c) => c.kind !== "tool").map(row));
+  $("fAllOn").disabled = !f.off.length;
+}
+async function loadFeatures(quiet) {
+  try { const f = await api("GET", "/api/admin/features"); if (quiet) featChip(f); else renderFeatures(f); } catch (e) { if (!quiet) fail(e); }
+}
+async function putFeatures(off, okText) {
+  try { renderFeatures(await api("PUT", "/api/admin/features", { off })); if (okText) flash(okText); }
+  catch (e) { fail(e); if (state.features) renderFeatures(state.features); }
+}
+function setFeature(id, on, cb) {
+  const f = state.features; if (!f) return;
+  const name = (f.catalog.find((c) => c.id === id) || {}).name || id;
+  const off = f.off.filter((x) => x !== id);
+  if (!on) off.push(id);
+  if (cb) cb.disabled = true;
+  putFeatures(off, on ? "„" + name + "“ ist für Nutzer wieder frei." : "„" + name + "“ ist für Nutzer ausgeschaltet.");
+}
+$("fAllOn").addEventListener("click", () => putFeatures([], "Alle Werkzeuge und Funktionen sind wieder frei."));
 
 // ---------- Updates ----------
 for (let i = 0; i < 24; i++) $("uHour").append(h("option", { value: i }, String(i).padStart(2, "0") + ":00"));

@@ -557,6 +557,33 @@ impl Editor {
         }
     }
 
+    /// Vom Admin gesperrte Werkzeuge/Funktionen (`crate::locks`) schließen bzw. abwählen. `bar` = sichtbare Werkzeuge.
+    fn enforce_locks(&mut self, bar: &[Tool]) {
+        use owndraw_core::features as f;
+        let locked = crate::locks::locked;
+        if locked(f::EXPORT) {
+            self.st.export.open = false;
+        }
+        if locked(f::LAYERS) {
+            self.st.layers_open = false;
+        }
+        if locked(f::FORMULAS) {
+            self.fbook.open = false;
+        }
+        if locked("penmode") && self.pen_mode() {
+            self.toggle_pen_mode();
+        }
+        if locked("ruler") && self.ext.ruler.visible {
+            self.toggle_ruler();
+        }
+        let cur = self.active_tool();
+        if tools::locked(tools::of(cur).id) {
+            if let Some(t) = bar.iter().copied().find(|t| !matches!(t, Tool::Image | Tool::PenMode | Tool::Ruler)) {
+                self.set_tool_ui(t);
+            }
+        }
+    }
+
     /// Werkzeug wählen (Bild öffnet die Dateiauswahl).
     pub fn select_tool(&mut self, sh: &mut Shared, t: Tool) {
         if t == Tool::Image {
@@ -715,6 +742,7 @@ impl Editor {
         if self.st.edit_tools.is_none() {
             self.st.note_in_bar = tools.contains(&Tool::Note);
         }
+        self.enforce_locks(&tools);
         // Knopf „+“ (Weitere Werkzeuge), solange Werkzeuge ausgeschaltet sind
         let more = usize::from(self.st.edit_tools.is_none() && !more::hidden(&sh.settings).is_empty());
         let lay = self.layout(sh, ui.max_rect(), tools.len() + more);
@@ -1289,6 +1317,7 @@ impl Editor {
                 self.st.opts_open = false;
                 self.st.export.open = false;
             }
+            "export" if crate::locks::locked(owndraw_core::features::EXPORT) => {}
             "export" => {
                 self.st.export.open = true;
                 self.st.menu_open = false;

@@ -200,8 +200,9 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 0.0;
         let n_on = tools::TOOLS.iter().filter(|d| tools::enabled(settings, d.id)).count();
-        let n_new = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id)).count();
-        let sub = if n_new > 0 { format!("{n_on} von {} eingeschaltet · {n_new} neue verfügbar", tools::TOOLS.len()) } else { format!("{n_on} von {} eingeschaltet", tools::TOOLS.len()) };
+        let n_new = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id) && !tools::locked(d.id)).count();
+        let n_all = tools::TOOLS.len() - crate::locks::locked_tools();
+        let sub = if n_new > 0 { format!("{n_on} von {n_all} eingeschaltet · {n_new} neue verfügbar") } else { format!("{n_on} von {n_all} eingeschaltet") };
         if nav_row(ui, icons, owndraw_core::icons::SLIDERS, "Werkzeuge", &sub, n_new > 0, btn) {
             *page = Page::Tools;
         }
@@ -670,7 +671,7 @@ fn tools_page(ui: &mut Ui, env: &Env, settings: &mut Settings, icons: &mut Icons
     let p = style::pal();
     let btn = env.btn;
     ui.add_space(sp::S);
-    let n_new_off = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id)).count();
+    let n_new_off = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id) && !tools::locked(d.id)).count();
     style::info_card(ui, |ui| {
         ui.label(egui::RichText::new("So passt du die Werkzeugleiste an").strong());
         ui.add(egui::Label::new(style::hint("Neue Werkzeuge sind anfangs ausgeschaltet, damit die Leiste übersichtlich bleibt. Schalte hier ein, was du brauchst – oder im Editor über den Knopf „+“ am Ende der Werkzeugleiste. Ausgeschaltete Werkzeuge verschwinden aus Leiste und Tastenkürzeln; schon gezeichnete Objekte bleiben bearbeitbar.")).wrap());
@@ -683,9 +684,15 @@ fn tools_page(ui: &mut Ui, env: &Env, settings: &mut Settings, icons: &mut Icons
             }
         }
     });
+    let n_locked = crate::locks::locked_tools();
+    if n_locked > 0 {
+        ui.add_space(sp::XS);
+        let t = if n_locked == 1 { "Ein Werkzeug ist auf diesem Server gerade ausgeschaltet und fehlt deshalb hier.".to_string() } else { format!("{n_locked} Werkzeuge sind auf diesem Server gerade ausgeschaltet und fehlen deshalb hier.") };
+        ui.add(egui::Label::new(style::hint(&t)).wrap());
+    }
     let n_on = tools::TOOLS.iter().filter(|d| tools::enabled(settings, d.id)).count();
     for g in Group::ALL {
-        let list: Vec<&tools::ToolDef> = tools::TOOLS.iter().filter(|d| d.group == g).collect();
+        let list: Vec<&tools::ToolDef> = tools::TOOLS.iter().filter(|d| d.group == g && !tools::locked(d.id)).collect();
         if list.is_empty() {
             continue;
         }

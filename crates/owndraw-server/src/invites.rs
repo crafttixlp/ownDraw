@@ -93,6 +93,7 @@ pub struct CreateBody {
 }
 
 pub async fn create(State(s): State<AppState>, a: Auth, Path(id): Path<String>, J(b): J<CreateBody>) -> ApiResult<Json<Value>> {
+    crate::features::check(&s, Some(&a.user), owndraw_core::features::SHARE).await?;
     if b.role != "edit" && b.role != "view" {
         return Err(ApiError::invalid("Die Rolle muss \"edit\" oder \"view\" sein."));
     }
@@ -169,6 +170,7 @@ pub struct JoinBody {
 pub async fn join(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: MaybeAuth, Path(token): Path<String>, J(b): J<JoinBody>) -> ApiResult<Response> {
     rate_check_n(&s, "join", &ip, s.cfg.rate_limit.saturating_mul(5))?;
     let user = cur.0.map(|a| a.user);
+    crate::features::check(&s, user.as_ref(), owndraw_core::features::SHARE).await?;
     let guest_name = match &user {
         Some(_) => None,
         None => {

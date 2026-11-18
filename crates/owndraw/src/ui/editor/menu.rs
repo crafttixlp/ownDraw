@@ -9,6 +9,8 @@ use crate::style;
 use owndraw_core::icons as ic;
 use egui::{Align2, Order, Pos2, Ui};
 use owndraw_core::pages::PageBg;
+use owndraw_core::features as F;
+use crate::locks::locked;
 
 pub(super) fn show(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
     if !ed.st.menu_open {
@@ -36,7 +38,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
     let pages_mode = lay.pages_mode;
 
     style::caption(ui, "Ansicht");
-    if style::menu_row_ic(ui, &mut sh.icons, ic::LAYERS, if ed.st.layers_open { "Ebenen ausblenden" } else { "Ebenen" }, "", false, h) {
+    if !locked(F::LAYERS) && style::menu_row_ic(ui, &mut sh.icons, ic::LAYERS, if ed.st.layers_open { "Ebenen ausblenden" } else { "Ebenen" }, "", false, h) {
         ed.st.layers_open = !ed.st.layers_open;
         close = true;
     }
@@ -80,13 +82,15 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         close = true;
     }
 
-    style::caption(ui, "Export");
-    if style::menu_row_ic(ui, &mut sh.icons, ic::EXPORT, "Exportieren …", &keys::label(&sh.settings, "export"), false, h) {
+    if !locked(F::EXPORT) || !locked(F::FORMULAS) {
+        style::caption(ui, "Export");
+    }
+    if !locked(F::EXPORT) && style::menu_row_ic(ui, &mut sh.icons, ic::EXPORT, "Exportieren …", &keys::label(&sh.settings, "export"), false, h) {
         // gleiches Fenster wie der Knopf in der Kachel
         ed.st.export.open = true;
         close = true;
     }
-    if style::menu_row_ic(ui, &mut sh.icons, ic::FORMULA, "Formelsammlung …", "", false, h) {
+    if !locked(F::FORMULAS) && style::menu_row_ic(ui, &mut sh.icons, ic::FORMULA, "Formelsammlung …", "", false, h) {
         ed.open_fbook(None);
         close = true;
     }
@@ -122,7 +126,7 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, lay: &Lay) {
         sh.reqs.push(Req::OpenTutorial);
         close = true;
     }
-    if crate::ui::bug_report_available() && style::menu_row_ic(ui, &mut sh.icons, ic::BUG, "Fehler melden …", "", false, h) {
+    if crate::ui::bug_report_available() && !locked(F::BUGREPORT) && style::menu_row_ic(ui, &mut sh.icons, ic::BUG, "Fehler melden …", "", false, h) {
         crate::ui::open_bug_report(sh);
         close = true;
     }
@@ -150,7 +154,7 @@ fn server_rows(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, h: f32, close: &mu
     match ed.file().and_then(api::srv_id).map(String::from) {
         Some(id) => {
             let owner = api::board(&id).is_some_and(|b| b.role == "owner");
-            if owner && style::menu_row_ic(ui, &mut sh.icons, ic::SHARE, "Teilen …", "", false, h) {
+            if owner && !locked(F::SHARE) && style::menu_row_ic(ui, &mut sh.icons, ic::SHARE, "Teilen …", "", false, h) {
                 if let Some(l) = ed.live.as_mut() {
                     l.open_share();
                 }

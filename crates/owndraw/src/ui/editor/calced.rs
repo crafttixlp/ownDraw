@@ -191,7 +191,7 @@ impl Editor {
                     if style::plain_btn(ui, "Fertig", h).on_hover_text("Esc").clicked() {
                         cancel = true;
                     }
-                    if style::plain_btn(ui, "Formeln …", h).on_hover_text("Formelsammlung öffnen").clicked() {
+                    if !crate::locks::locked(owndraw_core::features::FORMULAS) && style::plain_btn(ui, "Formeln …", h).on_hover_text("Formelsammlung öffnen").clicked() {
                         open_book = true;
                     }
                 });
@@ -231,7 +231,7 @@ pub(super) fn options(ui: &mut egui::Ui, ed: &mut Editor, sh: &mut Shared) {
         ui.label(egui::RichText::new("Rechnen ist ausgeschaltet (Einstellungen).").size(12.0).color(c(pal.danger_text)));
     }
     ui.add_space(4.0);
-    if style::outline_btn(ui, "Formelsammlung …", h).on_hover_text("Formeln suchen und einfügen, eigene Formeln, Konstanten und Einheiten").clicked() {
+    if !crate::locks::locked(owndraw_core::features::FORMULAS) && style::outline_btn(ui, "Formelsammlung …", h).on_hover_text("Formeln suchen und einfügen, eigene Formeln, Konstanten und Einheiten").clicked() {
         ed.open_fbook(None);
     }
     let cp = &mut sh.settings.calc;

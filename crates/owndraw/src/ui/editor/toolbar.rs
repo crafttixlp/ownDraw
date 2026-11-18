@@ -97,13 +97,16 @@ fn top_bar(ed: &mut Editor, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {
                     ed.st.more_open = false;
                     ed.st.export.open = false;
                 }
-                let exp = icon_btn(ui, &mut sh.icons, ic::EXPORT, p.text, ed.st.export.open, false, btn, &env.tip("Exportieren", &keys::label(&sh.settings, "export")));
-                ed.st.export.btn = Some(exp.rect);
-                if exp.clicked() {
-                    ed.st.export.open = !ed.st.export.open;
-                    ed.st.menu_open = false;
-                    ed.st.opts_open = false;
-                    ed.st.more_open = false;
+                // Exportieren (nicht, wenn der Admin es gesperrt hat)
+                if !crate::locks::locked(owndraw_core::features::EXPORT) {
+                    let exp = icon_btn(ui, &mut sh.icons, ic::EXPORT, p.text, ed.st.export.open, false, btn, &env.tip("Exportieren", &keys::label(&sh.settings, "export")));
+                    ed.st.export.btn = Some(exp.rect);
+                    if exp.clicked() {
+                        ed.st.export.open = !ed.st.export.open;
+                        ed.st.menu_open = false;
+                        ed.st.opts_open = false;
+                        ed.st.more_open = false;
+                    }
                 }
                 g
             })

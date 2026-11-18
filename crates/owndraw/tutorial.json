@@ -403,6 +403,13 @@
           "title": "Board hell oder dunkel",
           "text": "„…“ → „Board: dunkel“ bzw. „Board: hell“ wechselt die Farbe des Boards selbst. Das wird mit dem Board gespeichert und ist unabhängig vom Farbschema der App.",
           "covers": ["menu:Board: hell", "menu:Board: dunkel"]
+        },
+        {
+          "id": "view-vollbild",
+          "title": "Vollbild im Browser",
+          "text": "Im Browser auf dem Handy oder Tablet blendet „…“ → „Vollbild“ die Adress- und Navigationsleiste aus, damit mehr Platz zum Zeichnen bleibt. „Vollbild beenden“ oder die Zurück-Geste holt die Leisten zurück. Der Eintrag erscheint nur, wenn der Browser Vollbild kann (z. B. Chrome oder Firefox auf Android).",
+          "how": ["„…“ → „Vollbild“, zum Verlassen „Vollbild beenden“.", "Dauerhaft ohne Browserleiste: im Browsermenü „Zum Startbildschirm hinzufügen“ bzw. „App installieren“ wählen. OwnDraw startet dann vom Startbildschirm direkt im Vollbild."],
+          "covers": ["menu:Vollbild", "menu:Vollbild beenden", "extra:web-app"]
         }
       ]
     },

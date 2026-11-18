@@ -130,6 +130,67 @@ pub fn open_bug_report() -> bool {
     }
 }
 
+// ---------------------------------------------------------------- Vollbild (Fullscreen-API)
+
+fn js_prop(o: &JsValue, name: &str) -> JsValue {
+    js_sys::Reflect::get(o, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED)
+}
+
+/// Ruft die erste vorhandene Methode aus `names` an `o` auf (Standard oder `webkit`-Präfix).
+fn js_call(o: &JsValue, names: &[&str], arg: Option<&JsValue>) -> bool {
+    for n in names {
+        if let Ok(f) = js_prop(o, n).dyn_into::<js_sys::Function>() {
+            let r = match arg {
+                Some(a) => f.call1(o, a),
+                None => f.call0(o),
+            };
+            // Promise-Ablehnung (z. B. ohne Nutzereingabe) nur protokollieren
+            if let Ok(p) = r.and_then(|v| v.dyn_into::<js_sys::Promise>()) {
+                spawn_local(async move {
+                    if let Err(e) = JsFuture::from(p).await {
+                        warn(&format!("Vollbild: {e:?}"));
+                    }
+                });
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// Läuft die Seite als installierte Web-App schon im Vollbild (`display: fullscreen`)?
+fn standalone_fullscreen() -> bool {
+    web_sys::window().and_then(|w| w.match_media("(display-mode: fullscreen)").ok().flatten()).map(|m| m.matches()).unwrap_or(false)
+}
+
+pub fn fullscreen_available() -> bool {
+    let Some(d) = document() else { return false };
+    let d: JsValue = d.into();
+    let enabled = js_prop(&d, "fullscreenEnabled").is_truthy() || js_prop(&d, "webkitFullscreenEnabled").is_truthy();
+    enabled && (is_fullscreen() || !standalone_fullscreen())
+}
+
+pub fn is_fullscreen() -> bool {
+    let Some(d) = document() else { return false };
+    let d: JsValue = d.into();
+    js_prop(&d, "fullscreenElement").is_truthy() || js_prop(&d, "webkitFullscreenElement").is_truthy()
+}
+
+pub fn toggle_fullscreen() {
+    let Some(d) = document() else { return };
+    if is_fullscreen() {
+        js_call(&d.into(), &["exitFullscreen", "webkitExitFullscreen"], None);
+        return;
+    }
+    let Some(el) = d.document_element() else { return };
+    // Android-Chrome: Navigationsleiste des Browsers ausblenden
+    let opts = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&opts, &JsValue::from_str("navigationUI"), &JsValue::from_str("hide"));
+    if !js_call(&el.into(), &["requestFullscreen", "webkitRequestFullscreen"], Some(&opts.into())) {
+        warn("Vollbild wird von diesem Browser nicht unterstützt.");
+    }
+}
+
 // ---------------------------------------------------------------- IndexedDB
 
 /// Wartet auf ein IndexedDB-Ergebnis (`onsuccess`/`onerror`).

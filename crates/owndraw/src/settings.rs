@@ -149,6 +149,29 @@ impl CalcPrefs {
     }
 }
 
+/// Handschrift-Erkennung (Werkzeug „Umwandeln“): Stufe `aus`, `schlecht`, `mittel` oder `hoch`
+/// (`owndraw_core::hw::Stufe`). Höher = größere Modelle.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HwPrefs {
+    pub stufe: String,
+}
+
+impl Default for HwPrefs {
+    fn default() -> Self {
+        HwPrefs { stufe: "mittel".into() }
+    }
+}
+
+impl HwPrefs {
+    pub fn stufe(&self) -> owndraw_core::hw::Stufe {
+        owndraw_core::hw::Stufe::from_id(&self.stufe).unwrap_or(owndraw_core::hw::Stufe::Mittel)
+    }
+    pub fn set(&mut self, s: owndraw_core::hw::Stufe) {
+        self.stufe = s.id().to_string();
+    }
+}
+
 impl Snapping {
     pub fn to_core(self) -> owndraw_core::recognizer::SnapCfg {
         owndraw_core::recognizer::SnapCfg {
@@ -226,6 +249,8 @@ pub struct Settings {
     pub snap: Snapping,
     /// Werkzeug „Rechnen“: Optionen und Schalter „Rechnen erlauben“.
     pub calc: CalcPrefs,
+    /// Handschrift-Erkennung (Werkzeug „Umwandeln“).
+    pub hw: HwPrefs,
     /// Unbekannte/zusätzliche Werte anderer Module (z. B. Werkzeug-Vorgaben aus prefs.txt).
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -270,6 +295,7 @@ impl Default for Settings {
             update_repo: "crafttixlp/ownDraw".into(),
             snap: Snapping::default(),
             calc: CalcPrefs::default(),
+            hw: HwPrefs::default(),
             extra: Default::default(),
         }
     }
@@ -297,6 +323,9 @@ impl Settings {
         }
         self.snap.sanitize();
         self.calc.digits = self.calc.digits.clamp(2, 10);
+        if owndraw_core::hw::Stufe::from_id(&self.hw.stufe).is_none() {
+            self.hw = HwPrefs::default();
+        }
         if self.update_repo.trim().is_empty() {
             self.update_repo = Settings::default().update_repo;
         }

@@ -109,6 +109,7 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef::neu(Tool::Pin, "pin", "Kommentar", Group::Extras, ic::PIN, "Stecknadel mit Kommentar und Antworten, für alle im Board sichtbar.").key("C"),
     ToolDef::neu(Tool::Math, "math", "Formel", Group::Extras, ic::FORMULA, "Setzt Mathe-Formeln in LaTeX-Schreibweise mit Live-Vorschau.").key("Y"),
     ToolDef::neu(Tool::Calc, "calc", "Rechnen", Group::Extras, ic::FORMULA, "Rechenzeilen tippen (a: 2 N, M = a·b, M =); die Ergebnisse erscheinen auf dem Blatt.").key("A"),
+    ToolDef::neu(Tool::Convert, "convert", "Umwandeln", Group::Extras, ic::TEXT, "Handschrift umkreisen oder antippen: wird zu Text, Formel oder Zahl (Erkennung im Browser).").key("V"),
     ToolDef::neu(Tool::PenMode, "penmode", "Stift-Modus", Group::Zeichnen, ic::FINGER, "Schalter: an = nur der Stift zeichnet, Finger verschieben und zoomen; aus = auch Finger zeichnen.").key("H"),
 ];
 

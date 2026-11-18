@@ -281,6 +281,13 @@ sehen dann eine Wartungsseite, die API antwortet ihnen mit 503 `maintenance`, Li
 Admins arbeiten weiter; `/admin` und `/api/health` bleiben erreichbar. Details: [`web-api.md`](web-api.md).
 Tipp für Updates: vorher Wartung einschalten, nach dem Neustart prüfen, dann ausschalten.
 
+**Funktionen ausschalten (ab 4.36.0).** Im Admin-Panel unter **Funktionen** schaltest du einzelne Werkzeuge (Stift,
+Laserpointer, Umwandeln …) und Funktionen (Teilen, Exportieren, Formelsammlung, Ebenen, Fehler melden) für alle Nutzer
+und Gäste aus, etwa wenn ein neues Werkzeug noch nicht richtig funktioniert. Sie verschwinden in der Web-App und der
+Desktop-App mit diesem Server nach dem nächsten Laden bzw. Anmelden; schon gezeichnete Objekte bleiben. Mindestens ein
+Werkzeug bleibt frei. Admins sehen immer alles. Die Android-App hat noch keine Server-Anbindung und ist nicht betroffen.
+Details: [`web-api.md`](web-api.md).
+
 **Fehlerberichte (ab 4.10.0).** In der Web-App können Nutzer und Gäste über „Fehler melden“ eine Beschreibung mit bis zu
 5 Screenshots senden. Im Admin-Panel unter **Fehlerberichte** stehen alle Meldungen (Filter Offen/Erledigt/Alle) mit
 Datum, Absender, Text, Screenshots und technischen Angaben; dort lassen sie sich als erledigt markieren oder löschen.

@@ -477,6 +477,13 @@
           "covers": ["extra:weitere-werkzeuge"]
         },
         {
+          "id": "admin-gesperrt",
+          "title": "Werkzeug fehlt? Vom Admin ausgeschaltet",
+          "text": "Der Admin deines Servers kann Werkzeuge und Funktionen ausschalten, die noch nicht richtig funktionieren, zum Beispiel ein neues Werkzeug, Teilen, Exportieren, Ebenen, die Formelsammlung oder „Fehler melden“. Sie fehlen dann in Werkzeugleiste, „Weitere Werkzeuge“, Menü, Einstellungen und Tastenkürzeln, bis er sie wieder einschaltet.",
+          "how": ["Die Seite „Werkzeuge“ in den Einstellungen sagt dir, wie viele Werkzeuge gerade ausgeschaltet sind.", "Schon gezeichnete Objekte bleiben sichtbar und lassen sich mit „Auswahl“ verschieben oder löschen.", "Admins sehen immer alles. Geschaltet wird im Admin-Panel unter „Funktionen“."],
+          "covers": ["extra:admin-gesperrt"]
+        },
+        {
           "id": "einst-kuerzel",
           "title": "Tastenkürzel anpassen",
           "text": "Einstellungen → „Tastenkürzel …“ listet alle Aktionen und Werkzeuge mit ihrer Belegung. Tippe auf ein Kürzel und drücke die neue Taste oder Kombination (mit Strg, Alt oder Umschalt). „+“ fügt ein weiteres Kürzel hinzu.",

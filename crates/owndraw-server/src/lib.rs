@@ -9,6 +9,7 @@ pub mod config;
 pub mod db;
 pub mod downloads;
 pub mod error;
+pub mod features;
 pub mod formulas;
 pub mod invites;
 pub mod models;
@@ -143,6 +144,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/admin/licenses", get(admin::licenses).post(admin::create_licenses))
         .route("/admin/licenses/{code}", patch(admin::patch_license).delete(admin::delete_license))
         .route("/admin/stats", get(stats::get))
+        .route("/features", get(features::public))
+        .route("/admin/features", get(features::admin_get).put(features::admin_put))
         .route("/notices", get(notices::public_list))
         .route("/notices/{id}/board.png", get(notices::public_board))
         .route("/maintenance", get(notices::public_state))

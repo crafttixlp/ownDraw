@@ -7,6 +7,7 @@ pub mod canvas;
 pub mod collab;
 pub mod doc;
 pub mod export;
+pub mod features;
 pub mod geom;
 pub mod hw;
 pub mod icons;

@@ -109,6 +109,7 @@ struct Img {
 /// und bis zu fünf Dateien `image`. Ohne Anmeldung möglich.
 pub async fn create(State(s): State<AppState>, ClientIp(ip): ClientIp, who: MaybeAuth, mut mp: Multipart) -> ApiResult<Json<Value>> {
     rate_check_n(&s, "bugreport", &ip, RATE_LIMIT)?;
+    crate::features::check(&s, who.0.as_ref().map(|a| &a.user), owndraw_core::features::BUGREPORT).await?;
     let (mut text, mut version, mut ua, mut page, mut screen) = (String::new(), String::new(), String::new(), String::new(), String::new());
     let mut imgs: Vec<Img> = Vec::new();
     let bad = |_| ApiError::invalid("Die Meldung konnte nicht gelesen werden.");

@@ -27,7 +27,8 @@ erhalten, sind aber nur noch lesbar/herunterladbar (kein Speichern, kein Teilen)
 
 - JSON (`Content-Type: application/json`), UTF-8. Fehler: HTTP-Status + `{"error":"code","message":"Text auf Deutsch"}`.
   Codes: `unauthorized` (401), `forbidden` (403), `license_required` (403), `not_found` (404), `conflict` (409),
-  `invalid` (400), `too_large` (413), `quota` (507), `rate_limited` (429), `maintenance` (503, siehe „Wartungsmodus“).
+  `invalid` (400), `too_large` (413), `quota` (507), `rate_limited` (429), `maintenance` (503, siehe „Wartungsmodus“),
+  `feature_off` (403, vom Admin ausgeschaltet, siehe „Freigaben“).
 - Anmeldung per Cookie `owndraw_session` (HttpOnly, Secure, SameSite=Lax, 30 Tage). Schreibende Anfragen
   brauchen zusätzlich Header `X-OwnDraw: 1` (CSRF-Schutz; einfache Formulare können ihn nicht setzen).
 - Zeiten: Unix-Sekunden (i64). IDs: UUID-Strings.
@@ -184,6 +185,8 @@ Ein TOTP-Code gilt nur einmal (Fenster ±1 Schritt à 30 s). Notfall-Reset: `own
 | DELETE | `/api/admin/notices/{id}` | löscht die Mitteilung |
 | GET | `/api/admin/maintenance` | → `{active, enabled, message, until, since, default_message}` |
 | PUT | `/api/admin/maintenance` | `{active, message?, until?:…\|null}` (Ein-/Ausschalten; `until` = endet automatisch) |
+| GET | `/api/admin/features` | → `{off:[id], catalog:[{id, name, kind:"tool"\|"feature", desc}]}` |
+| PUT | `/api/admin/features` | `{off:[id]}` → wie GET; unbekannte Kennungen fallen weg, 400 wenn kein Werkzeug frei bliebe |
 
 ```json
 License = {"code":"OWND-XXXX-XXXX-XXXX","created":…,"days":365|null,"expires_at":…|null,"quota_mb":500,
@@ -246,6 +249,19 @@ Admin-Panel setzt ihn nur per `textContent` ein.
   Close-Code 4503 getrennt; Admins bleiben verbunden.
 - Admins nutzen Web-App und API normal; die Web-App zeigt ihnen oben den Hinweis „Wartungsmodus aktiv“.
 - Gespeichert in `settings` (Schlüssel `maintenance`) und damit auch nach einem Neustart aktiv.
+
+## Freigaben: Werkzeuge und Funktionen ausschalten (ab 4.36.0)
+
+Der Admin schaltet im Admin-Panel (Tab „Funktionen“) Werkzeuge und Funktionen für alle Nutzer und Gäste aus, z. B.
+solche, die noch nicht richtig funktionieren. Katalog: `owndraw_core::features::ALL` (Werkzeuge mit den Kennungen der
+Werkzeug-Registry, dazu `share`, `export`, `formulas`, `layers`, `bugreport`).
+
+- `GET /api/features` (ohne Anmeldung) → `{off:[id]}`; für angemeldete Admins immer `[]`. Die App lädt die Liste beim
+  Start und nach An-/Abmelden und blendet Gesperrtes aus (Leiste, „Weitere Werkzeuge“, Menü, Einstellungen, Tastenkürzel).
+- Serverseitig geprüft (Nicht-Admins → `403 feature_off`): `share` bei `POST /api/boards/{id}/members`,
+  `POST /api/boards/{id}/invites`, `POST /api/invites/{token}/join`; `formulas` bei `POST /api/formulas` und
+  `POST /api/formulas/code/{code}`; `bugreport` bei `POST /api/bugreports`.
+- Gespeichert in `settings` (Schlüssel `features_off`, JSON-Liste).
 
 ## Server-Update
 

@@ -1559,3 +1559,46 @@ async fn formelsammlungen_limits() {
     let r = app.post("/api/formulas", Some(&a), json!({"name": "zu viel", "data": []})).await;
     assert_eq!((r.status, r.code().as_str()), (StatusCode::BAD_REQUEST, "too_many"));
 }
+
+#[tokio::test]
+async fn admin_sperrt_werkzeuge_und_funktionen() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let owner = app.register("owner@example.org").await;
+    app.register("edit@example.org").await;
+    app.give_license(&admin, &owner, json!(null), 10).await;
+    let id = app.upload(&owner, "geteilt", zip_bytes(10)).await.json()["id"].as_str().unwrap().to_string();
+
+    // Anfangs nichts gesperrt; Katalog enthält Werkzeuge und Funktionen
+    assert_eq!(app.get("/api/features", None).await.json()["off"], json!([]));
+    let a = app.get("/api/admin/features", Some(&admin)).await.json();
+    let cat = a["catalog"].as_array().unwrap();
+    assert!(cat.iter().any(|c| c["id"] == "laser" && c["kind"] == "tool"));
+    assert!(cat.iter().any(|c| c["id"] == "share" && c["kind"] == "feature"));
+
+    // Nur Admins schalten; unbekannte Kennungen fallen weg; nicht alle Werkzeuge
+    let r = app.api(Method::PUT, "/api/admin/features", Some(&owner), Some(json!({"off": ["laser"]}))).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let all: Vec<Value> = cat.iter().filter(|c| c["kind"] == "tool").map(|c| c["id"].clone()).collect();
+    let r = app.api(Method::PUT, "/api/admin/features", Some(&admin), Some(json!({"off": all}))).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let r = app.api(Method::PUT, "/api/admin/features", Some(&admin), Some(json!({"off": ["share", "laser", "gibtsnicht", "laser"]}))).await;
+    assert_eq!((r.status, r.json()["off"].clone()), (StatusCode::OK, json!(["laser", "share"])));
+
+    // Nutzer und Gäste sehen die Sperre, Admins nicht
+    assert_eq!(app.get("/api/features", None).await.json()["off"], json!(["laser", "share"]));
+    assert_eq!(app.get("/api/features", Some(&owner)).await.json()["off"], json!(["laser", "share"]));
+    assert_eq!(app.get("/api/features", Some(&admin)).await.json()["off"], json!([]));
+
+    // Teilen gesperrt: Mitglied hinzufügen und Einladungslink -> 403 feature_off
+    let r = app.post(&format!("/api/boards/{id}/members"), Some(&owner), json!({"email": "edit@example.org", "role": "edit"})).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::FORBIDDEN, "feature_off"));
+    let r = app.post(&format!("/api/boards/{id}/invites"), Some(&owner), json!({"role": "edit"})).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::FORBIDDEN, "feature_off"));
+
+    // wieder frei
+    let r = app.api(Method::PUT, "/api/admin/features", Some(&admin), Some(json!({"off": []}))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let r = app.post(&format!("/api/boards/{id}/members"), Some(&owner), json!({"email": "edit@example.org", "role": "edit"})).await;
+    assert_eq!(r.status, StatusCode::OK);
+}

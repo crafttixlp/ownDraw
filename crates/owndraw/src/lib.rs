@@ -9,6 +9,7 @@ mod formulas;
 /// Handschrift-Erkennung: Anbindung an die Browser-Seite (hw.js).
 mod hw;
 mod kv;
+mod locks;
 #[allow(dead_code)]
 mod layout;
 /// Server-Anbindung (Konto, Server-Boards, Live-Zusammenarbeit): Web-App und Desktop, nicht Android.

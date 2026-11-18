@@ -123,14 +123,30 @@ pub fn of(t: Tool) -> &'static ToolDef {
     TOOLS.iter().find(|d| d.tool == t).expect("Werkzeug fehlt in TOOLS")
 }
 
-/// Ist das Werkzeug eingeschaltet? Unbekannte Kennungen: aus.
+/// Vom Admin gesperrt (`crate::locks`)? Gesperrte Werkzeuge gelten als aus und erscheinen nirgends.
+pub fn locked(id: &str) -> bool {
+    crate::locks::locked(id)
+}
+
+/// Ist das Werkzeug eingeschaltet? Unbekannte und gesperrte Kennungen: aus.
 pub fn enabled(s: &Settings, id: &str) -> bool {
     let Some(d) = def(id) else { return false };
+    if locked(id) {
+        return false;
+    }
     s.tool_on.get(id).copied().unwrap_or(d.default_on)
 }
 
-/// Alle Werkzeuge in der Reihenfolge der Leiste (eigene Reihenfolge, danach der Rest in Registry-Reihenfolge).
+/// Alle nicht gesperrten Werkzeuge in der Reihenfolge der Leiste (eigene Reihenfolge, danach der Rest in
+/// Registry-Reihenfolge).
 pub fn ordered(s: &Settings) -> Vec<&'static ToolDef> {
+    let mut v = ordered_all(s);
+    v.retain(|d| !locked(d.id));
+    v
+}
+
+/// Wie [`ordered`], auch mit gesperrten Werkzeugen (Speichern der Reihenfolge).
+fn ordered_all(s: &Settings) -> Vec<&'static ToolDef> {
     let mut v: Vec<&'static ToolDef> = Vec::new();
     for id in &s.tool_order {
         if let Some(d) = def(id) {
@@ -151,8 +167,13 @@ pub fn ordered(s: &Settings) -> Vec<&'static ToolDef> {
 pub fn bar_tools(s: &Settings) -> Vec<Tool> {
     let v: Vec<Tool> = ordered(s).into_iter().filter(|d| enabled(s, d.id) && d.parent.map(|p| !enabled(s, p)).unwrap_or(true)).map(|d| d.tool).collect();
     if v.is_empty() {
-        // kann nach `sanitize` nicht vorkommen (mindestens ein Werkzeug bleibt an)
-        return TOOLS.iter().filter(|d| d.default_on && d.parent.is_none()).map(|d| d.tool).collect();
+        // nach `sanitize` nur, wenn der Admin alle eingeschalteten Werkzeuge gesperrt hat: Vorgaben, sonst das
+        // erste freie (der Server lässt mindestens eines frei)
+        let v: Vec<Tool> = TOOLS.iter().filter(|d| d.default_on && d.parent.is_none() && !locked(d.id)).map(|d| d.tool).collect();
+        if v.is_empty() {
+            return TOOLS.iter().filter(|d| !locked(d.id)).map(|d| d.tool).take(1).collect();
+        }
+        return v;
     }
     v
 }
@@ -161,6 +182,9 @@ pub fn bar_tools(s: &Settings) -> Vec<Tool> {
 /// Gespeichert wird nur die Abweichung vom Standard.
 pub fn set_enabled(s: &mut Settings, id: &str, on: bool) -> bool {
     let Some(d) = def(id) else { return false };
+    if locked(id) {
+        return false;
+    }
     if !on && enabled(s, id) && TOOLS.iter().filter(|t| enabled(s, t.id)).count() <= 1 {
         return false;
     }
@@ -176,6 +200,12 @@ pub fn set_enabled(s: &mut Settings, id: &str, on: bool) -> bool {
 pub fn reorder(s: &mut Settings, from: usize, to: usize) {
     let mut ids: Vec<String> = ordered(s).iter().map(|d| d.id.to_string()).collect();
     crate::settings::reorder(&mut ids, from, to);
+    // gesperrte Werkzeuge an ihrer bisherigen Stelle wieder einfügen
+    for (i, d) in ordered_all(s).iter().enumerate() {
+        if locked(d.id) {
+            ids.insert(i.min(ids.len()), d.id.to_string());
+        }
+    }
     let default: Vec<&str> = TOOLS.iter().map(|d| d.id).collect();
     s.tool_order = if ids.iter().map(|x| x.as_str()).eq(default.iter().copied()) { Vec::new() } else { ids };
 }
@@ -271,6 +301,38 @@ mod tests {
             let d = def(id).unwrap();
             assert!(d.default_on && !d.new, "{id}");
         }
+    }
+
+    #[test]
+    fn katalog_wie_registry() {
+        use owndraw_core::features::{Kind, ALL};
+        let cat: Vec<_> = ALL.iter().filter(|f| f.kind == Kind::Tool).collect();
+        assert_eq!(cat.len(), TOOLS.len(), "owndraw_core::features::ALL braucht jedes Werkzeug");
+        for (f, d) in cat.iter().zip(TOOLS) {
+            assert_eq!((f.id, f.name), (d.id, d.name), "Katalog in owndraw-core/src/features.rs anpassen");
+        }
+    }
+
+    #[test]
+    fn gesperrte_werkzeuge() {
+        let mut s = Settings::default();
+        crate::locks::set(vec!["marker".into(), "laser".into()]);
+        assert!(!enabled(&s, "marker"));
+        assert!(!set_enabled(&mut s, "marker", true) && !set_enabled(&mut s, "laser", true));
+        assert!(!bar_tools(&s).contains(&Tool::Marker));
+        assert!(ordered(&s).iter().all(|d| d.id != "marker" && d.id != "laser"));
+        // Umordnen behält gesperrte Werkzeuge an ihrer Stelle
+        reorder(&mut s, 0, 1);
+        crate::locks::set(Vec::new());
+        assert_eq!(ordered(&s).iter().take(3).map(|d| d.id).collect::<Vec<_>>(), ["eraser", "marker", "pen"]);
+        // nur gesperrte Werkzeuge an: erstes freies
+        let mut s = Settings::default();
+        for d in TOOLS {
+            s.tool_on.insert(d.id.into(), d.id == "laser");
+        }
+        crate::locks::set(vec!["laser".into()]);
+        assert_eq!(bar_tools(&s), vec![Tool::Pen, Tool::Marker, Tool::Eraser, Tool::Select, Tool::Shape, Tool::Text, Tool::Image]);
+        crate::locks::set(Vec::new());
     }
 
     #[test]

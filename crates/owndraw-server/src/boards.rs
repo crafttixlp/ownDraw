@@ -307,6 +307,7 @@ pub struct AddMemberBody {
 }
 
 pub async fn add_member(State(s): State<AppState>, a: Auth, Path(id): Path<String>, J(body): J<AddMemberBody>) -> ApiResult<Json<Value>> {
+    crate::features::check(&s, Some(&a.user), owndraw_core::features::SHARE).await?;
     if body.role != "edit" && body.role != "view" {
         return Err(ApiError::invalid("Die Rolle muss \"edit\" oder \"view\" sein."));
     }

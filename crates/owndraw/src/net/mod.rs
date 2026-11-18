@@ -421,6 +421,20 @@ fn set_me(v: &Value) {
         n.me = me;
     });
     refresh_boards();
+    refresh_features();
+}
+
+/// Vom Admin gesperrte Werkzeuge/Funktionen laden (`GET /api/features`, für Admins leer) → `crate::locks`.
+/// Ältere Server ohne diese Anfrage: nichts gesperrt.
+pub fn refresh_features() {
+    request("GET", "/api/features".into(), None, vec![], |r| {
+        let off = match r {
+            Ok(r) if r.ok() => r.json()["off"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+            Ok(r) if r.status == 404 => Vec::new(),
+            _ => return,
+        };
+        crate::locks::set(off);
+    });
 }
 
 // ---------------------------------------------------------------- Konto
@@ -428,12 +442,15 @@ fn set_me(v: &Value) {
 pub fn refresh_me() {
     request("GET", "/api/me".into(), None, vec![], |r| match r {
         Ok(r) if r.ok() && Session::parse(&r.json()).is_some() => set_me(&r.json()),
-        Ok(r) if r.status == 401 && r.code() == "unauthorized" => with(|n| {
-            n.server = Server::Ready;
-            n.me = None;
-            n.boards.clear();
-            n.boards_loaded = false;
-        }),
+        Ok(r) if r.status == 401 && r.code() == "unauthorized" => {
+            with(|n| {
+                n.server = Server::Ready;
+                n.me = None;
+                n.boards.clear();
+                n.boards_loaded = false;
+            });
+            refresh_features();
+        }
         // statisches Hosting (404 oder index.html) oder kein Netz: Gastmodus
         _ => with(|n| {
             if n.server == Server::Unknown {
@@ -484,6 +501,7 @@ pub fn logout() {
             n.boards.clear();
             n.boards_loaded = false;
         });
+        refresh_features();
         notice("Abgemeldet");
     });
 }

@@ -333,6 +333,13 @@
           "covers": ["action:copy", "action:cut", "action:paste"]
         },
         {
+          "id": "sel-halten",
+          "title": "Objekt lange drücken",
+          "text": "Halte ein Objekt mit jedem Werkzeug kurz gedrückt (Finger, Stift oder Maus, etwa eine halbe Sekunde, ohne zu bewegen). Es wird ausgewählt, und beim Loslassen öffnet sich das erweiterte Menü wie beim Auswahlwerkzeug: Kopieren, Ausschneiden, Anordnen, Gruppieren und mehr.",
+          "how": ["Ein angefangener Strich wird dabei verworfen. Sobald du dich bewegst, zeichnest du ganz normal weiter.", "Danach Abwählen bringt dich zurück zum vorigen Werkzeug.", "Mit Radierer und Auswahlwerkzeug gilt das nicht; dort bleibt alles wie gewohnt."],
+          "covers": ["extra:lange-druecken"]
+        },
+        {
           "id": "sel-gruppen",
           "title": "Gruppieren, ausrichten, verteilen",
           "text": "Mehrere ausgewählte Objekte fasst du zu einer Gruppe zusammen; ein Tipp auf ein Mitglied wählt dann die ganze Gruppe. Ab zwei Objekten richtest du sie links, mittig, rechts, oben, in der Mitte oder unten aus, ab drei verteilst du sie waagerecht oder senkrecht mit gleichen Abständen.",

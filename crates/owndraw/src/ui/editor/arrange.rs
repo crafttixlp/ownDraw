@@ -46,7 +46,7 @@ pub(super) struct Xs {
     /// 0 Pfeil, 1 Linie, 2 Doppelpfeil.
     pub conn_style: i32,
     loaded: bool,
-    press: Option<Press>,
+    pub(super) press: Option<Press>,
     last_tap: Option<(f64, Pos2)>,
     pub table: table::TableUi,
     pub crop: Option<crop::Crop>,

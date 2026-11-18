@@ -374,6 +374,51 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     // ---- Handschrift-Erkennung (Werkzeug „Umwandeln“)
     section(ui, "Handschrift-Erkennung", |ui| {
         use owndraw_core::hw::{self as chw, Stufe};
+        if crate::hw::MLKIT {
+            // Android: Google ML Kit, ein Sprachmodell (Deutsch), Aus/An statt Stufen
+            row(ui, env, "Handschrift-Erkennung", Some("Werkzeug „Umwandeln“: Handschrift in Text, Rechenzeile oder Zahl umwandeln (Google ML Kit)."), |ui| {
+                let on = settings.hw.stufe() != Stufe::Aus;
+                for (v, l) in [(false, "Aus"), (true, "An")] {
+                    if style::chip(ui, l, on == v, btn).clicked() && on != v {
+                        settings.hw.set(if v { Stufe::Mittel } else { Stufe::Aus });
+                    }
+                }
+            });
+            row(ui, env, "Sprachmodell Deutsch", Some(&format!("ca. {} MB von Google; wird nur auf Klick geladen.", crate::hw::MLKIT_MB)), |ui| {
+                let m = crate::hw::modell();
+                ui.vertical(|ui| {
+                    let (st, col) = match &m {
+                        Some(crate::hw::Modell::Da) => ("gespeichert".to_string(), p.text),
+                        Some(crate::hw::Modell::Fehlt) => ("nicht geladen".to_string(), p.dim),
+                        Some(crate::hw::Modell::Laedt) => ("wird geladen …".to_string(), p.accent),
+                        Some(crate::hw::Modell::Pruefe) => ("wird geprüft …".to_string(), p.dim),
+                        Some(crate::hw::Modell::Fehler(e)) => (format!("Fehler: {e}"), p.danger),
+                        None => ("ML Kit nicht erreichbar".to_string(), p.danger),
+                    };
+                    ui.label(egui::RichText::new(st).color(c(col)));
+                    if matches!(m, Some(crate::hw::Modell::Laedt | crate::hw::Modell::Pruefe)) {
+                        ui.ctx().request_repaint_after(std::time::Duration::from_millis(300));
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        let can_load = matches!(m, Some(crate::hw::Modell::Fehlt | crate::hw::Modell::Fehler(_)));
+                        if ui.add_enabled_ui(can_load, |ui| style::accent_btn(ui, &format!("Laden (ca. {} MB)", crate::hw::MLKIT_MB), btn)).inner.clicked() {
+                            crate::hw::download(&[]);
+                        }
+                        if ui.add_enabled(matches!(m, Some(crate::hw::Modell::Da)), egui::Button::new("Löschen").min_size(egui::vec2(0.0, btn))).clicked() {
+                            crate::hw::clear();
+                        }
+                    });
+                    ui.label(egui::RichText::new("Datenschutz: Das Modell kommt einmalig von Google (ML Kit). Erkannt wird danach offline auf dem Gerät; deine Handschrift verlässt das Gerät nicht. ML Kit kann anonyme Nutzungsstatistiken an Google senden.").size(12.0).color(c(p.dim)));
+                    ui.label(egui::RichText::new("Formeln liest ML Kit als Text (keine Brüche/Wurzeln); sie werden als Rechenzeile übernommen.").size(12.0).color(c(p.dim)));
+                });
+            });
+            row(ui, env, "Lizenz", Some("Google ML Kit Digital Ink Recognition, ML Kit Terms of Service."), |ui| {
+                if ui.link(egui::RichText::new("ML Kit Terms").size(12.0)).clicked() {
+                    platform.open_url("https://developers.google.com/ml-kit/terms");
+                }
+            });
+            return;
+        }
         row(ui, env, "Handschrift-Erkennung", Some("Höher = größere Modelle, bessere Erkennung, längeres Laden. Erkannt wird nur im Browser, nichts geht an den Server."), |ui| {
             let cur = settings.hw.stufe();
             for s in Stufe::ALL {

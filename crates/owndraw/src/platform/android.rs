@@ -620,6 +620,21 @@ fn log_err<T>(what: &str, r: io::Result<T>) -> Option<T> {
     r.map_err(|e| log::warn!("{what}: {e}")).ok()
 }
 
+/// Handschrift-Erkennung (ML Kit): `OwnDrawActivity.hw(cmd, arg)` → `InkRecognizer.call`, Antwort als Text
+/// (siehe `crate::hw`). None, wenn der Aufruf scheitert.
+pub fn hw_call(cmd: &str, arg: &str) -> Option<String> {
+    log_err(
+        "Handschrift-Erkennung",
+        with_env(|env, act| {
+            let c = jstr(env, cmd)?;
+            let a = jstr(env, arg)?;
+            let r = env.call_method(act, "hw", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&c), JValue::Object(&a)])?.l()?;
+            rstr(env, r)
+        }),
+    )
+    .flatten()
+}
+
 impl Platform for AndroidPlatform {
     fn pick_open(&self, kinds: &[FileKind], tag: Tag) {
         let mimes = open_mimes(kinds);

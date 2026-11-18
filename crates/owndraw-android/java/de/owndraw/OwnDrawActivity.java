@@ -246,6 +246,11 @@ public class OwnDrawActivity extends NativeActivity {
         return out.toArray(new String[0]);
     }
 
+    /** Handschrift-Erkennung (ML Kit), siehe InkRecognizer: Befehl und Argument, Antwort als JSON bzw. Zahl. */
+    public String hw(String cmd, String arg) {
+        return InkRecognizer.call(cmd, arg == null ? "" : arg);
+    }
+
     /** Öffnet eine URL im Browser bzw. eine Datei aus dem App-Speicher (über FileShareProvider). */
     public void openUrl(String url) {
         try {

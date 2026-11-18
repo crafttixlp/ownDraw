@@ -231,7 +231,7 @@
         {
           "id": "tool-umwandeln",
           "title": "Umwandeln (Handschrift erkennen)",
-          "text": "Macht aus Handgeschriebenem getippten Text, eine Formel oder eine Zahl mit Einheit. Umkreise die Striche mit dem Werkzeug oder tippe auf einen Strich: Dann nimmt OwnDraw ihn und seine Nachbarn in derselben Zeile. Ein Fenster zeigt das Ergebnis mit Alternativen; „Ersetzen“ legt an derselben Stelle und in passender Größe einen Text bzw. eine Formel an. Die Erkennung läuft nur im Browser auf deinem Gerät, nichts wird an den Server geschickt.",
+          "text": "Macht aus Handgeschriebenem getippten Text, eine Formel oder eine Zahl mit Einheit. Umkreise die Striche mit dem Werkzeug oder tippe auf einen Strich: Dann nimmt OwnDraw ihn und seine Nachbarn in derselben Zeile. Ein Fenster zeigt das Ergebnis mit Alternativen; „Ersetzen“ legt an derselben Stelle und in passender Größe einen Text bzw. eine Formel an. Im Browser erkennen freie Modelle vom OwnDraw-Server, in der Android-App Google ML Kit, beides auf deinem Gerät: Die Handschrift wird nirgendwohin geschickt.",
           "how": [
             "Einschalten unter Einstellungen → Werkzeuge (Extras). Einmalig unter Einstellungen → Handschrift-Erkennung „Modelle laden“ tippen; die Modelle bleiben danach im Browser gespeichert.",
             "Reiter Text, Formel und Zahl: OwnDraw wählt den passenden vor (z. B. „Zahl“ bei 12,5 kN, „Formel“ bei M = a·b). Jeder Reiter zeigt bis zu fünf Alternativen, Formeln gerendert.",
@@ -239,11 +239,12 @@
             "Formeln und Zahlen werden Formel-Objekte: Das Werkzeug „Rechnen“ rechnet sie mit. Bekannte Variablen und Einheiten der Seite helfen beim Erkennen.",
             "Ersetzen ist ein Schritt: Rückgängig (Strg+Z) bringt die Striche zurück. Abbrechen oder Esc lässt alles, wie es war.",
             "Optionen (zweiter Tipp auf den Knopf): Stufe der Erkennung wählen.",
-            "Desktop und Android: noch nicht verfügbar (nur im Browser)."
+            "Android: Erkennung mit Google ML Kit (Sprachmodell Deutsch, einmalig ca. 20 MB von Google, danach offline). ML Kit liest Zeichen, keine Formelstruktur: Der Reiter Formel übernimmt den erkannten Text als Rechenzeile (x² wird x^2, Brüche und Wurzeln besser im Korrekturfeld schreiben). Optionen: nur Aus/An.",
+            "Desktop: noch nicht verfügbar (Browser oder Android-App nutzen)."
           ],
           "keys": ["V"],
           "action": ["tool.convert"],
-          "covers": ["tool:Umwandeln", "action:tool.convert", "extra:umwandeln-lasso", "extra:umwandeln-antippen", "extra:umwandeln-alternativen", "extra:umwandeln-korrektur"]
+          "covers": ["tool:Umwandeln", "action:tool.convert", "extra:umwandeln-lasso", "extra:umwandeln-antippen", "extra:umwandeln-alternativen", "extra:umwandeln-korrektur", "extra:umwandeln-android-mlkit"]
         },
         {
           "id": "tool-farbe",
@@ -517,9 +518,10 @@
           "how": [
             "Geladen wird nur, wenn du auf „Modelle laden“ tippst, nie automatisch. Die Dateien kommen von deinem OwnDraw-Server und bleiben im Browser gespeichert.",
             "„Lizenzen“ zeigt Herkunft und Lizenz jedes Modells (nur freie Lizenzen wie MIT, Apache-2.0, AFL-3.0).",
-            "Aus = das Werkzeug „Umwandeln“ erkennt nichts."
+            "Aus = das Werkzeug „Umwandeln“ erkennt nichts.",
+            "Android-App: nur Aus/An und „Sprachmodell Deutsch“ (Google ML Kit, ca. 20 MB) mit „Laden“ und „Löschen“. Geladen wird nur auf Tipp, von Googles Servern; erkannt wird danach offline auf dem Gerät. „Lizenz“ verlinkt die ML Kit Terms."
           ],
-          "covers": ["setting:Handschrift-Erkennung", "setting:Modelle", "setting:Lizenzen", "extra:handschrift-modelle-laden"]
+          "covers": ["setting:Handschrift-Erkennung", "setting:Modelle", "setting:Lizenzen", "setting:Sprachmodell Deutsch", "setting:Lizenz", "extra:handschrift-modelle-laden"]
         }
       ]
     },

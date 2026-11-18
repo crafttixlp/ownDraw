@@ -80,6 +80,13 @@ jobs:
         with:
           shared-key: apk
 
+      # ML-Kit-Abhängigkeiten (AAR/JAR, feste Versionen in build-apk.sh)
+      - uses: actions/cache@v4
+        with:
+          path: target/android-deps
+          key: android-deps-${{ hashFiles('crates/owndraw-android/build-apk.sh') }}
+          restore-keys: android-deps-
+
       - name: Signierschlüssel vorbereiten
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}

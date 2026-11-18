@@ -12,13 +12,45 @@ NativeActivity). Gebaut wird ohne Gradle mit dem Skript `crates/owndraw-android/
 | Plattform-Schicht `AndroidPlatform` (SAF, ContentResolver, Zwischenablage, Drag & Drop) | `crates/owndraw/src/platform/android.rs` |
 | Java-Hülle `de.owndraw.OwnDrawActivity` (erbt `NativeActivity`): `onActivityResult`, `onPause`, Intents, Drag-Listener, Zwischenablage, `openUrl` | `crates/owndraw-android/java/de/owndraw/OwnDrawActivity.java` |
 | `de.owndraw.FileShareProvider`: minimaler FileProvider (ohne androidx) für Bilder in der Zwischenablage und „Öffnen in anderer App“ | `crates/owndraw-android/java/de/owndraw/FileShareProvider.java` |
-| Manifest (minSdk 26, targetSdk 34, Intent-Filter) | `crates/owndraw-android/AndroidManifest.xml` |
+| `de.owndraw.InkRecognizer`: Handschrift-Erkennung mit Google ML Kit (Werkzeug „Umwandeln“), Aufruf über `OwnDrawActivity.hw` | `crates/owndraw-android/java/de/owndraw/InkRecognizer.java`, Rust-Seite `crates/owndraw/src/hw.rs` |
+| Manifest (minSdk 26, targetSdk 34, Intent-Filter, von Hand übernommene Einträge der ML-Kit-Bibliotheken) | `crates/owndraw-android/AndroidManifest.xml` |
 
 Dateizugriff läuft ausschließlich über das Storage Access Framework (`ACTION_OPEN_DOCUMENT`,
 `ACTION_CREATE_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE` mit `takePersistableUriPermission`), daher braucht
 die App keine Speicher-Rechte. Ohne gewählten Ordner liegt der Standard-Ort im App-Speicher
 (`<internal_data_path>/boards`). Angefragte Rechte: `INTERNET` und `REQUEST_INSTALL_PACKAGES`
-(beides für den Update-Dienst).
+(Update-Dienst; `INTERNET` auch für den Modell-Download von ML Kit) sowie die Rechte, die die ML-Kit-Bibliotheken
+mitbringen (`ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE` aus WorkManager).
+
+## Handschrift-Erkennung (Google ML Kit)
+
+Das Werkzeug „Umwandeln“ nutzt auf Android **Google ML Kit Digital Ink Recognition**
+(`com.google.mlkit:digital-ink-recognition:19.0.0`): strichbasiert, Sprachmodell Deutsch (`de`). Das Modell
+(ca. 20 MB) lädt ML Kit nur, wenn man in den Einstellungen bzw. im Umwandeln-Fenster auf „Laden“ tippt, von
+Googles Servern; danach wird offline auf dem Gerät erkannt. Formeln kann ML Kit nicht: der Formel-Reiter macht aus
+dem erkannten Text eine Rechenzeile (`owndraw_core::hw::formel_aus_text`), Zahl und Kontext-Bewertung kommen
+aus dem Kern wie im Browser. Punkte werden ohne Zeitstempel übergeben (OwnDraw speichert keine).
+
+**Lizenz:** ML Kit ist kein Open Source, sondern unterliegt den
+[ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) (dazu die Google APIs Terms of Service).
+Die AARs bringen Lizenzhinweise Dritter mit (`third_party_licenses.txt` im AAR). Die übrigen Abhängigkeiten
+(AndroidX, Kotlin, OkHttp, Okio, Firebase-Components/Encoders, Play-Services-Basis) stehen unter Apache-2.0 bzw.
+den Android-SDK-Bedingungen von Google. ML Kit kann laut Google anonyme Nutzungs-/Leistungsdaten an Google senden
+(datatransport/Firelog); die Handschrift selbst bleibt auf dem Gerät.
+
+**Abhängigkeiten ohne Gradle:** `build-apk.sh` lädt ML Kit und alle transitiven Abhängigkeiten (64 AAR/JAR,
+ca. 25 MB, Liste `DEPS` mit festen Versionen und sha256) von maven.google.com bzw. Maven Central in
+`target/android-deps` (`OWNDRAW_DEPS_CACHE`, in CI gecacht) und baut daraus:
+
+- `classes.jar` und `libs/*.jar` der AARs → javac-Classpath und d8 (mehrere `classes*.dex`, natives Multidex)
+- `res/` der AARs → `aapt2 compile`, beim Linken als Overlays (`-R … --auto-add-overlay`); R-Klassen aller
+  Bibliothekspakete per `--extra-packages` und `--java`, mitkompiliert
+- `assets/` → `-A`, `jni/<abi>/*.so` (`libdigitalink.so`, ca. 7 MB für arm64) → `lib/<abi>/`
+- Manifest-Einträge (Provider, Services, Receiver, Rechte) stehen von Hand in `AndroidManifest.xml`
+  (kein Manifest-Merger); `${applicationId}` ist dort als `de.owndraw` ausgeschrieben.
+
+Neue ML-Kit-Version: Abhängigkeiten neu auflösen (POMs: compile+runtime, je Artefakt die höchste Version),
+`DEPS` samt sha256 ersetzen und die `AndroidManifest.xml` der AARs mit dem eigenen Manifest vergleichen.
 
 `owndraw-android` gehört nicht zu den `default-members` des Workspaces: `cargo build`/`cargo test`
 auf dem Desktop bauen es nicht mit (auf Nicht-Android-Zielen ist das Crate leer).
@@ -27,7 +59,8 @@ auf dem Desktop bauen es nicht mit (auf Nicht-Android-Zielen ist das Crate leer)
 
 - Rust mit den Zielen: `rustup target add aarch64-linux-android x86_64-linux-android`
 - `cargo install cargo-ndk`
-- JDK 17 oder neuer (`javac`, `keytool`), `zip`
+- JDK 17 oder neuer (`javac`, `keytool`), `zip`, `curl`, `unzip`, `sha256sum`
+  (mit JDK 21 build-tools 35 oder neuer nehmen: d8 aus build-tools 34 stürzt an javac-21-Bridge-Methoden ab)
 - Android SDK mit `platforms;android-34`, `build-tools;34.0.0` (oder neuer) und NDK (r26 oder neuer):
 
 ```sh
@@ -47,12 +80,14 @@ OWNDRAW_PROFILE=debug crates/owndraw-android/build-apk.sh        # schneller, mi
 Ergebnis: `target/apk/owndraw-<version>.apk`. Schritte des Skripts:
 
 1. `cargo ndk -t <abi> -P 26 -o … build -p owndraw-android --release` → `lib/<abi>/libowndraw.so`
-2. `javac -source 8 -target 8 -bootclasspath android.jar` für `java/**/*.java`, dann `d8 --min-api 26` → `classes.dex`
-3. `aapt2 compile` (Icon aus `assets/owndraw.png`) und `aapt2 link` mit Manifest; `versionName`/`versionCode`
-   kommen aus der Workspace-Version (`3.1.2` → `30102`)
-4. `classes.dex` und `lib/` ins APK packen
-5. `zipalign -p 4`
-6. `apksigner sign` + `apksigner verify`
+2. Abhängigkeiten (ML Kit) laden, sha256 prüfen, AARs entpacken (siehe oben)
+3. `aapt2 compile` (Icon aus `assets/owndraw.png`, Bibliotheks-Ressourcen) und `aapt2 link` mit Manifest und
+   R-Klassen; `versionName`/`versionCode` kommen aus der Workspace-Version (`3.1.2` → `30102`)
+4. `javac -source 8 -target 8 -bootclasspath android.jar` für `java/**/*.java` und die R-Klassen, dann
+   `d8 --min-api 26` mit allen Bibliotheks-JARs → `classes*.dex`
+5. `classes*.dex` und `lib/` ins APK packen
+6. `zipalign -p 4`
+7. `apksigner sign` + `apksigner verify`
 
 Nur prüfen, ob der Rust-Teil kompiliert (ohne NDK, ohne Linken):
 

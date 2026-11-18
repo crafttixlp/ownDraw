@@ -6,6 +6,8 @@
 //! - Die Striche werden als Graustufenbild gerendert (`owndraw_core::hw::render`) und im Browser erkannt
 //!   (`crate::hw`, je Art ein Modell-Paket der eingestellten Stufe). Die Alternativen bewertet der Kern mit dem
 //!   Wissen der Seite neu (bekannte Variablen, Einheiten, Wörter) und wählt den Reiter vor.
+//! - Android: ML Kit erkennt die Striche selbst (ein Auftrag, Sprachmodell Deutsch); Formel und Zahl entstehen
+//!   aus dem erkannten Text (`core_hw::aus_text_alternativen`), der Formel-Reiter sagt das offen.
 //! - Fenster: Reiter Text / Formel / Zahl, Alternativen (Formeln gerendert), Korrekturfeld (Formel als LaTeX oder
 //!   Rechen-Klartext), „Ersetzen“ (ein Rückgängig-Schritt, `Board::replace_ink`) und „Abbrechen“.
 
@@ -105,8 +107,77 @@ impl Conv {
         }
     }
 
+    /// Fertige Alternativen einer Art übernehmen (Korrekturfeld nur, solange nicht von Hand geändert).
+    fn set_done(&mut self, art: Art, k: Vec<Kandidat>, ms: u32) {
+        let i = ai(art);
+        if !self.touched[i] {
+            self.edit[i] = k.first().map(|b| field_text(art, &b.text, self.plain)).unwrap_or_default();
+            self.pick[i] = 0;
+        }
+        self.res[i] = Res::Done(k, ms);
+    }
+
+    /// Android (ML Kit): ein Auftrag für alle Reiter. true = es läuft noch etwas.
+    fn step_mlkit(&mut self) -> bool {
+        let busy = match self.res[0].clone() {
+            Res::Run(job, _) => match hw::poll(job) {
+                None => true,
+                Some(Err(e)) => {
+                    self.res = [Res::Err(e.clone()), Res::Err(e.clone()), Res::Err(e)];
+                    false
+                }
+                Some(Ok((k, ms))) => {
+                    for (art, k) in core_hw::aus_text_alternativen(&k, &self.ctx) {
+                        self.set_done(art, k, ms);
+                    }
+                    false
+                }
+            },
+            Res::Pending | Res::Missing(_) => {
+                let (r, busy) = match hw::modell() {
+                    Some(hw::Modell::Da) => match hw::start("mlkit", NBEST, &self.ink) {
+                        Some(job) => (Res::Run(job, "mlkit".into()), true),
+                        None => (Res::Err("Erkennung konnte nicht starten.".into()), false),
+                    },
+                    Some(hw::Modell::Pruefe) => (Res::Pending, true),
+                    Some(hw::Modell::Laedt) => (Res::Missing("Sprachmodell Deutsch wird von Google geladen …".into()), true),
+                    Some(hw::Modell::Fehlt) => (Res::Missing(format!("Das Sprachmodell Deutsch ist noch nicht geladen (einmalig ca. {} MB von Google).", hw::MLKIT_MB)), false),
+                    Some(hw::Modell::Fehler(e)) => (Res::Missing(format!("Sprachmodell: {e}")), false),
+                    None => (Res::Err("ML Kit ist nicht erreichbar.".into()), false),
+                };
+                self.res = [r.clone(), r.clone(), r];
+                busy
+            }
+            _ => false,
+        };
+        self.update_tab();
+        busy
+    }
+
+    /// Reiter vorwählen, sobald Ergebnisse da sind (bis die Nutzerin selbst wählt).
+    fn update_tab(&mut self) {
+        if self.auto_tab {
+            let best = |a: Art| match &self.res[ai(a)] {
+                Res::Done(k, _) => k.first(),
+                _ => None,
+            };
+            let all_done = self.res.iter().all(|r| !matches!(r, Res::Run(..) | Res::Pending));
+            // erst mit einem Ergebnis entscheiden (fehlen noch Modelle, wird nach dem Laden gewählt)
+            if self.res.iter().any(|r| matches!(r, Res::Done(..))) {
+                self.tab = core_hw::vorauswahl(&[(Art::Text, best(Art::Text)), (Art::Formel, best(Art::Formel)), (Art::Zahl, best(Art::Zahl))]);
+                if all_done {
+                    self.auto_tab = false;
+                    self.focus = true;
+                }
+            }
+        }
+    }
+
     /// Startet fehlende Aufträge, holt Ergebnisse ab. true = es läuft noch etwas.
     fn step(&mut self) -> bool {
+        if hw::MLKIT {
+            return self.step_mlkit();
+        }
         let Some(info) = hw::info() else {
             for r in self.res.iter_mut() {
                 *r = Res::Err("Die Erkennung wird noch geladen …".into());
@@ -159,31 +230,13 @@ impl Conv {
                     Some(Ok((k, ms_))) => {
                         let lex = ms.iter().find(|m| m.id == *id).map(lexikon).unwrap_or_default();
                         let k = core_hw::neu_bewerten(art, k, &self.ctx, &lex);
-                        if !self.touched[i] {
-                            self.edit[i] = k.first().map(|b| field_text(art, &b.text, self.plain)).unwrap_or_default();
-                            self.pick[i] = 0;
-                        }
-                        self.res[i] = Res::Done(k, ms_);
+                        self.set_done(art, k, ms_);
                     }
                 },
                 _ => {}
             }
         }
-        if self.auto_tab {
-            let best = |a: Art| match &self.res[ai(a)] {
-                Res::Done(k, _) => k.first(),
-                _ => None,
-            };
-            let all_done = self.res.iter().all(|r| !matches!(r, Res::Run(..) | Res::Pending));
-            // erst mit einem Ergebnis entscheiden (fehlen noch Modelle, wird nach dem Laden gewählt)
-            if self.res.iter().any(|r| matches!(r, Res::Done(..))) {
-                self.tab = core_hw::vorauswahl(&[(Art::Text, best(Art::Text)), (Art::Formel, best(Art::Formel)), (Art::Zahl, best(Art::Zahl))]);
-                if all_done {
-                    self.auto_tab = false;
-                    self.focus = true;
-                }
-            }
-        }
+        self.update_tab();
         busy
     }
 
@@ -241,7 +294,7 @@ impl Editor {
             return;
         }
         if !hw::SUPPORTED {
-            sh.toast_for("Handschrift-Erkennung ist nur im Browser verfügbar (Web-App).", 4.0);
+            sh.toast_for("Handschrift-Erkennung gibt es im Browser (Web-App) und in der Android-App.", 4.0);
             return;
         }
         let Some(ink) = self.board.render_ink(&ids) else { return };
@@ -347,7 +400,8 @@ impl Editor {
                 ui.set_width(w);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("Umwandeln").size(15.0).strong());
-                    ui.label(egui::RichText::new(format!("{} Striche · {}", cv.ids.len(), cv.stufe.label())).size(12.0).color(c(pal.dim)));
+                    let engine = if hw::MLKIT { "ML Kit" } else { cv.stufe.label() };
+                    ui.label(egui::RichText::new(format!("{} Striche · {engine}", cv.ids.len())).size(12.0).color(c(pal.dim)));
                 });
                 ui.add_space(4.0);
                 // Reiter
@@ -379,7 +433,24 @@ impl Editor {
                     }
                     Res::Missing(msg) => {
                         ui.label(egui::RichText::new(msg).color(c(pal.dim)));
-                        if let Some(info) = hw::info() {
+                        if hw::MLKIT {
+                            match hw::modell() {
+                                Some(hw::Modell::Laedt) => {
+                                    ui.spinner();
+                                }
+                                Some(hw::Modell::Fehlt | hw::Modell::Fehler(_)) => {
+                                    ui.horizontal(|ui| {
+                                        if style::accent_btn(ui, &format!("Laden (ca. {} MB)", hw::MLKIT_MB), h).on_hover_text("Einmal von Google laden, danach erkennt das Gerät offline").clicked() {
+                                            load = Some(Vec::new());
+                                        }
+                                        if style::plain_btn(ui, "Einstellungen …", h).clicked() {
+                                            open_settings = true;
+                                        }
+                                    });
+                                }
+                                _ => {}
+                            }
+                        } else if let Some(info) = hw::info() {
                             let ms = info.manifests();
                             let need: Vec<&core_hw::Manifest> = core_hw::pakete_fuer_stufe(&ms, cv.stufe).into_iter().filter(|m| !info.paket(&m.id).is_some_and(|p| p.da())).collect();
                             let busy: Vec<&hw::Paket> = need.iter().filter_map(|m| info.paket(&m.id)).filter(|p| p.zustand == "laedt").collect();
@@ -406,6 +477,9 @@ impl Editor {
                             ui.label(egui::RichText::new("Nichts erkannt.").color(c(pal.dim)));
                         }
                         ui.label(egui::RichText::new(format!("Alternativen ({ms} ms)")).size(12.0).color(c(pal.dim)));
+                        if hw::MLKIT && cv.tab == Art::Formel {
+                            ui.label(egui::RichText::new("Aus der Texterkennung: ML Kit liest Zeichen, keine Formelstruktur (Brüche, Wurzeln, Hochzahlen nur als ²/³). Als Rechenzeile übernommen.").size(11.0).color(c(pal.dim)));
+                        }
                         for (j, cand) in k.iter().enumerate().take(NBEST) {
                             let sel = cv.pick[i] == j;
                             let fill = if sel { c(pal.accent_soft) } else { Color32::TRANSPARENT };
@@ -522,6 +596,15 @@ pub(super) fn options(ui: &mut egui::Ui, sh: &mut Shared) {
     ui.label(egui::RichText::new("Erkennung").size(12.0).color(c(pal.dim)));
     ui.horizontal_wrapped(|ui| {
         let cur = sh.settings.hw.stufe();
+        if hw::MLKIT {
+            // Android (ML Kit): nur Aus/An, ein Modell
+            for (on, l) in [(false, "Aus"), (true, "An")] {
+                if style::chip(ui, l, (cur != Stufe::Aus) == on, 28.0).clicked() && (cur != Stufe::Aus) != on {
+                    sh.settings.hw.set(if on { Stufe::Mittel } else { Stufe::Aus });
+                }
+            }
+            return;
+        }
         for s in Stufe::ALL {
             if style::chip(ui, s.label(), cur == s, 28.0).clicked() {
                 sh.settings.hw.set(s);
@@ -529,9 +612,9 @@ pub(super) fn options(ui: &mut egui::Ui, sh: &mut Shared) {
         }
     });
     if !hw::SUPPORTED {
-        ui.label(egui::RichText::new("Nur im Browser verfügbar.").size(12.0).color(c(pal.danger)));
+        ui.label(egui::RichText::new("Im Browser und in der Android-App verfügbar.").size(12.0).color(c(pal.danger)));
     }
-    if style::plain_btn(ui, "Modelle und Lizenzen …", 28.0).clicked() {
+    if style::plain_btn(ui, if hw::MLKIT { "Sprachmodell …" } else { "Modelle und Lizenzen …" }, 28.0).clicked() {
         sh.reqs.push(crate::app::Req::OpenSettings);
     }
 }

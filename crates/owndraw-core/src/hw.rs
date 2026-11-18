@@ -272,12 +272,15 @@ pub fn fmt_mb(bytes: u64) -> String {
 
 // ---------------------------------------------------------------- Striche → Bild
 
-/// Gerendertes Graustufenbild der Striche (weißer Grund, schwarze Tinte), Zeile für Zeile, 1 Byte je Pixel.
+/// Gerendertes Graustufenbild der Striche (weißer Grund, schwarze Tinte), Zeile für Zeile, 1 Byte je Pixel,
+/// dazu die Striche selbst als Polylinien in Bildkoordinaten (für strichbasierte Erkenner wie ML Kit auf Android).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ink {
     pub w: u32,
     pub h: u32,
     pub gray: Vec<u8>,
+    /// Striche in Zeichenreihenfolge, Punkte in Pixeln des Bildes (gleicher Maßstab, Rand [`PAD_PX`]).
+    pub lines: Vec<Vec<(f32, f32)>>,
 }
 
 /// Typische Zeichenhöhe im Bild (Pixel) und Strichdicke dazu.
@@ -365,7 +368,8 @@ pub fn render(items: &[&Item]) -> Option<Ink> {
         }
     }
     let gray = pm.data().chunks_exact(4).map(|p| p[0]).collect();
-    Some(Ink { w, h, gray })
+    let lines = lines.iter().map(|l| l.iter().map(|&(x, y)| tf(x, y)).collect()).collect();
+    Some(Ink { w, h, gray, lines })
 }
 
 /// Punkt im Polygon (gerade/ungerade-Regel).
@@ -714,6 +718,53 @@ pub fn zahl_klartext(s: &str) -> String {
     }
 }
 
+// ---------------------------------------------------------------- Text-Erkenner (ML Kit auf Android)
+
+/// Alternativen eines Text-Erkenners in [`Kandidat`]en umsetzen. `raw` = (Text, Score des Erkenners) in dessen
+/// Reihenfolge; ML Kit liefert Kosten (kleiner = besser, Maßstab undokumentiert) oder keinen Score. Daraus wird
+/// ein relativer Score ≤ 0: die beste Alternative ≈ 86 % Zuversicht, die übrigen nach Abstand bzw. Rang darunter.
+pub fn text_kandidaten(raw: &[(String, Option<f32>)]) -> Vec<Kandidat> {
+    let best = raw.iter().filter_map(|r| r.1).filter(|s| s.is_finite()).fold(f32::INFINITY, f32::min);
+    raw.iter()
+        .enumerate()
+        .map(|(i, (t, s))| {
+            let d = match s {
+                Some(s) if s.is_finite() && best.is_finite() => (s - best).max(0.0) * 0.3,
+                _ => i as f32 * 0.4,
+            };
+            Kandidat::new(t, (-0.15 - d).max(-10.0))
+        })
+        .collect()
+}
+
+/// Rechenzeile aus erkanntem Text (ML Kit erkennt keine Formelstruktur): typografische Zeichen in die
+/// Rechen-Schreibweise (`²` → `^2`, `×` → `·`, `−` → `-`), danach [`crate::calc::to_latex`].
+pub fn formel_aus_text(text: &str) -> String {
+    const SUPER: &str = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+    let mut s = String::new();
+    for ch in text.trim().chars() {
+        match ch {
+            c if SUPER.contains(c) => {
+                s.push('^');
+                s.extend(char::from_digit(SUPER.chars().position(|x| x == c).unwrap_or(0) as u32, 10));
+            }
+            '×' | '∙' | '•' => s.push('·'),
+            '−' | '–' | '—' => s.push('-'),
+            '÷' => s.push('/'),
+            '√' => s.push_str("sqrt"),
+            _ => s.push(ch),
+        }
+    }
+    latex_glatt(&crate::calc::to_latex(&s))
+}
+
+/// Alternativen eines Text-Erkenners für alle drei Reiter (Text, Formel als Rechenzeile, Zahl), je mit dem
+/// Kontext neu bewertet ([`neu_bewerten`]). Formel = [`formel_aus_text`] je Alternative.
+pub fn aus_text_alternativen(k: &[Kandidat], ctx: &Kontext) -> [(Art, Vec<Kandidat>); 3] {
+    let f = k.iter().map(|c| Kandidat::new(&formel_aus_text(&c.text), c.score)).collect();
+    [(Art::Text, neu_bewerten(Art::Text, k.to_vec(), ctx, &[])), (Art::Formel, neu_bewerten(Art::Formel, f, ctx, &[])), (Art::Zahl, neu_bewerten(Art::Zahl, k.to_vec(), ctx, &[]))]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -883,5 +934,39 @@ mod tests {
         assert_eq!(latex_glatt("\\frac { a } { b } \\, x"), "\\frac{a}{b}x");
         assert_eq!(zahl_klartext(" 12,5kN"), "12,5 kN");
         assert_eq!(zahl_klartext("abc"), "abc");
+    }
+
+    #[test]
+    fn text_erkenner_umsetzen() {
+        // ML-Kit-Kosten: kleiner = besser; Reihenfolge bleibt, beste ≈ 86 %
+        let k = text_kandidaten(&[("a=2".into(), Some(1.0)), ("a=z".into(), Some(3.0)), ("".into(), None)]);
+        assert_eq!(k.len(), 3);
+        assert!((k[0].conf() - 0.86).abs() < 0.01, "{}", k[0].conf());
+        assert!(k[0].score > k[1].score && k[1].score > -1.0);
+        // ohne Score: nach Rang
+        let k = text_kandidaten(&[("x".into(), None), ("y".into(), None)]);
+        assert!(k[0].score > k[1].score);
+        // Formel aus Text
+        assert_eq!(["M = a · b", "x² + y²", "a=2kN", "F = m×a", "3−1"].map(formel_aus_text), ["M=a\\cdot b", "x^{2}+y^{2}", "a=2\\mathrm{kN}", "F=m\\cdot a", "3-1"]);
+        assert_eq!(formel_aus_text("x²"), formel_aus_text("x^2"));
+        assert!(formel_aus_text("x² + y²").contains("^"));
+        assert!(!formel_aus_text("3−1").contains('−'));
+        // alle drei Reiter aus einer Erkennung; der Kontext hebt bekannte Wörter/Einheiten
+        let mut ctx = Kontext::default();
+        ctx.add_calc_line("F: 2 kN");
+        let k = text_kandidaten(&[("12,5 kW".into(), Some(1.0)), ("12,5 kN".into(), Some(1.2))]);
+        let r = aus_text_alternativen(&k, &ctx);
+        assert_eq!(r.each_ref().map(|x| x.0), [Art::Text, Art::Formel, Art::Zahl]);
+        assert_eq!(r[2].1[0].text, "12,5 kN", "bekannte Einheit gewinnt");
+        let best = |a: usize| r[a].1.first();
+        assert_eq!(vorauswahl(&[(Art::Text, best(0)), (Art::Formel, best(1)), (Art::Zahl, best(2))]), Art::Zahl);
+        let k = text_kandidaten(&[("M = a · b".into(), Some(0.5))]);
+        let r = aus_text_alternativen(&k, &Kontext::default());
+        let best = |a: usize| r[a].1.first();
+        assert_eq!(vorauswahl(&[(Art::Text, best(0)), (Art::Formel, best(1)), (Art::Zahl, best(2))]), Art::Formel);
+        let k = text_kandidaten(&[("Hallo".into(), Some(0.5))]);
+        let r = aus_text_alternativen(&k, &Kontext::default());
+        let best = |a: usize| r[a].1.first();
+        assert_eq!(vorauswahl(&[(Art::Text, best(0)), (Art::Formel, best(1)), (Art::Zahl, best(2))]), Art::Text);
     }
 }

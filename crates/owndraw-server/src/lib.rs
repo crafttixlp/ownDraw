@@ -44,6 +44,9 @@ pub fn open_state(cfg: config::Config) -> Result<AppState, String> {
     Ok(AppState::new(db, cfg))
 }
 
+/// Platzhalter aus `packaging/server/.env.example`; wird als Admin-Passwort abgelehnt.
+const EXAMPLE_PASSWORD: &str = "bitte-ein-langes-passwort";
+
 /// Legt beim Start einen Admin an, wenn es noch keinen gibt und `OWNDRAW_ADMIN_EMAIL`/`_PASSWORD` gesetzt sind.
 pub async fn ensure_admin_from_env(state: &AppState) -> Result<(), String> {
     let (Ok(email), Ok(pw)) = (std::env::var("OWNDRAW_ADMIN_EMAIL"), std::env::var("OWNDRAW_ADMIN_PASSWORD")) else {
@@ -51,6 +54,9 @@ pub async fn ensure_admin_from_env(state: &AppState) -> Result<(), String> {
     };
     if email.trim().is_empty() || pw.is_empty() {
         return Ok(());
+    }
+    if pw == EXAMPLE_PASSWORD {
+        return Err("OWNDRAW_ADMIN_PASSWORD ist noch das Beispiel aus .env.example. Bitte ein eigenes Passwort setzen.".into());
     }
     let has_admin = state
         .db
@@ -100,6 +106,10 @@ async fn security_headers(req: Request, next: Next) -> Response {
     let h = r.headers_mut();
     h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
     h.insert("referrer-policy", HeaderValue::from_static("same-origin"));
+    // Kein Einbetten fremder Seiten (Clickjacking, z. B. auf /admin).
+    if !h.contains_key("x-frame-options") {
+        h.insert("x-frame-options", HeaderValue::from_static("SAMEORIGIN"));
+    }
     r
 }
 

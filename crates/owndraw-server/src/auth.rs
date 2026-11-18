@@ -28,6 +28,8 @@ pub const SESSION_SECS: i64 = 30 * 24 * 3600;
 pub const MIN_PASSWORD: usize = 8;
 const MAX_PASSWORD: usize = 1024;
 const JSON_LIMIT: usize = 256 * 1024;
+/// Fehlversuche je Konto (E-Mail) im Rate-Limit-Fenster, unabhängig von der Client-Adresse.
+const LOGIN_FAILS_PER_ACCOUNT: u32 = 10;
 
 // ---------- Hilfen ----------
 
@@ -171,22 +173,32 @@ pub async fn read_limited(body: Body, limit: u64) -> ApiResult<axum::body::Bytes
         .map_err(|_| ApiError::too_large(format!("Die Datei ist größer als das Limit von {} MB.", limit / 1024 / 1024)))
 }
 
-/// Client-Adresse (hinter Caddy aus `X-Forwarded-For`, sonst die Verbindungsadresse).
+/// Client-Adresse. `X-Forwarded-For` zählt nur, wenn die Verbindung von einem Proxy im eigenen Netz kommt
+/// (Loopback/privat, z. B. Caddy oder Docker); dann gilt der letzte Eintrag (den der Proxy gesetzt hat).
+/// Direkt verbundene Clients können ihre Adresse so nicht fälschen (Rate-Limit-Umgehung).
 pub struct ClientIp(pub String);
+
+fn trusted_proxy(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v) => v.is_loopback() || v.is_private() || v.is_link_local(),
+        std::net::IpAddr::V6(v) => {
+            v.is_loopback() || (v.segments()[0] & 0xfe00) == 0xfc00 || v.to_ipv4_mapped().is_some_and(|m| m.is_loopback() || m.is_private())
+        }
+    }
+}
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
     type Rejection = std::convert::Infallible;
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let fwd = parts
-            .headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
-            .map(|s| s.trim().to_string())
+        let peer = parts.extensions.get::<axum::extract::ConnectInfo<SocketAddr>>().map(|c| c.0.ip());
+        // Ohne Verbindungsinfo (Tests im Prozess) gilt der Header wie hinter einem Proxy.
+        let fwd = peer
+            .is_none_or(trusted_proxy)
+            .then(|| parts.headers.get_all("x-forwarded-for").iter().filter_map(|v| v.to_str().ok()).last().map(str::to_string))
+            .flatten()
+            .and_then(|v| v.rsplit(',').next().map(|s| s.trim().to_string()))
             .filter(|s| !s.is_empty());
-        let ip = fwd
-            .or_else(|| parts.extensions.get::<axum::extract::ConnectInfo<SocketAddr>>().map(|c| c.0.ip().to_string()))
-            .unwrap_or_else(|| "local".into());
+        let ip = fwd.or_else(|| peer.map(|p| p.to_string())).unwrap_or_else(|| "local".into());
         Ok(ClientIp(ip))
     }
 }
@@ -330,9 +342,19 @@ pub struct LoginBody {
 pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: MaybeAuth, J(b): J<LoginBody>) -> ApiResult<Response> {
     rate_check(&s, "login", &ip)?;
     let email = b.email.trim().to_lowercase();
+    // Sperre je Konto (verteilte Angriffe von vielen Adressen); gilt für jede Adresse gleich, ob es das Konto
+    // gibt oder nicht, verrät also nichts.
+    let acct = format!("login-fail:{email}");
+    let window = Duration::from_secs(s.cfg.rate_window_secs);
+    if s.limiter.count(&acct, window) >= LOGIN_FAILS_PER_ACCOUNT {
+        return Err(ApiError::rate_limited());
+    }
     let e2 = email.clone();
     let user = s.db.call(move |c| Ok(db::user_by_email(c, &e2)?)).await?;
-    let bad = || ApiError::unauthorized_with("E-Mail oder Passwort ist falsch.");
+    let bad = || {
+        s.limiter.hit(&acct, u32::MAX, window);
+        ApiError::unauthorized_with("E-Mail oder Passwort ist falsch.")
+    };
     let Some(user) = user.filter(|u| !u.guest) else {
         // Gleiche Rechenzeit wie bei einem echten Konto (kein Hinweis, ob die Adresse existiert).
         verify_password(b.password, dummy_hash().to_string()).await;
@@ -341,6 +363,7 @@ pub async fn login(State(s): State<AppState>, ClientIp(ip): ClientIp, cur: Maybe
     if !verify_password(b.password, user.pw_hash.clone()).await {
         return Err(bad());
     }
+    s.limiter.clear(&acct);
     if user.disabled {
         let id = user.id.clone();
         let msg = s.db.call(move |c| Ok(db::disabled_msg(c, &id)?)).await?;

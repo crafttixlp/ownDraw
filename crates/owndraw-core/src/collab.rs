@@ -121,7 +121,14 @@ impl Op {
 pub struct LaserMsg {
     pub peer: Option<u64>,
     pub color: u32,
+    /// Spur-Punkte (Weltkoordinaten), darf leer sein.
     pub pts: Vec<(f32, f32)>,
+    /// Durchmesser des Punkts in Bildschirmpunkten.
+    pub size: f32,
+    /// Aktuelle Position des Laserpunkts (Weltkoordinaten).
+    pub dot: Option<(f32, f32)>,
+    /// Laserpunkt ausblenden.
+    pub off: bool,
 }
 
 impl LaserMsg {
@@ -130,7 +137,13 @@ impl LaserMsg {
 
     pub fn to_json(&self) -> Value {
         let p: Vec<Value> = self.pts.iter().flat_map(|&(x, y)| [item::num((x * 10.0).round() / 10.0), item::num((y * 10.0).round() / 10.0)]).collect();
-        let mut o = json!({"t": "laser", "c": self.color as i32, "p": p});
+        let mut o = json!({"t": "laser", "c": self.color as i32, "p": p, "s": item::num(self.size.round())});
+        if let Some((x, y)) = self.dot {
+            o["d"] = json!([item::num((x * 10.0).round() / 10.0), item::num((y * 10.0).round() / 10.0)]);
+        }
+        if self.off {
+            o["off"] = json!(true);
+        }
         if let Some(peer) = self.peer {
             o["peer"] = json!(peer);
         }
@@ -151,7 +164,15 @@ impl LaserMsg {
             }
             pts.push((x, y));
         }
-        Some(LaserMsg { peer: o.get("peer").and_then(Value::as_u64), color: o.get("c").and_then(item::jint).map(|c| c as u32).unwrap_or(crate::laser::LASER_COLOR), pts })
+        let size = o.get("s").and_then(Value::as_f64).map(|s| s as f32).filter(|s| s.is_finite()).unwrap_or(crate::laser::DOT_SIZE).clamp(crate::laser::DOT_MIN, crate::laser::DOT_MAX);
+        let dot = o.get("d").and_then(Value::as_array).and_then(|d| Some((d.first()?.as_f64()? as f32, d.get(1)?.as_f64()? as f32))).filter(|d| d.0.is_finite() && d.1.is_finite());
+        let off = o.get("off").and_then(Value::as_bool).unwrap_or(false);
+        Some(LaserMsg { peer: o.get("peer").and_then(Value::as_u64), color: o.get("c").and_then(item::jint).map(|c| c as u32).unwrap_or(crate::laser::LASER_COLOR), pts, size, dot, off })
+    }
+
+    /// Enthält etwas zum Anzeigen (Spur oder Punkt)?
+    pub fn is_empty(&self) -> bool {
+        self.pts.is_empty() && self.dot.is_none() && !self.off
     }
 }
 
@@ -520,12 +541,18 @@ mod tests {
 
     #[test]
     fn laser_nachricht() {
-        let m = LaserMsg { peer: None, color: 0xFFFF0000, pts: vec![(1.04, 2.0), (3.0, -4.5)] };
+        let m = LaserMsg { peer: None, color: 0xFFFF0000, pts: vec![(1.04, 2.0), (3.0, -4.5)], size: 40.0, dot: Some((5.0, 6.0)), off: false };
         let j = m.to_json();
         assert_eq!(j["t"], "laser");
         let back = LaserMsg::from_json(&j).unwrap();
         assert_eq!(back.pts, vec![(1.0, 2.0), (3.0, -4.5)]);
         assert_eq!(back.color, 0xFFFF0000);
+        assert_eq!((back.size, back.dot, back.off), (40.0, Some((5.0, 6.0)), false));
+        // alte Nachricht ohne Punkt: Standardgröße, nur Spur
+        let old = LaserMsg::from_json(&json!({"t":"laser","c":-65536,"p":[1,2]})).unwrap();
+        assert_eq!((old.size, old.dot, old.off), (crate::laser::DOT_SIZE, None, false));
+        let off = LaserMsg { peer: None, color: 0, pts: vec![], size: 20.0, dot: None, off: true };
+        assert!(!LaserMsg::from_json(&off.to_json()).unwrap().is_empty());
         let mut j2 = j.clone();
         j2["peer"] = json!(7);
         assert_eq!(LaserMsg::from_json(&j2).unwrap().peer, Some(7));

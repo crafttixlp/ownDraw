@@ -8,6 +8,23 @@ use crate::canvas::{Canvas, Cap, Paint};
 pub const FADE: f64 = 1.5;
 /// Standardfarbe (Rot).
 pub const LASER_COLOR: u32 = 0xFFFF3B30;
+/// Farben zur Auswahl.
+pub const COLORS: [(u32, &str); 8] = [
+    (0xFFFF3B30, "Rot"),
+    (0xFFFF9500, "Orange"),
+    (0xFFFFCC00, "Gelb"),
+    (0xFF34C759, "Grün"),
+    (0xFF00B8D9, "Türkis"),
+    (0xFF007AFF, "Blau"),
+    (0xFFAF52DE, "Violett"),
+    (0xFFFF2D92, "Pink"),
+];
+/// Durchmesser des Laserpunkts in Bildschirmpunkten (Standard, kleinster, größter).
+pub const DOT_SIZE: f32 = 32.0;
+pub const DOT_MIN: f32 = 12.0;
+pub const DOT_MAX: f32 = 96.0;
+/// Ausblenden des Punkts nach dem Absetzen (s).
+pub const DOT_FADE: f64 = 0.35;
 
 /// Spur eines Laserpointers (Weltkoordinaten, Zeit in s wie bei `Board::tick`).
 #[derive(Clone, Debug, Default)]

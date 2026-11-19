@@ -136,7 +136,7 @@ pub fn parse_release(v: &Value) -> Option<(Version, Vec<(Kind, String, String)>)
     }
     let version = Version::parse(v.get("tag_name")?.as_str()?.trim().trim_start_matches(['v', 'V'])).ok()?;
     let assets = v.get("assets").and_then(Value::as_array).cloned().unwrap_or_default();
-    let find = |n: &str| assets.iter().find(|a| a.get("name").and_then(Value::as_str) == Some(n)).and_then(|a| a.get("browser_download_url")?.as_str().map(str::to_string));
+    let find = |n: &str| assets.iter().find(|a| a.get("name").and_then(Value::as_str).is_some_and(|x| x.eq_ignore_ascii_case(n))).and_then(|a| a.get("browser_download_url")?.as_str().map(str::to_string));
     let files = Kind::ALL
         .iter()
         .filter_map(|&k| {

@@ -28,7 +28,7 @@ pub struct Release {
 
 impl Release {
     pub fn asset(&self, name: &str) -> Option<&Asset> {
-        self.assets.iter().find(|a| a.name == name)
+        self.assets.iter().find(|a| a.name == name).or_else(|| self.assets.iter().find(|a| a.name.eq_ignore_ascii_case(name)))
     }
 }
 

@@ -239,8 +239,9 @@ pub struct Settings {
     /// Desktop: Adresse des OwnDraw-Servers für Konto, Server-Boards und Live-Zusammenarbeit.
     pub server_url: String,
     pub update_mode: UpdateMode,
-    /// Beim Start nach Updates suchen (nur Hinweis, installiert nie). Standard: aus.
-    pub update_check_on_start: bool,
+    /// Beim Start nach Updates suchen und bei neuer Version fragen (installiert nie ohne Zustimmung). Standard: an.
+    /// Ersetzt das alte `update_check_on_start` (Standard aus), damit bestehende Installationen ebenfalls fragen.
+    pub update_ask_on_start: bool,
     /// Übersprungene Version.
     pub update_skip: Option<String>,
     /// GitHub-Repo "owner/name" für Updates.
@@ -290,7 +291,7 @@ impl Default for Settings {
             new_on_server: true,
             server_url: DEFAULT_SERVER.into(),
             update_mode: UpdateMode::Package,
-            update_check_on_start: false,
+            update_ask_on_start: true,
             update_skip: None,
             update_repo: "crafttixlp/ownDraw".into(),
             snap: Snapping::default(),

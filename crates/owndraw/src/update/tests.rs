@@ -210,6 +210,30 @@ fn updater_thread_liefert_status() {
 }
 
 #[test]
+fn start_check_fragt_nur_und_installiert_nichts() {
+    let f = fixture("4.0.0");
+    let target = f.cfg.target.clone().unwrap();
+    let up = Updater::with_http(Arc::from(http()));
+    assert!(up.check(f.cfg.clone(), true));
+    while up.is_busy() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(up.status().prompt, "neue Version → Dialog anfordern");
+    assert_eq!(std::fs::read(&target).unwrap(), b"APPIMAGE-4.0.0", "ohne Zustimmung wird nichts ersetzt");
+    up.close_prompt();
+    assert!(!up.status().prompt);
+    // Übersprungene Version fragt nicht.
+    let mut cfg = f.cfg.clone();
+    cfg.skip = Some("4.1.0".into());
+    assert!(up.check(cfg, true));
+    while up.is_busy() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!up.status().prompt);
+    assert!(super::self_update_possible(&f.cfg));
+}
+
+#[test]
 fn falsche_signatur_wird_abgelehnt() {
     let f = fixture("4.0.0");
     let other = keys();

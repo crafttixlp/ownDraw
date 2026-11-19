@@ -520,6 +520,18 @@
             "Aus = das Werkzeug „Umwandeln“ erkennt nichts."
           ],
           "covers": ["setting:Handschrift-Erkennung", "setting:Modelle", "setting:Lizenzen", "extra:handschrift-modelle-laden"]
+        },
+        {
+          "id": "einst-updates",
+          "title": "App aktualisieren",
+          "text": "Das AppImage und die Android-App suchen beim Start nach einer neuen Version. Gibt es eine, fragt OwnDraw: „Jetzt aktualisieren“, „Später“ oder „Diese Version überspringen“. Installiert wird nie ohne deine Zustimmung.",
+          "how": [
+            "PC (AppImage): OwnDraw lädt das neue AppImage, prüft die Signatur, ersetzt die Datei und bietet „Neu starten“ an. Die alte Version bleibt gesichert.",
+            "Android: OwnDraw lädt die neue APK und öffnet den Android-Installer. Erlaube OwnDraw dafür einmal „Unbekannte Apps installieren“.",
+            "Einstellungen → Updates: selbst suchen, die Frage beim Start abschalten oder zu einer früheren Version zurückkehren.",
+            "In der Web-App findest du AppImage und APK unter „Apps herunterladen“ (Startseite oder Editor-Menü)."
+          ],
+          "covers": ["extra:update-dialog"]
         }
       ]
     },

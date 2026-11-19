@@ -152,8 +152,9 @@ pub struct Status {
     pub releases: Option<Vec<Release>>,
     pub error: Option<Error>,
     pub done: Option<Installed>,
-    /// Einmaliger Hinweis für den Start-Check (siehe [`Updater::take_start_notice`]).
-    pub notice: Option<String>,
+    /// Start-Check hat eine neue Version gefunden: Die App fragt den Nutzer in einem Dialog
+    /// ([`crate::ui::update::start_prompt`]); installiert wird erst nach „Jetzt aktualisieren“.
+    pub prompt: bool,
 }
 
 const LOG_MAX: usize = 400;
@@ -391,24 +392,26 @@ impl Updater {
         self.ctl.cancel.store(true, Ordering::SeqCst);
     }
 
-    /// Meldung/Fehler wegklicken.
+    /// Meldung/Fehler wegklicken (schließt auch den Start-Dialog).
     pub fn dismiss_message(&self) {
         self.ctl.with(|s| {
             s.error = None;
             s.done = None;
+            s.prompt = false;
+        });
+    }
+
+    /// Start-Dialog schließen („Später“/„Überspringen“).
+    pub fn close_prompt(&self) {
+        self.ctl.with(|s| {
+            s.prompt = false;
+            s.dismissed = true;
         });
     }
 
     /// „Später“: Hinweis ausblenden.
     pub fn dismiss_update(&self) {
         self.ctl.with(|s| s.dismissed = true);
-    }
-
-    /// Einmaliger Hinweistext des Start-Checks (für einen Toast).
-    pub fn take_start_notice(&self) -> Option<String> {
-        let mut out = None;
-        self.ctl.with(|s| out = s.notice.take());
-        out
     }
 
     fn spawn(&self, what: &str, f: impl FnOnce(&Ctl, &dyn Http) -> Result<(), Error> + Send + 'static) -> bool {
@@ -439,13 +442,14 @@ impl Updater {
         true
     }
 
-    /// „Nach Updates suchen“ (Klick). `silent`: Start-Check, nur Hinweis, Fehler werden verschluckt.
+    /// „Nach Updates suchen“ (Klick). `silent`: Start-Check; bei neuer Version wird nur der Dialog angefordert
+    /// ([`Status::prompt`]), Fehler werden verschluckt.
     pub fn check(&self, cfg: Config, silent: bool) -> bool {
         self.spawn("Suche nach Updates …", move |ctl, http| match check(&cfg, http) {
             Ok(r) => {
                 ctl.with(|s| {
                     if silent && r.newer && !r.skipped {
-                        s.notice = r.latest.as_ref().map(|l| format!("OwnDraw {} ist verfügbar. Mehr unter Einstellungen > Updates.", l.version));
+                        s.prompt = true;
                     }
                     s.dismissed = false;
                     s.check = Some(r);
@@ -490,23 +494,22 @@ impl Updater {
 
 static START_DONE: AtomicBool = AtomicBool::new(false);
 
-/// Einmal pro Frame aus der App-Hülle aufrufen. Beim ersten Aufruf: Start-Check, falls `update_check_on_start`
-/// eingeschaltet ist (Standard aus; sucht nur, installiert nie). Liefert einmalig einen Hinweistext für einen Toast.
-pub fn frame_hook(settings: &Settings, platform: &dyn crate::platform::Platform, ctx: &egui::Context) -> Option<String> {
-    if !START_DONE.swap(true, Ordering::SeqCst) {
-        if settings.update_check_on_start {
-            let cfg = Config::new(settings, platform);
-            if cfg.configured() {
-                global().set_ctx(ctx);
-                global().check(cfg, true);
-            }
-        }
-        return None;
+/// Ob diese Installation sich selbst aktualisieren kann (Android-APK oder laufendes, beschreibbares AppImage).
+pub fn self_update_possible(cfg: &Config) -> bool {
+    cfg!(target_os = "android") || cfg.target.as_deref().is_some_and(|t| install::check_writable(t).is_ok())
+}
+
+/// Einmal pro Frame aus der App-Hülle aufrufen. Beim ersten Aufruf: Start-Check, falls `update_ask_on_start`
+/// eingeschaltet ist (Standard an) und die App sich selbst aktualisieren kann. Gefunden wird nur – der Dialog
+/// fragt den Nutzer, installiert wird nie von selbst.
+pub fn frame_hook(settings: &Settings, platform: &dyn crate::platform::Platform, ctx: &egui::Context) {
+    if START_DONE.swap(true, Ordering::SeqCst) || !settings.update_ask_on_start {
+        return;
     }
-    if settings.update_check_on_start {
-        global().take_start_notice()
-    } else {
-        None
+    let cfg = Config::new(settings, platform);
+    if cfg.configured() && self_update_possible(&cfg) {
+        global().set_ctx(ctx);
+        global().check(cfg, true);
     }
 }
 

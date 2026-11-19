@@ -557,10 +557,11 @@ impl App {
             self.applied = Some(self.sh.settings.clone());
         }
         self.sh.env = Env::new(ctx.content_rect().width(), self.sh.platform.is_touch());
-        // Update-Dienst: optionaler Start-Hinweis (nur Hinweis, installiert nie von selbst; im Browser aus)
+        // Update-Dienst: Start-Check und Dialog „Update verfügbar“ (fragt, installiert nie von selbst; im Browser aus)
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(n) = crate::update::frame_hook(&self.sh.settings, &*self.sh.platform, &ctx) {
-            self.sh.toast_for(&n, 6.0);
+        {
+            crate::update::frame_hook(&self.sh.settings, &*self.sh.platform, &ctx);
+            crate::ui::update::start_prompt(&ctx, &mut self.sh.settings, &*self.sh.platform);
         }
 
         if let Some(f) = self.open_at_start.take() {

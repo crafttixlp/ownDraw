@@ -1,7 +1,8 @@
 //! Einstellungsbereich „Updates“ (WP11).
 //!
-//! Vertrag: `section` wird von der Einstellungsseite (`ui/settings.rs`) im Bereich „Updates“ aufgerufen.
-//! Nichts passiert von selbst: Netzwerk erst auf Klick „Nach Updates suchen“. Der Dienst läuft in
+//! Vertrag: `section` wird von der Einstellungsseite (`ui/settings.rs`) im Bereich „Updates“ aufgerufen,
+//! `start_prompt` jedes Frame von der App-Hülle (Dialog „Update verfügbar“ nach dem Start-Check).
+//! Installiert wird nie von selbst: Netzwerk nur auf Klick oder beim Start-Check (abschaltbar). Der Dienst läuft in
 //! Hintergrund-Threads (`update::global()`), diese Oberfläche liest nur den Status.
 
 use crate::platform::Platform;
@@ -70,7 +71,7 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
         ui.label(egui::RichText::new("Auf Android lädt OwnDraw immer die fertige APK und übergibt sie an den System-Installer. Dafür brauchst du die Berechtigung „Unbekannte Apps installieren“.").size(12.0).color(c(p.dim)));
     }
     cfg.mode = if desktop { settings.update_mode } else { UpdateMode::Package };
-    ui.checkbox(&mut settings.update_check_on_start, "Beim Start nach Updates suchen, ohne zu installieren");
+    ui.checkbox(&mut settings.update_ask_on_start, "Beim Start nach Updates suchen und fragen (installiert nie ohne deine Zustimmung)");
     ui.add_space(6.0);
 
     ui.horizontal(|ui| {
@@ -131,6 +132,63 @@ pub fn section(ui: &mut egui::Ui, settings: &mut Settings, platform: &dyn Platfo
     saved_view(ui, &up, &cfg, &st, platform, h, desktop);
     release_list(ui, &up, &cfg, &st, h, desktop);
     confirm_view(ui, &up, &cfg, h);
+}
+
+/// Dialog „Update verfügbar“ nach dem Start-Check: fragt, ob jetzt aktualisiert werden soll, zeigt den
+/// Fortschritt und danach „Neu starten“ (AppImage) bzw. den Hinweis auf den System-Installer (Android).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub fn start_prompt(ctx: &egui::Context, settings: &mut Settings, platform: &dyn Platform) {
+    let up = update::global().clone();
+    let st = up.status();
+    if !st.prompt {
+        return;
+    }
+    let Some(rel) = st.check.as_ref().and_then(|c| c.latest.clone()) else {
+        up.close_prompt();
+        return;
+    };
+    let cfg = Config::new(settings, platform);
+    let p = style::pal();
+    let h = if platform.is_touch() { 44.0 } else { 30.0 };
+    let busy = st.busy.is_some();
+    let asking = !busy && st.done.is_none() && st.error.is_none();
+    let r = egui::Modal::new(egui::Id::unique("owndraw-update-prompt")).frame(style::card().inner_margin(egui::Margin::same(style::sp::XL as i8))).show(ctx, |ui| {
+        ui.set_max_width(440.0);
+        ui.label(egui::RichText::new(format!("OwnDraw {} ist verfügbar", rel.version)).size(style::fs::SECTION + 2.0).strong());
+        ui.label(egui::RichText::new(format!("Installiert ist Version {}.", cfg.current)).color(c(p.dim)));
+        if asking {
+            notes(ui, &rel, "prompt_notes");
+            ui.add_space(6.0);
+            let hint = if cfg!(target_os = "android") {
+                "OwnDraw lädt die neue APK und öffnet den Android-Installer. Dort bestätigst du die Installation."
+            } else {
+                "OwnDraw lädt das neue AppImage, prüft die Signatur und ersetzt die Datei. Die bisherige Version bleibt gesichert."
+            };
+            ui.label(egui::RichText::new(hint).size(12.0).color(c(p.dim)));
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                if style::primary_btn(ui, "Jetzt aktualisieren", h).clicked() {
+                    up.install(cfg.clone(), rel.clone());
+                }
+                if style::plain_btn(ui, "Später", h).clicked() {
+                    up.close_prompt();
+                }
+                if style::plain_btn(ui, "Diese Version überspringen", h).clicked() {
+                    settings.update_skip = Some(rel.version.to_string());
+                    up.close_prompt();
+                }
+            });
+        } else {
+            busy_view(ui, &st);
+            if busy && style::danger_btn(ui, "Abbrechen", h).clicked() {
+                up.cancel();
+            }
+            messages(ui, &up, &st, settings, platform, h);
+        }
+    });
+    if asking && r.should_close() {
+        up.close_prompt();
+    }
 }
 
 fn busy_view(ui: &mut egui::Ui, st: &Status) {

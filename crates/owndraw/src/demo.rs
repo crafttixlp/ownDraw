@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `ruler` (Lineal), `laser` (Laserpunkte, eigener und fremde), `mathinline` (Formel direkt auf dem Blatt bearbeiten), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `convert` (Werkzeug „Umwandeln“ mit Fenster und festen Alternativen), `stamps` (alle Stempel), `fsugg` (Formel-Vorschläge), `fbook[=konst|teilen|neu]` (Formelsammlung), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `settings=<look|bars|snap|hw|save|account|update|about>` (Kategorie-Unterseite), `ruler` (Lineal), `laser` (Laserpunkte, eigener und fremde), `mathinline` (Formel direkt auf dem Blatt bearbeiten), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `convert` (Werkzeug „Umwandeln“ mit Fenster und festen Alternativen), `stamps` (alle Stempel), `fsugg` (Formel-Vorschläge), `fbook[=konst|teilen|neu]` (Formelsammlung), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -370,12 +370,15 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     if has("new") {
         app.sh.dialog = Some(Dialog::new_doc(true, None));
     }
-    if has("settings") || has("settingstools") || has("settingskeys") {
+    if has("settings") || has("settingstools") || has("settingskeys") || toks.iter().any(|s| s.starts_with("settings=")) {
         if has("settingstools") {
             crate::ui::settings::open_tools_page(ctx);
         }
         if has("settingskeys") {
             crate::ui::settings::open_keys_page(ctx);
+        }
+        if let Some(t) = toks.iter().find_map(|s| s.strip_prefix("settings=")) {
+            crate::ui::settings::open_page_named(ctx, t);
         }
         app.set_screen(Screen::Settings);
     }

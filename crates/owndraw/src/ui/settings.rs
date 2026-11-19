@@ -92,6 +92,22 @@ pub fn open_tools_page(ctx: &egui::Context) {
     ctx.data_mut(|d| d.insert_temp(page_id(), Page::Tools));
 }
 
+/// Öffnet die Einstellungen auf einer Kategorie-Seite (für Demo/Screenshots): look, bars, snap, hw, save, account, update, about.
+pub fn open_page_named(ctx: &egui::Context, name: &str) {
+    let p = match name.trim() {
+        "look" => Page::Look,
+        "bars" => Page::Bars,
+        "snap" => Page::Snap,
+        "hw" => Page::Hw,
+        "save" => Page::Save,
+        "account" => Page::Account,
+        "update" => Page::Update,
+        "about" => Page::About,
+        _ => Page::Main,
+    };
+    ctx.data_mut(|d| d.insert_temp(page_id(), p));
+}
+
 /// Zeile: Beschriftung (mit optionaler Erklärung) und Bedienelement.
 fn row(ui: &mut Ui, env: &Env, label: &str, hint: Option<&str>, controls: impl FnOnce(&mut Ui)) {
     let p = style::pal();

@@ -138,3 +138,18 @@ Prüfliste:
 - `openUrl` mit Dateien: nur Dateien im App-Speicher (Cache-/Datenordner) und nur die Datei selbst –
   relative Verweise einer exportierten Website (Bilder, CSS) kann der Browser über `content://` nicht nachladen.
 - Debug-Logs: Tag `OwnDraw` (`android_logger`).
+
+## Konto, Server-Boards und Live-Zusammenarbeit (ab 4.43.0)
+
+Die Android-App nutzt dieselbe Server-Anbindung wie die Desktop-App (`crates/owndraw/src/net/native.rs`: `ureq` +
+`tungstenite` über rustls in Hintergrund-Threads). Unterschied: Zertifikate kommen aus `webpki-roots`
+(Mozilla-Liste), weil `rustls-platform-verifier` auf Android eine eigene Java/Kotlin-Komponente bräuchte.
+Die Sitzung liegt in `konto.json` im App-internen Speicher. Server-Adresse: Einstellungen → „Konto & Zusammenarbeit“.
+Damit gelten auf Android auch Laser in der Live-Sitzung und die Funktionssperren aus dem Admin-Panel.
+
+## Stift-Modus
+
+winit gibt unter Android die Zeigerart (Stift/Finger) nicht weiter, wohl aber das Eingabegerät jeder Berührung
+(egui `TouchDeviceId` = Hash der `InputDevice`-ID). `platform::android::stylus_devices()` sucht per JNI Geräte mit
+`SOURCE_STYLUS` ohne `SOURCE_TOUCHSCREEN` (z. B. S Pen/Wacom am Galaxy Tab). Gibt es keins, weil Stift und Finger
+über dasselbe Gerät kommen, meldet der Stift-Modus beim Einschalten, dass er hier nicht geht.

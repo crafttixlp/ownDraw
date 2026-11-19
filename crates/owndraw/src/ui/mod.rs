@@ -1,6 +1,5 @@
 //! Oberfläche (WP6): drei Bildschirme – Start, Editor, Einstellungen – mit Formfaktor-abhängigem Layout.
 
-#[cfg(not(target_os = "android"))]
 pub mod account;
 pub mod dialogs;
 pub mod editor;
@@ -28,40 +27,24 @@ pub fn bug_report_available() -> bool {
 
 /// Mit gültiger Lizenz (Web-App, Desktop): Boards können am Server oder lokal liegen.
 pub fn server_store_available() -> bool {
-    #[cfg(not(target_os = "android"))]
-    {
-        crate::net::licensed()
-    }
-    #[cfg(target_os = "android")]
-    {
-        false
-    }
+    crate::net::licensed()
 }
 
 /// Freier Speicherplatz am Server als Text („12,5 MB“), nur mit Lizenz.
 pub fn server_free_text() -> Option<String> {
-    #[cfg(not(target_os = "android"))]
-    {
-        crate::net::free_bytes().map(mb_text)
-    }
-    #[cfg(target_os = "android")]
-    {
-        None
-    }
+    crate::net::free_bytes().map(mb_text)
 }
 
-/// Ort lokaler Boards im Satz: „in diesem Browser“ (Web-App) bzw. „auf diesem Computer“ (Desktop).
-#[cfg_attr(target_os = "android", allow(dead_code))]
+/// Ort lokaler Boards im Satz: „in diesem Browser“ (Web-App) bzw. „auf diesem Gerät“ (Desktop).
 pub fn local_in() -> &'static str {
     if crate::platform::WEB {
         "in diesem Browser"
     } else {
-        "auf diesem Computer"
+        "auf diesem Gerät"
     }
 }
 
 /// Text je nach Plattform: Web-App bzw. Desktop.
-#[cfg_attr(target_os = "android", allow(dead_code))]
 pub fn wd(web: &'static str, desktop: &'static str) -> &'static str {
     if crate::platform::WEB {
         web
@@ -71,7 +54,6 @@ pub fn wd(web: &'static str, desktop: &'static str) -> &'static str {
 }
 
 /// Bytes als „1,2 MB“.
-#[cfg_attr(target_os = "android", allow(dead_code))]
 pub fn mb_text(bytes: i64) -> String {
     if bytes < 100 * 1024 {
         return format!("{} KB", (bytes + 1023) / 1024);

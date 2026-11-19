@@ -14,15 +14,11 @@ use std::collections::HashMap;
 pub struct StartState {
     thumbs: HashMap<String, Option<TextureHandle>>,
     /// Konto und Boards am Server (nur Browser).
-    #[cfg(not(target_os = "android"))]
     pub account: super::account::AccountUi,
     /// Suchtext (modernes Design).
     query: String,
     /// Filter: 0 = alle, 1 = Seiten, 2 = Unendlich.
     filter: u8,
-    /// Demo `gast`: Gast-Hinweis wie im Browser auch am Desktop zeigen (nur Screenshots).
-    #[cfg(not(target_arch = "wasm32"))]
-    pub demo_banner: bool,
 }
 
 impl StartState {
@@ -97,7 +93,6 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                 });
             });
             // Browser: Konto bzw. Gastmodus-Hinweis (dezent)
-            #[cfg(not(target_os = "android"))]
             {
                 ui.add_space(10.0);
                 super::account::header(ui, sh, &mut st.account);
@@ -113,7 +108,6 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
                 }
             });
-            #[cfg(not(target_os = "android"))]
             {
                 super::account::boards(ui, sh, &mut st.account);
                 ui.spacing_mut().item_spacing = egui::style::Spacing::default().item_spacing;
@@ -223,7 +217,6 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
             }
         });
     });
-    #[cfg(not(target_os = "android"))]
     super::account::dialogs(&ctx, sh, &mut st.account);
 }
 
@@ -592,7 +585,6 @@ fn board_card(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, e: &crate
     match act.get() {
         Some(0) => sh.reqs.push(Req::OpenFile(e.file.clone())),
         Some(1) => sh.reqs.push(Req::RemoveRecent(e.file.clone())),
-        #[cfg(not(target_os = "android"))]
         Some(2) => super::account::ask_to_server(sh, &mut st.account, &e.file, &e.name),
         _ => {}
     }
@@ -646,26 +638,10 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 });
             });
             ui.add_space(if compact { sp::L } else { sp::XL });
-            #[cfg(not(target_os = "android"))]
             {
                 super::account::header(ui, sh, &mut st.account);
                 ui.add_space(if compact { sp::L } else { sp::XL });
             }
-            #[cfg(target_os = "android")]
-            if st.demo_banner {
-                banner(
-                    ui,
-                    compact,
-                    "Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.",
-                    "Mit einem Konto wirst du zu Boards eingeladen und arbeitest live mit. Mit einer Lizenz speicherst und teilst du Boards auf dem Server.",
-                    |ui| {
-                        let _ = style::primary_btn(ui, "Anmelden", h);
-                        let _ = style::outline_btn(ui, "Konto erstellen", h);
-                    },
-                );
-                ui.add_space(if compact { sp::L } else { sp::XL });
-            }
-
             // Titel mit Aktionen
             let n = recent.list().len();
             let sub = match n {
@@ -726,14 +702,13 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     });
                 });
             }
-            #[cfg(not(target_os = "android"))]
             {
                 let server_section = super::account::boards(ui, sh, &mut st.account);
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 6.0);
                 // Neben „Auf dem Server“ die Browser-Boards klar benennen
                 if server_section && n > 0 {
                     ui.add_space(sp::XL);
-                    ui.label(egui::RichText::new(super::wd("In diesem Browser", "Auf diesem Computer")).size(fs::SECTION + 3.0).strong());
+                    ui.label(egui::RichText::new(super::wd("In diesem Browser", "Auf diesem Gerät")).size(fs::SECTION + 3.0).strong());
                     ui.label(style::hint("Nur auf diesem Gerät gespeichert. Teilen geht erst nach „Auf Server verschieben“ im Kartenmenü."));
                 }
             }
@@ -822,6 +797,5 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
             }
         });
     });
-    #[cfg(not(target_os = "android"))]
     super::account::dialogs(&ctx, sh, &mut st.account);
 }

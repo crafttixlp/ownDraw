@@ -2924,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw"
-version = "4.41.1"
+version = "4.43.0"
 dependencies = [
  "android-activity",
  "arboard",
@@ -2957,12 +2957,13 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webpki-roots",
  "zip",
 ]
 
 [[package]]
 name = "owndraw-android"
-version = "4.41.1"
+version = "4.43.0"
 dependencies = [
  "android-activity",
  "android_logger",
@@ -2973,7 +2974,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw-core"
-version = "4.41.1"
+version = "4.43.0"
 dependencies = [
  "epaint_default_fonts",
  "flate2",
@@ -2993,7 +2994,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw-server"
-version = "4.41.1"
+version = "4.43.0"
 dependencies = [
  "argon2",
  "axum",
@@ -3028,7 +3029,7 @@ dependencies = [
 
 [[package]]
 name = "owndraw-web"
-version = "4.41.1"
+version = "4.43.0"
 dependencies = [
  "eframe",
  "log",

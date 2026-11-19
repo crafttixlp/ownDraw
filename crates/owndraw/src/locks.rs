@@ -1,6 +1,6 @@
 //! Vom Admin gesperrte Werkzeuge und Funktionen (Katalog `owndraw_core::features`, Server `GET /api/features`).
 //! Die App lädt die Liste beim Start und nach An-/Abmelden (`net::refresh_features`); für Admins liefert der
-//! Server immer eine leere Liste. Ohne Server (Android, Desktop ohne Anbindung) ist nichts gesperrt.
+//! Server immer eine leere Liste. Ohne Server (keine Anbindung, offline) ist nichts gesperrt.
 //!
 //! Gesperrte Werkzeuge verschwinden aus Leiste, „Weitere Werkzeuge“, Einstellungen und Tastenkürzeln
 //! (`ui/editor/tools.rs`); gesperrte Funktionen aus Menü und Knöpfen.
@@ -12,7 +12,6 @@ thread_local! {
 }
 
 /// Neue Liste gesperrter Kennungen übernehmen.
-#[cfg_attr(target_os = "android", allow(dead_code))]
 pub fn set(off: Vec<String>) {
     OFF.with(|o| *o.borrow_mut() = off);
 }

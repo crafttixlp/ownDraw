@@ -473,13 +473,13 @@
         {
           "id": "bars-werkzeuge",
           "title": "Werkzeuge bearbeiten",
-          "text": "Einstellungen → „Leiste anordnen …“: Reihenfolge per Ziehen ändern und Werkzeuge über das Auge ein- oder ausschalten. „Standard“ setzt zurück, „Fertig“ oder Esc beendet. Es ist dieselbe Einstellung wie auf der Seite „Werkzeuge“.",
+          "text": "Einstellungen → Werkzeugleisten → „Leiste anordnen …“: Reihenfolge per Ziehen ändern und Werkzeuge über das Auge ein- oder ausschalten. „Standard“ setzt zurück, „Fertig“ oder Esc beendet. Es ist dieselbe Einstellung wie auf der Seite „Werkzeuge“.",
           "covers": ["setting:Werkzeuge"]
         },
         {
           "id": "einst-werkzeuge",
           "title": "Werkzeuge ein- und ausschalten",
-          "text": "Einstellungen → „Werkzeuge“ (ganz oben) oder Menü „…“ → „Werkzeuge anpassen …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
+          "text": "Einstellungen → „Werkzeuge“ (oben unter Editor) oder Menü „…“ → „Werkzeuge anpassen …“ zeigt alle Werkzeuge nach Gruppen (Zeichnen, Formen, Ordnen, Extras) mit Symbol, kurzer Beschreibung und Schalter. Ausgeschaltete Werkzeuge verschwinden aus der Leiste und den Tastenkürzeln, bereits gezeichnete Objekte bleiben bearbeitbar. Neue Werkzeuge sind mit „Neu“ markiert und zunächst aus.",
           "how": ["Antippen der ganzen Zeile schaltet das Werkzeug ein oder aus.", "„Alle neuen Werkzeuge einschalten“ holt alle neuen auf einmal in die Leiste.", "Mindestens ein Werkzeug bleibt eingeschaltet.", "Ist „Text“ aus, bekommt die Haftnotiz einen eigenen Knopf.", "„Auf Standard zurücksetzen“ schaltet alles auf die Vorgabe zurück."],
           "covers": ["setting:Werkzeuge", "extra:werkzeuge-seite", "menu:Werkzeuge anpassen …"]
         },
@@ -500,14 +500,14 @@
         {
           "id": "einst-kuerzel",
           "title": "Tastenkürzel anpassen",
-          "text": "Einstellungen → „Tastenkürzel …“ listet alle Aktionen und Werkzeuge mit ihrer Belegung. Tippe auf ein Kürzel und drücke die neue Taste oder Kombination (mit Strg, Alt oder Umschalt). „+“ fügt ein weiteres Kürzel hinzu.",
+          "text": "Einstellungen → „Tastenkürzel“ listet alle Aktionen und Werkzeuge mit ihrer Belegung. Tippe auf ein Kürzel und drücke die neue Taste oder Kombination (mit Strg, Alt oder Umschalt). „+“ fügt ein weiteres Kürzel hinzu.",
           "how": ["Esc bricht die Aufnahme ab, Entf entfernt das Kürzel.", "Ist die Kombination schon vergeben, zeigt OwnDraw die andere Aktion und fragt, ob sie dort entfernt werden soll.", "„Standard“ setzt eine Zeile zurück, „Alle zurücksetzen …“ alle.", "Mit der Suche findest du eine Aktion nach Name oder Kürzel.", "In der Web-App lassen sich Kürzel des Browsers (z. B. Strg+W, Strg+T, Strg+N, Tab, F5) nicht belegen.", "Die Anleitung zeigt immer deine aktuelle Belegung."],
           "covers": ["setting:Tastenkürzel", "extra:tastenkuerzel"]
         },
         {
           "id": "bars-pos",
           "title": "Feste Position und Ecken",
-          "text": "In den Einstellungen legst du die Werkzeugleiste und die Optionsleiste auf Automatisch, Oben, Unten, Links oder Rechts fest. „Ecken der Leisten“ stellt die Abrundung ein (0 px eckig bis 40 px ganz rund).",
+          "text": "Unter Einstellungen → Werkzeugleisten legst du die Werkzeugleiste und die Optionsleiste auf Automatisch, Oben, Unten, Links oder Rechts fest. „Ecken der Leisten“ stellt die Abrundung ein (0 px eckig bis 40 px ganz rund).",
           "covers": ["setting:Werkzeugleiste", "setting:Optionsleiste", "setting:Ecken der Leisten"]
         },
         {
@@ -663,6 +663,13 @@
           "title": "Einstellungen, Fehler melden, Apps",
           "text": "Aus dem Menü erreichst du die Einstellungen. In der Web-App mit Server meldest du dort Fehler (mit Screenshots) und lädst die Android- und Linux-App herunter.",
           "covers": ["menu:Einstellungen", "menu:Fehler melden …", "menu:Apps herunterladen"]
+        },
+        {
+          "id": "einstellungen-kategorien",
+          "title": "Einstellungen nach Themen",
+          "text": "Die Einstellungen sind nach Themen geordnet: oben „Editor“ (Werkzeuge, Tastenkürzel, Werkzeugleisten, Einrasten, Handschrift-Erkennung), darunter „App“ (Darstellung, Speichern, Konto & Server, Updates, Über OwnDraw). Jede Zeile öffnet eine eigene Seite.",
+          "how": ["Unter jedem Thema steht kurz, was gerade eingestellt ist, z. B. „Modern · Dunkel · 100 %“.", "Der Pfeil oben links oder ein Klick auf „Einstellungen“ im Titel führt zurück zur Übersicht.", "„Alle Einstellungen zurücksetzen“ findest du unter „Über OwnDraw“."],
+          "covers": ["extra:einstellungen-kategorien"]
         }
       ]
     },
@@ -675,7 +682,7 @@
           "id": "live-konto-desktop",
           "title": "Anmelden in der Desktop- und Android-App",
           "text": "Auch die Desktop-App und die Android-App arbeiten mit deinem Konto: Auf der Startseite meldest du dich an, siehst Lizenz und belegten Speicher und darunter deine Boards „Auf dem Server“. Es sind dieselben Boards wie in der Web-App.",
-          "how": ["Startseite → „Anmelden“ oder „Konto erstellen“. Im Dialog steht oben der Server, voreingestellt ist owndraw.thepepelex.at.", "Den Server änderst du auch in den Einstellungen unter „Konto & Zusammenarbeit“. Beim Wechsel wirst du abgemeldet.", "Ohne Verbindung arbeitest du ganz normal mit Boards auf diesem Gerät weiter. „Erneut versuchen“ verbindet wieder.", "Die Anmeldung bleibt gespeichert (nur für dein Benutzerkonto lesbar). „Abmelden“ löscht sie."],
+          "how": ["Startseite → „Anmelden“ oder „Konto erstellen“. Im Dialog steht oben der Server, voreingestellt ist owndraw.thepepelex.at.", "Den Server änderst du auch in den Einstellungen unter „Konto & Server“. Beim Wechsel wirst du abgemeldet.", "Ohne Verbindung arbeitest du ganz normal mit Boards auf diesem Gerät weiter. „Erneut versuchen“ verbindet wieder.", "Die Anmeldung bleibt gespeichert (nur für dein Benutzerkonto lesbar). „Abmelden“ löscht sie."],
           "only": "Desktop- und Android-App",
           "covers": ["extra:konto-desktop", "extra:server-adresse"]
         },
@@ -698,7 +705,7 @@
           "id": "live-speicherort",
           "title": "Speicherort wählen: Server oder lokal",
           "text": "Mit Lizenz wählst du für jedes Board, wo es liegt. Auf dem Server ist es auf allen Geräten verfügbar und lässt sich teilen und live gemeinsam bearbeiten. Lokal (im Browser bzw. auf diesem Gerät) liegt es nur auf diesem Gerät und braucht keinen Speicherplatz der Lizenz.",
-          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Desktop und Android: Vorgabe in den Einstellungen unter „Konto & Zusammenarbeit“ → „Neue Boards“.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“ (Desktop und Android: „Auf dieses Gerät verschieben“). Dort bleibt die Datei nach dem Hochladen als Sicherung liegen. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“ (Desktop und Android: „Kopie auf diesem Gerät“): Das Original am Server bleibt unverändert."],
+          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Desktop und Android: Vorgabe in den Einstellungen unter „Konto & Server“ → „Neue Boards“.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“ (Desktop und Android: „Auf dieses Gerät verschieben“). Dort bleibt die Datei nach dem Hochladen als Sicherung liegen. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“ (Desktop und Android: „Kopie auf diesem Gerät“): Das Original am Server bleibt unverändert."],
           "only": "Web-App, Desktop und Android mit Lizenz",
           "covers": ["extra:speicherort"]
         },
@@ -745,7 +752,7 @@
     {
       "id": "kuerzel",
       "title": "Tastenkürzel",
-      "intro": "Alle Kürzel auf einen Blick, mit deiner aktuellen Belegung. Ändern kannst du sie unter Einstellungen → „Tastenkürzel …“. Am Mac gilt Cmd statt Strg.",
+      "intro": "Alle Kürzel auf einen Blick, mit deiner aktuellen Belegung. Ändern kannst du sie unter Einstellungen → „Tastenkürzel“. Am Mac gilt Cmd statt Strg.",
       "entries": [
         {
           "id": "keys-werkzeuge",

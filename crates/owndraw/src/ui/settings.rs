@@ -37,6 +37,45 @@ enum Page {
     Tools,
     /// Tastenkürzel belegen.
     Keys,
+    /// Design, Farbschema, Akzentfarbe, Größe.
+    Look,
+    /// Werkzeug- und Optionsleiste, Ecken, Rechnen.
+    Bars,
+    /// Einrasten von Linien, Formen und Griffen.
+    Snap,
+    /// Handschrift-Erkennung (Werkzeug „Umwandeln“).
+    Hw,
+    /// Speicherort und neue Boards.
+    Save,
+    /// Server-Adresse (Desktop und Android).
+    Account,
+    /// Updates (nicht im Browser).
+    Update,
+    /// Version, Projektseite, alles zurücksetzen.
+    About,
+}
+
+impl Page {
+    fn title(self) -> &'static str {
+        match self {
+            Page::Main => "Einstellungen",
+            Page::Tools => "Werkzeuge",
+            Page::Keys => "Tastenkürzel",
+            Page::Look => "Darstellung",
+            Page::Bars => "Werkzeugleisten",
+            Page::Snap => "Einrasten",
+            Page::Hw => "Handschrift-Erkennung",
+            Page::Save => "Speichern",
+            Page::Account => "Konto & Server",
+            Page::Update => "Updates",
+            Page::About => "Über OwnDraw",
+        }
+    }
+}
+
+thread_local! {
+    /// Titel der gerade gezeigten Unterseite: ein gleichnamiger Abschnitt zeigt seine Überschrift nicht doppelt.
+    static PAGE_TITLE: std::cell::Cell<&'static str> = const { std::cell::Cell::new("") };
 }
 
 fn page_id() -> Id {
@@ -51,6 +90,22 @@ pub fn open_keys_page(ctx: &egui::Context) {
 /// Öffnet die Einstellungen beim nächsten Anzeigen auf der Seite „Werkzeuge“.
 pub fn open_tools_page(ctx: &egui::Context) {
     ctx.data_mut(|d| d.insert_temp(page_id(), Page::Tools));
+}
+
+/// Öffnet die Einstellungen auf einer Kategorie-Seite (für Demo/Screenshots): look, bars, snap, hw, save, account, update, about.
+pub fn open_page_named(ctx: &egui::Context, name: &str) {
+    let p = match name.trim() {
+        "look" => Page::Look,
+        "bars" => Page::Bars,
+        "snap" => Page::Snap,
+        "hw" => Page::Hw,
+        "save" => Page::Save,
+        "account" => Page::Account,
+        "update" => Page::Update,
+        "about" => Page::About,
+        _ => Page::Main,
+    };
+    ctx.data_mut(|d| d.insert_temp(page_id(), p));
 }
 
 /// Zeile: Beschriftung (mit optionaler Erklärung) und Bedienelement.
@@ -78,7 +133,9 @@ fn row(ui: &mut Ui, env: &Env, label: &str, hint: Option<&str>, controls: impl F
 }
 
 fn section(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
-    if style::modern() {
+    if PAGE_TITLE.with(|t| t.get()) == title {
+        ui.add_space(sp::S);
+    } else if style::modern() {
         ui.add_space(22.0);
         ui.label(egui::RichText::new(title).size(15.0).strong().color(c(style::pal().text)));
         ui.add_space(6.0);
@@ -156,12 +213,7 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
                 }
                 ui.label(egui::RichText::new("›").size(style::fs::TITLE).color(c(p.dim)));
             }
-            let title = match page {
-                Page::Main => "Einstellungen",
-                Page::Tools => "Werkzeuge",
-                Page::Keys => "Tastenkürzel",
-            };
-            ui.label(style::title(title));
+            ui.label(style::title(page.title()));
         });
     });
 
@@ -173,10 +225,23 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
             ui.add_space(pad);
             ui.vertical(|ui| {
                 ui.set_width(w);
+                PAGE_TITLE.with(|t| t.set(page.title()));
                 match page {
-                    Page::Main => content(ui, &env, settings, platform, icons, &mut act, &mut page),
+                    Page::Main => main_page(ui, &env, settings, platform, icons, &mut page),
                     Page::Tools => tools_page(ui, &env, settings, icons, &mut act),
                     Page::Keys => keys_page(ui, &env, settings),
+                    Page::Look => page_look(ui, &env, settings),
+                    Page::Bars => page_bars(ui, &env, settings, &mut act, &mut page),
+                    Page::Snap => page_snap(ui, &env, settings, platform),
+                    Page::Hw => page_hw(ui, &env, settings, platform),
+                    Page::Save => page_save(ui, &env, settings, platform, &mut act),
+                    #[cfg(not(target_arch = "wasm32"))]
+                    Page::Account => page_account(ui, &env, settings),
+                    #[cfg(not(target_arch = "wasm32"))]
+                    Page::Update => page_update(ui, settings, platform),
+                    Page::About => page_about(ui, &env, settings, platform),
+                    #[allow(unreachable_patterns)]
+                    _ => page = Page::Main,
                 }
                 ui.add_space(32.0);
             });
@@ -190,27 +255,91 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
     act
 }
 
-fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform, icons: &mut Icons, act: &mut SettingsAction, page: &mut Page) {
+/// Hauptseite: alle Einstellungen als Kategorien, jede Zeile öffnet eine Unterseite.
+fn main_page(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform, icons: &mut Icons, page: &mut Page) {
+    use owndraw_core::icons as ic;
+    let btn = env.btn;
+    let _ = platform;
+    let rows = |ui: &mut Ui, icons: &mut Icons, page: &mut Page, list: Vec<(i32, Page, String, bool)>| {
+        style::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for (i, (icon, target, sub, dot)) in list.into_iter().enumerate() {
+                if i > 0 {
+                    style::separator(ui);
+                }
+                if nav_row(ui, icons, icon, target.title(), &sub, dot, btn) {
+                    *page = target;
+                }
+            }
+        });
+    };
+
+    // ---- Editor
+    let n_on = tools::TOOLS.iter().filter(|d| tools::enabled(settings, d.id)).count();
+    let n_new = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id) && !tools::locked(d.id)).count();
+    let n_all = tools::TOOLS.len() - crate::locks::locked_tools();
+    let tools_sub = if n_new > 0 { format!("{n_on} von {n_all} eingeschaltet · {n_new} neue verfügbar") } else { format!("{n_on} von {n_all} eingeschaltet") };
+    let sn = &settings.snap;
+    let snap_sub = match (sn.lines, sn.handles) {
+        (false, false) => "Aus".to_string(),
+        (true, false) => format!("Linien {}° · Griffe aus", sn.line_step),
+        (false, true) => format!("Linien aus · Griffe {}°", sn.handle_step),
+        (true, true) => format!("Linien {}° · Griffe {}°", sn.line_step, sn.handle_step),
+    };
+    let hw_sub = if crate::hw::SUPPORTED { format!("Stufe: {}", settings.hw.stufe().label()) } else { "Nur in der Web-App".to_string() };
+    ui.add_space(sp::S);
+    caption_big(ui, "Editor");
+    rows(ui, icons, page, vec![
+        (ic::SLIDERS, Page::Tools, tools_sub, n_new > 0),
+        (ic::GEAR, Page::Keys, "Jede Aktion frei belegen, auch mehrere Kürzel".into(), false),
+        (ic::LAYERS, Page::Bars, "Position, Ecken, Rechnen".into(), false),
+        (ic::GRID, Page::Snap, snap_sub, false),
+        (ic::MAGIC, Page::Hw, hw_sub, false),
+    ]);
+
+    // ---- App
+    let theme = match settings.theme {
+        Theme::System => "System",
+        Theme::Light => "Hell",
+        Theme::Dark => "Dunkel",
+    };
+    let look_sub = format!("{} · {theme} · {} %", if style::is_modern(settings) { "Modern" } else { "Klassisch" }, settings.ui_scale);
+    let save_sub = if crate::platform::WEB {
+        if crate::ui::server_store_available() {
+            format!("Neue Boards {}", if settings.new_on_server { "auf dem Server" } else { "im Browser" })
+        } else {
+            "Gastmodus: nur in diesem Browser".to_string()
+        }
+    } else {
+        match settings.default_dir.as_deref().and_then(FileRef::from_key) {
+            Some(f) => format!("Standard-Ort: {}", f.display_name()),
+            None => "Standard-Ort: Vorgabe des Systems".to_string(),
+        }
+    };
+    #[allow(unused_mut)]
+    let mut app = vec![(ic::DARK, Page::Look, look_sub, false), (ic::FOLDER, Page::Save, save_sub, false)];
+    #[cfg(not(target_arch = "wasm32"))]
+    app.push((ic::CLOUD, Page::Account, settings.server_url.trim_start_matches("https://").trim_start_matches("http://").to_string(), false));
+    #[cfg(not(target_arch = "wasm32"))]
+    app.push((ic::DOWNLOAD, Page::Update, format!("Installiert: Version {}", env!("CARGO_PKG_VERSION")), false));
+    app.push((ic::HELP, Page::About, concat!("Version ", env!("CARGO_PKG_VERSION"), " · Zurücksetzen").to_string(), false));
+    caption_big(ui, "App");
+    rows(ui, icons, page, app);
+}
+
+/// Überschrift über einer Gruppe von Kategorien.
+fn caption_big(ui: &mut Ui, text: &str) {
+    ui.add_space(if style::modern() { 16.0 } else { 10.0 });
+    ui.label(egui::RichText::new(text).size(13.0).strong().color(c(style::pal().dim)));
+    ui.add_space(4.0);
+}
+
+// ---------------------------------------------------------------- Unterseite „Darstellung“
+
+fn page_look(ui: &mut Ui, env: &Env, settings: &mut Settings) {
     let p = style::pal();
     let btn = env.btn;
-
-    // ---- Schnellzugriff auf die Unterseiten (gut auffindbar statt tief in den Abschnitten)
-    ui.add_space(sp::S);
-    style::card().show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let n_on = tools::TOOLS.iter().filter(|d| tools::enabled(settings, d.id)).count();
-        let n_new = tools::TOOLS.iter().filter(|d| d.new && !tools::enabled(settings, d.id) && !tools::locked(d.id)).count();
-        let n_all = tools::TOOLS.len() - crate::locks::locked_tools();
-        let sub = if n_new > 0 { format!("{n_on} von {n_all} eingeschaltet · {n_new} neue verfügbar") } else { format!("{n_on} von {n_all} eingeschaltet") };
-        if nav_row(ui, icons, owndraw_core::icons::SLIDERS, "Werkzeuge", &sub, n_new > 0, btn) {
-            *page = Page::Tools;
-        }
-        style::separator(ui);
-        if nav_row(ui, icons, owndraw_core::icons::GEAR, "Tastenkürzel", "Jede Aktion frei belegen, auch mehrere Kürzel", false, btn) {
-            *page = Page::Keys;
-        }
-    });
 
     // ---- Darstellung
     section(ui, "Darstellung", |ui| {
@@ -280,6 +409,13 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         });
     });
 
+}
+
+// ---------------------------------------------------------------- Unterseite „Werkzeugleisten“
+
+fn page_bars(ui: &mut Ui, env: &Env, settings: &mut Settings, act: &mut SettingsAction, page: &mut Page) {
+    let btn = env.btn;
+
     // ---- Leisten
     section(ui, "Werkzeugleisten", |ui| {
         row(ui, env, "Ecken der Leisten", Some("0 px ist eckig, 40 px ganz rund."), |ui| {
@@ -327,6 +463,13 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         });
     });
 
+}
+
+// ---------------------------------------------------------------- Unterseite „Einrasten“
+
+fn page_snap(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform) {
+    let btn = env.btn;
+
     // ---- Einrasten
     section(ui, "Einrasten", |ui| {
         let sn = &mut settings.snap;
@@ -370,6 +513,14 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
             }
         });
     });
+
+}
+
+// ---------------------------------------------------------------- Unterseite „Handschrift-Erkennung“
+
+fn page_hw(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform) {
+    let p = style::pal();
+    let btn = env.btn;
 
     // ---- Handschrift-Erkennung (Werkzeug „Umwandeln“)
     section(ui, "Handschrift-Erkennung", |ui| {
@@ -480,6 +631,14 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         }
     });
 
+}
+
+// ---------------------------------------------------------------- Unterseite „Speichern“
+
+fn page_save(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform, act: &mut SettingsAction) {
+    let p = style::pal();
+    let btn = env.btn;
+
     // ---- Speichern
     if crate::platform::WEB {
         section(ui, "Speichern", |ui| {
@@ -532,9 +691,17 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     });
     }
 
+}
+
+// ---------------------------------------------------------------- Unterseite „Konto & Server“ (Desktop und Android)
+
+#[cfg(not(target_arch = "wasm32"))]
+fn page_account(ui: &mut Ui, env: &Env, settings: &mut Settings) {
+    let p = style::pal();
+    let btn = env.btn;
+
     // ---- Konto & Zusammenarbeit (Desktop: Server-Adresse, Speicherort neuer Boards)
-    #[cfg(not(target_arch = "wasm32"))]
-    section(ui, "Konto & Zusammenarbeit", |ui| {
+    section(ui, "Konto & Server", |ui| {
         let sid = Id::unique("settings-server-url");
         let mut url = ui.data(|d| d.get_temp::<String>(sid)).unwrap_or_else(|| settings.server_url.clone());
         row(ui, env, "Server", Some("Adresse des OwnDraw-Servers für Anmelden, Boards auf dem Server und Live-Zusammenarbeit. Ohne Verbindung arbeitest du wie gewohnt mit Boards auf diesem Gerät."), |ui| {
@@ -574,15 +741,23 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         }
     });
 
-    // ---- Updates (nicht im Browser: dort liefert der Server die neue Version aus)
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        ui.add_space(14.0);
-        style::card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            super::update::section(ui, settings, platform);
-        });
-    }
+}
+
+// ---------------------------------------------------------------- Unterseite „Updates“ (nicht im Browser: dort liefert der Server die neue Version aus)
+
+#[cfg(not(target_arch = "wasm32"))]
+fn page_update(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform) {
+    ui.add_space(sp::S);
+    style::card().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        super::update::section(ui, settings, platform);
+    });
+}
+
+// ---------------------------------------------------------------- Unterseite „Über OwnDraw“
+
+fn page_about(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform) {
+    let btn = env.btn;
 
     // ---- Über
     section(ui, "Über OwnDraw", |ui| {

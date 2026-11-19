@@ -2,8 +2,9 @@
 //!
 //! Die Zeiger-Eingabe läuft zuerst durch [`Editor::ext_hook`]: Was das Lineal, der Laser oder „Platz schaffen“
 //! braucht, geht nicht ans Board (`Hook::Eat`); Striche an einer Linealkante gehen projiziert weiter (`Hook::Pass`).
-//! - Laser: Leuchtspur ([`owndraw_core::laser::Laser`]), verblasst nach 1,5 s, nie gespeichert, kein Undo;
-//!   live an die anderen Teilnehmer (`live.rs`, Nachricht `laser`).
+//! - Laser: Laserpunkt am Mauszeiger bzw. am berührten Punkt (dunkler Kern, durchsichtiger Hof; Farbe und Größe
+//!   einstellbar), wahlweise mit Leuchtspur ([`owndraw_core::laser::Laser`], verblasst nach 1,5 s); nie gespeichert,
+//!   kein Undo; live an die anderen Teilnehmer (`live.rs`, Nachricht `laser` mit Punkt `d`/`off` und Spur `p`).
 //! - Platz schaffen: senkrecht ziehen; beim Loslassen `Board::make_space` (ein Rückgängig-Schritt).
 //! - Umwandeln: Lasso-Weg bzw. Tipp sammeln; beim Loslassen die Striche wählen ([`super::convert`]).
 
@@ -12,7 +13,8 @@ use super::{Editor, Tool};
 use crate::style::{self, c};
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Stroke, Ui, Vec2};
 use owndraw_core::board::{self, Board};
-use owndraw_core::laser::{Laser, FADE, LASER_COLOR};
+use owndraw_core::collab::LaserMsg;
+use owndraw_core::laser::{self as lz, Laser, DOT_FADE, FADE, LASER_COLOR};
 
 /// Zeiger-Kennung der Maus (Touch-Kennungen sind kleiner).
 pub const MOUSE: u64 = u64::MAX;
@@ -30,6 +32,45 @@ pub(super) enum Hook {
     Pass(Pos2),
     /// Verbraucht.
     Eat,
+}
+
+/// Laserpunkt (Weltkoordinaten): sichtbar an `pos`, nach dem Ausblenden kurz verblassend an `last`.
+#[derive(Clone, Copy, Debug, Default)]
+struct Dot {
+    pos: Option<(f32, f32)>,
+    last: (f32, f32),
+    off_at: f64,
+}
+
+impl Dot {
+    fn set(&mut self, p: Option<(f32, f32)>, now: f64) {
+        match p {
+            Some(q) => self.last = q,
+            None if self.pos.is_some() => self.off_at = now,
+            None => {}
+        }
+        self.pos = p;
+    }
+
+    /// Position und Deckkraft (1 = sichtbar, sinkt beim Ausblenden auf 0).
+    fn shown(&self, now: f64) -> Option<((f32, f32), f32)> {
+        match self.pos {
+            Some(p) => Some((p, 1.0)),
+            None => {
+                let k = 1.0 - (now - self.off_at) / DOT_FADE;
+                (k > 0.0).then_some((self.last, k as f32))
+            }
+        }
+    }
+}
+
+/// Laserpointer eines anderen Teilnehmers.
+struct Remote {
+    peer: u64,
+    trail: Laser,
+    dot: Dot,
+    size: f32,
+    seen: f64,
 }
 
 /// Laufendes „Platz schaffen“ (Weltkoordinaten).
@@ -52,8 +93,21 @@ pub struct Extras {
     /// Formerkennung während eines Strichs am Lineal (aus), danach zurück.
     pub saved_recog: Option<i32>,
     pub laser: Laser,
+    /// Durchmesser des Laserpunkts (Bildschirmpunkte).
+    pub laser_size: f32,
+    /// Leuchtspur nachziehen (sonst nur der Punkt).
+    pub laser_trail: bool,
+    /// Eigener Laserpunkt.
+    dot: Dot,
+    /// Zuletzt gesendeter Punkt und Zeit.
+    dot_sent: Option<(f32, f32)>,
+    dot_sent_at: f64,
+    /// Letzte Eingabe kam vom Touchscreen (dann Punkt nur beim Berühren, nicht beim Schweben).
+    pub last_touch: bool,
+    /// Weltposition des drückenden Laser-Zeigers.
+    laser_at: Option<(f32, f32)>,
     /// Laser der anderen Teilnehmer.
-    remote: Vec<(u64, Laser)>,
+    remote: Vec<Remote>,
     laser_ptr: Option<u64>,
     /// Ausgang: fertige Abschnitte, laufender Abschnitt (erster Punkt ggf. schon gesendet).
     out: Vec<Vec<(f32, f32)>>,
@@ -79,6 +133,13 @@ impl Default for Extras {
             last_draw: board::PEN,
             saved_recog: None,
             laser: Laser::new(LASER_COLOR),
+            laser_size: lz::DOT_SIZE,
+            laser_trail: false,
+            dot: Dot::default(),
+            dot_sent: None,
+            dot_sent_at: 0.0,
+            last_touch: false,
+            laser_at: None,
             remote: Vec::new(),
             laser_ptr: None,
             out: Vec::new(),
@@ -117,24 +178,48 @@ impl Extras {
         std::mem::take(&mut self.out)
     }
 
+    /// Laserpunkt zum Senden, wenn er sich bewegt hat (höchstens alle 40 ms), verschwunden ist oder zuletzt vor
+    /// 1 s gesendet wurde (damit er bei den anderen nicht ausläuft). `Some(None)` = ausblenden.
+    #[cfg_attr(target_os = "android", allow(dead_code))]
+    pub fn take_dot_out(&mut self, now: f64) -> Option<Option<(f32, f32)>> {
+        let cur = self.dot.pos;
+        let due = now - self.dot_sent_at;
+        if (cur != self.dot_sent && due >= 0.04) || (cur.is_some() && due >= 1.0) {
+            self.dot_sent = cur;
+            self.dot_sent_at = now;
+            return Some(cur);
+        }
+        None
+    }
+
     /// Laser eines anderen Teilnehmers.
     #[cfg_attr(target_os = "android", allow(dead_code))]
-    pub fn laser_in(&mut self, peer: u64, color: u32, pts: &[(f32, f32)], now: f64) {
-        let i = match self.remote.iter().position(|r| r.0 == peer) {
+    pub fn laser_in(&mut self, peer: u64, m: &LaserMsg, now: f64) {
+        let i = match self.remote.iter().position(|r| r.peer == peer) {
             Some(i) => i,
             None => {
-                self.remote.push((peer, Laser::new(color)));
+                self.remote.push(Remote { peer, trail: Laser::new(m.color), dot: Dot::default(), size: m.size, seen: now });
                 self.remote.len() - 1
             }
         };
-        let l = &mut self.remote[i].1;
-        l.color = color;
-        l.add_remote(pts, now);
+        let r = &mut self.remote[i];
+        r.trail.color = m.color;
+        r.size = m.size;
+        r.seen = now;
+        if !m.pts.is_empty() {
+            r.trail.add_remote(&m.pts, now);
+        }
+        if m.dot.is_some() || m.off {
+            r.dot.set(m.dot, now);
+        }
     }
 
     fn laser_pt(&mut self, x: f32, y: f32) {
-        self.laser.add(x, y, self.now);
-        self.out_cur.push((x, y));
+        self.laser_at = Some((x, y));
+        if self.laser_trail {
+            self.laser.add(x, y, self.now);
+            self.out_cur.push((x, y));
+        }
     }
 
     fn laser_lift(&mut self) {
@@ -160,6 +245,18 @@ impl Editor {
                 self.board.recog = r;
             }
         }
+    }
+
+    /// Demo `laser`: eigener Punkt (gedrückt) und zwei Punkte anderer Teilnehmer, einer mit Spur.
+    pub fn demo_laser(&mut self) {
+        self.ext.xtool = Some(Tool::Laser);
+        self.ext.laser_ptr = Some(MOUSE);
+        self.ext.laser_at = Some((520.0, 300.0));
+        let m = |c: u32, s: f32, pts: Vec<(f32, f32)>, d: (f32, f32)| LaserMsg { peer: None, color: c, pts, size: s, dot: Some(d), off: false };
+        self.ext.laser_in(1, &m(0xFF007AFF, 56.0, vec![], (760.0, 420.0)), 0.0);
+        let arc: Vec<(f32, f32)> = (0..=20).map(|i| { let a = i as f32 * 0.25; (380.0 + 70.0 * a.cos(), 520.0 + 40.0 * a.sin()) }).collect();
+        let end = *arc.last().unwrap();
+        self.ext.laser_in(2, &m(0xFF34C759, 24.0, arc, end), 0.0);
     }
 
     /// Werkzeug „Lineal“: Einblendung umschalten; beim Einblenden zurück zum vorigen Zeichenwerkzeug.
@@ -223,6 +320,7 @@ impl Editor {
                 let (wx, wy) = self.board.screen_to_world(p.x, p.y);
                 match self.ext.xtool {
                     Some(Tool::Laser) => {
+                        self.ext.last_touch = touch;
                         self.ext.laser_lift();
                         self.ext.laser_ptr = Some(id);
                         self.ext.laser_pt(wx, wy);
@@ -265,6 +363,7 @@ impl Editor {
                     self.ext.ruler.released(id);
                     if self.ext.laser_ptr == Some(id) {
                         self.ext.laser_ptr = None;
+                        self.ext.laser_at = None;
                         self.ext.laser_lift();
                     }
                     if let Some((_, pts)) = self.ext.lasso.take_if(|l| l.0 == id) {
@@ -347,16 +446,50 @@ impl Editor {
             pt.galley(rr.min + Vec2::new(6.0, 2.0), g, Color32::WHITE);
         }
         self.convert_paint(&pt, rect);
-        // Laser (eigener und fremde)
-        let mut visible = self.ext.laser.prune(now);
-        self.ext.remote.retain_mut(|(_, l)| l.prune(now));
-        visible |= !self.ext.remote.is_empty();
-        let b = &self.board;
-        for l in std::iter::once(&self.ext.laser).chain(self.ext.remote.iter().map(|r| &r.1)) {
-            paint_laser(&pt, l, now, &|x, y| rect.min + Vec2::new(x * b.sc + b.tx, y * b.sc + b.ty));
+        // Laser (eigener und fremde): Spuren, darüber die Punkte
+        let own = if self.ext.xtool != Some(Tool::Laser) {
+            None
+        } else if self.ext.laser_ptr.is_some() {
+            self.ext.laser_at
+        } else if !self.ext.last_touch && !self.drawing {
+            self.hover.map(|h| self.board.screen_to_world(h.x - rect.min.x, h.y - rect.min.y))
+        } else {
+            None
+        };
+        self.ext.dot.set(own, now);
+        if own.is_some() && !self.ext.last_touch {
+            ctx.set_cursor_icon(egui::CursorIcon::None);
         }
-        if visible {
+        let mut anim = self.ext.laser.prune(now);
+        for r in &mut self.ext.remote {
+            // Punkt ohne Lebenszeichen (Verbindung weg) ausblenden
+            if r.dot.pos.is_some() && now - r.seen > 3.0 {
+                r.dot.set(None, now);
+            }
+        }
+        self.ext.remote.retain_mut(|r| r.trail.prune(now) | r.dot.shown(now).is_some() || now - r.seen < 5.0);
+        let b = &self.board;
+        let to = |(x, y): (f32, f32)| rect.min + Vec2::new(x * b.sc + b.tx, y * b.sc + b.ty);
+        for l in std::iter::once(&self.ext.laser).chain(self.ext.remote.iter().map(|r| &r.trail)) {
+            paint_laser(&pt, l, now, &|x, y| to((x, y)));
+        }
+        let mut remote_dot = false;
+        for r in &self.ext.remote {
+            if let Some((p, a)) = r.dot.shown(now) {
+                paint_dot(&pt, to(p), r.size, r.trail.color, a);
+                anim |= a < 1.0;
+                remote_dot = true;
+            }
+        }
+        if let Some((p, a)) = self.ext.dot.shown(now) {
+            paint_dot(&pt, to(p), self.ext.laser_size, self.ext.laser.color, a);
+            anim |= a < 1.0;
+        }
+        anim |= self.ext.remote.iter().any(|r| !r.trail.is_empty());
+        if anim {
             ctx.request_repaint();
+        } else if remote_dot || own.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
         let _ = self.ext.laser.take_unsent();
         if !self.laser_live() {
@@ -388,6 +521,62 @@ impl Editor {
             false
         }
     }
+}
+
+/// Laserpunkt: durchsichtiger Hof, dunklerer kräftiger Kern (`size` = Durchmesser, `a` = Deckkraft 0..1).
+fn paint_dot(pt: &egui::Painter, at: Pos2, size: f32, color: u32, a: f32) {
+    let (r, g, b) = ((color >> 16) as u8, (color >> 8) as u8, color as u8);
+    let col = |al: f32| Color32::from_rgba_unmultiplied(r, g, b, (al * a * 255.0).round() as u8);
+    let rad = size / 2.0;
+    pt.circle_filled(at, rad, col(0.16));
+    pt.circle_filled(at, rad * 0.7, col(0.22));
+    pt.circle_filled(at, rad * 0.45, col(0.35));
+    let dk = |v: u8| (v as f32 * 0.78) as u8;
+    let core = (rad * 0.28).max(3.0);
+    pt.circle_filled(at, core, Color32::from_rgba_unmultiplied(dk(r), dk(g), dk(b), (a * 255.0).round() as u8));
+    pt.circle_filled(at, core * 0.45, Color32::from_rgba_unmultiplied(255, 255, 255, (a * 110.0) as u8));
+}
+
+/// Optionen des Laserpointers (Farbe, Größe, Spur); in den Einstellungen gemerkt.
+pub(super) fn options(ui: &mut Ui, ed: &mut Editor, sh: &mut crate::app::Shared) {
+    let h = crate::layout::min_touch(sh.env.touch).max(32.0);
+    style::caption(ui, "Farbe");
+    let size = sh.env.btn.min(ui.available_width() / lz::COLORS.len() as f32).max(28.0);
+    let p = style::pal();
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = Vec2::ZERO;
+        for (col, name) in lz::COLORS {
+            let (r, resp) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::click());
+            paint_dot(ui.painter(), r.center(), 22.0, col, 1.0);
+            if ed.ext.laser.color == col {
+                ui.painter().circle_stroke(r.center(), 13.0, Stroke::new(2.0, c(p.text)));
+            } else if resp.hovered() {
+                ui.painter().circle_stroke(r.center(), 13.0, Stroke::new(1.5, c(p.line)));
+            }
+            if resp.on_hover_text(name).clicked() {
+                ed.ext.laser.color = col;
+                sh.settings.extra.insert("laser_color".into(), serde_json::json!(col));
+            }
+        }
+    });
+    style::caption(ui, "Größe");
+    ui.horizontal(|ui| {
+        let mut s = ed.ext.laser_size;
+        ui.spacing_mut().slider_width = 150.0;
+        if ui.add(egui::Slider::new(&mut s, lz::DOT_MIN..=lz::DOT_MAX).max_decimals(0).suffix(" pt")).changed() {
+            ed.ext.laser_size = s.clamp(lz::DOT_MIN, lz::DOT_MAX);
+            sh.settings.extra.insert("laser_size".into(), serde_json::json!(ed.ext.laser_size));
+        }
+        // Vorschau in echter Größe (gedeckelt)
+        let d = ed.ext.laser_size.min(48.0);
+        let (r, _) = ui.allocate_exact_size(Vec2::splat(d.max(24.0)), egui::Sense::hover());
+        paint_dot(ui.painter(), r.center(), d, ed.ext.laser.color, 1.0);
+    });
+    if style::chip(ui, "Leuchtspur nachziehen", ed.ext.laser_trail, h).clicked() {
+        ed.ext.laser_trail = !ed.ext.laser_trail;
+        sh.settings.extra.insert("laser_trail".into(), serde_json::json!(ed.ext.laser_trail));
+    }
+    ui.label(egui::RichText::new("Der Punkt folgt der Maus bzw. dem Finger. In der Live-Zusammenarbeit sehen ihn alle.").size(12.0).color(c(p.dim)));
 }
 
 /// Leuchtspur wie `Laser::draw`, mit egui (Breite in Bildschirmpunkten).
@@ -422,6 +611,7 @@ mod tests {
     fn laser_ausgang_haengt_zusammen() {
         let mut e = Extras::default();
         e.now = 0.0;
+        e.laser_trail = true;
         e.laser_pt(0.0, 0.0);
         e.laser_pt(1.0, 0.0);
         let a = e.take_laser_out(1.0);
@@ -433,8 +623,34 @@ mod tests {
         assert_eq!(e.take_laser_out(3.0), vec![vec![(1.0, 0.0), (2.0, 0.0)]]);
         e.laser_lift();
         assert!(e.take_laser_out(4.0).is_empty());
-        e.laser_in(9, 0xFF00FF00, &[(0.0, 0.0), (5.0, 5.0)], 4.0);
+        let m = |pts: Vec<(f32, f32)>, dot, off| LaserMsg { peer: Some(9), color: 0xFF00FF00, pts, size: 40.0, dot, off };
+        e.laser_in(9, &m(vec![(0.0, 0.0), (5.0, 5.0)], None, false), 4.0);
         assert_eq!(e.remote.len(), 1);
-        assert!(e.remote[0].1.prune(4.5) && !e.remote[0].1.prune(6.0));
+        assert!(e.remote[0].trail.prune(4.5) && !e.remote[0].trail.prune(6.0));
+    }
+
+    #[test]
+    fn laserpunkt_senden_und_empfangen() {
+        let mut e = Extras::default();
+        assert_eq!(e.take_dot_out(0.0), None, "nichts zu senden");
+        e.dot.set(Some((1.0, 2.0)), 0.0);
+        assert_eq!(e.take_dot_out(0.1), Some(Some((1.0, 2.0))));
+        assert_eq!(e.take_dot_out(0.5), None, "unverändert");
+        assert_eq!(e.take_dot_out(1.2), Some(Some((1.0, 2.0))), "Lebenszeichen");
+        e.dot.set(None, 1.3);
+        assert_eq!(e.take_dot_out(1.3), Some(None), "ausblenden");
+        assert_eq!(e.take_dot_out(3.0), None);
+        // ohne Spur: Punkt ja, Spur nein
+        e.laser_pt(3.0, 4.0);
+        assert_eq!(e.laser_at, Some((3.0, 4.0)));
+        assert!(e.laser.is_empty() && e.take_laser_out(5.0).is_empty());
+        // fremder Punkt: sichtbar, nach Ausblenden verblassend
+        let m = |dot, off| LaserMsg { peer: Some(2), color: 0xFFFF0000, pts: vec![], size: 50.0, dot, off };
+        e.laser_in(2, &m(Some((7.0, 8.0)), false), 10.0);
+        assert_eq!(e.remote[0].dot.shown(10.0), Some(((7.0, 8.0), 1.0)));
+        assert_eq!(e.remote[0].size, 50.0);
+        e.laser_in(2, &m(None, true), 11.0);
+        assert!(e.remote[0].dot.shown(11.1).is_some_and(|d| d.1 < 1.0));
+        assert!(e.remote[0].dot.shown(12.0).is_none());
     }
 }

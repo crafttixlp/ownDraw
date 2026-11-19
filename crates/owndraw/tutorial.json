@@ -270,10 +270,10 @@
         {
           "id": "tool-laser",
           "title": "Laserpointer",
-          "text": "Zeigt mit einer roten Leuchtspur auf etwas. Die Spur verblasst nach 1,5 Sekunden, wird nicht gespeichert und landet nicht im Rückgängig.",
-          "how": ["In der Live-Zusammenarbeit sehen alle anderen deine Spur, auch wenn du das Board nur ansehen darfst."],
+          "text": "Zeigt mit einem leuchtenden Punkt auf etwas: dunkler Kern, durchsichtiger Hof. Der Punkt sitzt am Mauszeiger bzw. dort, wo dein Finger oder Stift den Bildschirm berührt. Nichts davon wird gespeichert oder landet im Rückgängig.",
+          "how": ["Tippe noch einmal auf das aktive Laser-Werkzeug: In den Optionen stellst du Farbe und Größe des Punkts ein. Die Einstellung bleibt gemerkt.", "„Leuchtspur nachziehen“ zieht zusätzlich eine Spur hinter dem Punkt her, die nach 1,5 Sekunden verblasst. Praktisch zum Einkreisen.", "In der Live-Zusammenarbeit sehen alle anderen deinen Punkt in deiner Farbe und Größe, auch wenn du das Board nur ansehen darfst."],
           "action": ["tool.laser"],
-          "covers": ["tool:Laserpointer", "action:tool.laser", "extra:laser-live"]
+          "covers": ["tool:Laserpointer", "action:tool.laser", "extra:laser-live", "extra:laser-punkt"]
         },
         {
           "id": "tool-platz",

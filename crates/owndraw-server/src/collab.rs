@@ -542,7 +542,7 @@ async fn handle(s: &AppState, room: &Arc<Room>, peer_id: u64, text: &str) {
         Some("laser") => {
             // Laserpointer: nur weiterreichen (nie gespeichert); auch Gäste mit Leserecht dürfen zeigen
             let Some(mut l) = oc::LaserMsg::from_json(&m) else { return };
-            if l.pts.is_empty() {
+            if l.is_empty() {
                 return;
             }
             l.peer = Some(peer_id);

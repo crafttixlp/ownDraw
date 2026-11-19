@@ -112,7 +112,7 @@ impl Tool {
     }
     /// Hat das Werkzeug Optionen (Kontext-Popover bzw. Bottom-Sheet)?
     pub fn has_options(self) -> bool {
-        !matches!(self, Tool::Image | Tool::Picker | Tool::Laser | Tool::Space | Tool::PenMode)
+        !matches!(self, Tool::Image | Tool::Picker | Tool::Space | Tool::PenMode)
     }
 }
 
@@ -275,6 +275,10 @@ impl Editor {
         board.snap_cfg = sh.settings.snap.to_core();
         board.calc = sh.settings.calc.to_core();
         board.finger_draw = x.get("finger").and_then(|v| v.as_bool()).unwrap_or_else(|| sh.platform.is_touch());
+        let mut ext = extras::Extras::default();
+        ext.laser.color = x.get("laser_color").and_then(|v| v.as_u64()).map(|v| v as u32).unwrap_or(owndraw_core::laser::LASER_COLOR);
+        ext.laser_size = x.get("laser_size").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(owndraw_core::laser::DOT_SIZE).clamp(owndraw_core::laser::DOT_MIN, owndraw_core::laser::DOT_MAX);
+        ext.laser_trail = x.get("laser_trail").and_then(|v| v.as_bool()).unwrap_or(false);
         Editor {
             doc,
             board,
@@ -297,7 +301,7 @@ impl Editor {
             conv: None,
             st: UiState::default(),
             page_thumbs: pages::PageThumbs::default(),
-            ext: extras::Extras::default(),
+            ext,
             canvas: Rect::NOTHING,
             hover: None,
             menu_pos: None,
@@ -1034,6 +1038,12 @@ impl Editor {
         let rel = |p: Pos2| p - rect.min;
         let now = ctx.input(|i| i.time);
         self.hover = hover.filter(|p| on_board(*p));
+        // Laserpunkt: nach Touch nur beim Berühren zeigen, nach Mausbewegung am Zeiger
+        if has_touch {
+            self.ext.last_touch = true;
+        } else if events.iter().any(|e| matches!(e, Event::PointerMoved(_))) {
+            self.ext.last_touch = false;
+        }
         for ev in events {
             match ev {
                 Event::Touch { id, phase, pos, force, .. } => {

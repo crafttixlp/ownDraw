@@ -167,17 +167,12 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     }
     // Konto (mit `OWNDRAW_SERVER`): `login`, `einladung` (Dialoge), `srv=<id>` (Server-Board öffnen),
     // `share` (Teilen-Dialog im Server-Board)
-    #[cfg(not(target_os = "android"))]
     for t in &toks {
         if let Some(id) = t.strip_prefix("srv=") {
             crate::net::open_board(id);
         } else if matches!(*t, "login" | "einladung") {
             crate::ui::account::demo_dialog(&mut app.parts().1.account, t);
         }
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    if has("gast") {
-        app.parts().1.demo_banner = true;
     }
     if has("editor") || has("pages") {
         let pages = has("pages");

@@ -47,7 +47,7 @@ enum Page {
     Hw,
     /// Speicherort und neue Boards.
     Save,
-    /// Server-Adresse (nur Desktop).
+    /// Server-Adresse (Desktop und Android).
     Account,
     /// Updates (nicht im Browser).
     Update,
@@ -235,7 +235,7 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
                     Page::Snap => page_snap(ui, &env, settings, platform),
                     Page::Hw => page_hw(ui, &env, settings, platform),
                     Page::Save => page_save(ui, &env, settings, platform, &mut act),
-                    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+                    #[cfg(not(target_arch = "wasm32"))]
                     Page::Account => page_account(ui, &env, settings),
                     #[cfg(not(target_arch = "wasm32"))]
                     Page::Update => page_update(ui, settings, platform),
@@ -319,7 +319,7 @@ fn main_page(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Pla
     };
     #[allow(unused_mut)]
     let mut app = vec![(ic::DARK, Page::Look, look_sub, false), (ic::FOLDER, Page::Save, save_sub, false)];
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     app.push((ic::CLOUD, Page::Account, settings.server_url.trim_start_matches("https://").trim_start_matches("http://").to_string(), false));
     #[cfg(not(target_arch = "wasm32"))]
     app.push((ic::DOWNLOAD, Page::Update, format!("Installiert: Version {}", env!("CARGO_PKG_VERSION")), false));
@@ -693,9 +693,9 @@ fn page_save(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Pla
 
 }
 
-// ---------------------------------------------------------------- Unterseite „Konto & Server“ (nur Desktop)
+// ---------------------------------------------------------------- Unterseite „Konto & Server“ (Desktop und Android)
 
-#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn page_account(ui: &mut Ui, env: &Env, settings: &mut Settings) {
     let p = style::pal();
     let btn = env.btn;
@@ -704,7 +704,7 @@ fn page_account(ui: &mut Ui, env: &Env, settings: &mut Settings) {
     section(ui, "Konto & Server", |ui| {
         let sid = Id::unique("settings-server-url");
         let mut url = ui.data(|d| d.get_temp::<String>(sid)).unwrap_or_else(|| settings.server_url.clone());
-        row(ui, env, "Server", Some("Adresse des OwnDraw-Servers für Anmelden, Boards auf dem Server und Live-Zusammenarbeit. Ohne Verbindung arbeitest du wie gewohnt mit Boards auf diesem Computer."), |ui| {
+        row(ui, env, "Server", Some("Adresse des OwnDraw-Servers für Anmelden, Boards auf dem Server und Live-Zusammenarbeit. Ohne Verbindung arbeitest du wie gewohnt mit Boards auf diesem Gerät."), |ui| {
             ui.add(egui::TextEdit::singleline(&mut url).desired_width(260.0).hint_text(crate::settings::DEFAULT_SERVER).margin(egui::vec2(8.0, 6.0)));
         });
         let changed = url.trim().trim_end_matches('/') != settings.server_url.trim_end_matches('/');
@@ -732,7 +732,7 @@ fn page_account(ui: &mut Ui, env: &Env, settings: &mut Settings) {
         ui.data_mut(|d| d.insert_temp(sid, url));
         if crate::ui::server_store_available() {
             row(ui, env, "Neue Boards", Some("Vorgabe im Dialog „Neu“. Den Speicherort wählst du dort für jedes Board, später auch im Kartenmenü."), |ui| {
-                for (v, l) in [(true, "Auf dem Server"), (false, "Auf diesem Computer")] {
+                for (v, l) in [(true, "Auf dem Server"), (false, "Auf diesem Gerät")] {
                     if style::chip(ui, l, settings.new_on_server == v, btn).clicked() {
                         settings.new_on_server = v;
                     }

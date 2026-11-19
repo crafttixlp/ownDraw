@@ -12,8 +12,7 @@ mod kv;
 mod locks;
 #[allow(dead_code)]
 mod layout;
-/// Server-Anbindung (Konto, Server-Boards, Live-Zusammenarbeit): Web-App und Desktop, nicht Android.
-#[cfg(not(target_os = "android"))]
+/// Server-Anbindung (Konto, Server-Boards, Live-Zusammenarbeit): Web-App, Desktop und Android.
 mod net;
 #[allow(dead_code)]
 mod platform;
@@ -139,6 +138,10 @@ pub fn run_android(app: android_activity::AndroidApp) -> eframe::Result<()> {
             let platform: Box<dyn platform::Platform> = Box::new(platform);
             let settings = app::load_settings(&*platform);
             style::apply(&cc.egui_ctx, &settings);
+            // Server-Anbindung wie am Desktop (Konto, Server-Boards, Live, Funktionssperren)
+            net::set_config_dir(platform::Platform::config_dir(&*platform));
+            net::set_base_url(&settings.server_url);
+            net::init(&cc.egui_ctx);
             Ok(Box::new(app::App::new(platform, settings, None)))
         }),
     )

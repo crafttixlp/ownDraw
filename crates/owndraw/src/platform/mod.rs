@@ -21,13 +21,71 @@ pub fn note_unsaved(_unsaved: bool) {
 
 /// Stammt die Touch-Berührung `id` (egui `TouchId`) von einem Stift? (Stift-Modus)
 ///
-/// Nur im Browser erkennbar. Desktop (X11/Wayland) meldet einen Grafiktablett- oder Touchscreen-Stift als Maus,
-/// das gilt dort ohnehin als Stift. Android: winit gibt die Zeigerart nicht weiter, ein Stift kommt wie ein Finger an.
+/// Browser: Zeigerart. Android: Berührung von einem reinen Stift-Gerät (siehe [`note_touch`]). Desktop (X11/Wayland)
+/// meldet einen Grafiktablett- oder Touchscreen-Stift als Maus, das gilt dort ohnehin als Stift.
 pub fn pen_touch(_id: u64) -> bool {
     #[cfg(target_arch = "wasm32")]
     return web::pen_touch(_id);
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    return pen::PEN_TOUCHES.with(|t| t.borrow().contains(&_id));
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     false
+}
+
+/// Jede Touch-Berührung vor der Auswertung melden (egui `TouchDeviceId`, `TouchId`, Beginn?). Android merkt sich
+/// Berührungen von Stift-Geräten; winit kennt dort keine Zeigerart, aber das Gerät.
+pub fn note_touch(_device: u64, _id: u64, _start: bool) {
+    #[cfg(target_os = "android")]
+    if _start {
+        let is_pen = pen::is_pen_device(_device);
+        pen::PEN_TOUCHES.with(|t| {
+            let mut t = t.borrow_mut();
+            t.retain(|x| *x != _id);
+            if is_pen {
+                t.push(_id);
+            }
+        });
+    }
+}
+
+#[cfg(target_os = "android")]
+mod pen {
+    use std::cell::RefCell;
+    use std::time::{Duration, Instant};
+
+    thread_local! {
+        pub static PEN_TOUCHES: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+        /// egui-Gerätekennungen der Stift-Geräte samt Zeitpunkt der Abfrage.
+        static DEVICES: RefCell<Option<(Instant, Vec<u64>)>> = const { RefCell::new(None) };
+    }
+
+    /// egui bildet `TouchDeviceId` als Hash der winit-Geräte-ID (unter Android ein `i32`).
+    fn devices() -> Vec<u64> {
+        DEVICES.with(|d| {
+            let mut d = d.borrow_mut();
+            if d.as_ref().is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(3)) {
+                let ids = super::android::stylus_devices().into_iter().map(egui::epaint::util::hash).collect();
+                *d = Some((Instant::now(), ids));
+            }
+            d.as_ref().map(|(_, v)| v.clone()).unwrap_or_default()
+        })
+    }
+
+    pub fn is_pen_device(dev: u64) -> bool {
+        devices().contains(&dev)
+    }
+
+    pub fn available() -> bool {
+        !devices().is_empty()
+    }
+}
+
+/// Kann der Stift-Modus Stift und Finger hier unterscheiden? Android: nur mit eigenem Stift-Gerät (S Pen o. Ä.).
+pub fn pen_mode_available() -> bool {
+    #[cfg(target_os = "android")]
+    return pen::available();
+    #[cfg(not(target_os = "android"))]
+    true
 }
 
 /// Gibt es hier einen Vollbild-Knopf? Nur im Browser mit Fullscreen-API (z. B. Chrome/Firefox auf Android, nicht
@@ -53,8 +111,6 @@ pub fn toggle_fullscreen() {
     web::toggle_fullscreen();
 }
 
-/// Kann der Stift-Modus Stift und Finger hier unterscheiden? (Android: nein, siehe [`pen_touch`])
-pub const PEN_MODE: bool = !cfg!(target_os = "android");
 
 use std::io;
 use std::path::PathBuf;

@@ -1,4 +1,4 @@
-//! Live-Zusammenarbeit im Editor (Web-App und Desktop, Server-Boards `srv:<id>`). Protokoll: `docs/web-api.md`.
+//! Live-Zusammenarbeit im Editor (Web-App, Desktop und Android, Server-Boards `srv:<id>`). Protokoll: `docs/web-api.md`.
 //!
 //! - Verbindung `GET /api/collab/{id}` (WebSocket), automatische Wiederverbindung mit wachsender Wartezeit.
 //!   Solange keine Verbindung besteht, speichert der Autosave wie gewohnt per PUT.

@@ -1,4 +1,4 @@
-//! Transport am Desktop: HTTP über `ureq` (rustls, System-Zertifikate) und WebSocket über `tungstenite`, beides
+//! Transport am Desktop und auf Android: HTTP über `ureq` (rustls; Desktop System-Zertifikate, Android webpki-roots) und WebSocket über `tungstenite`, beides
 //! in Hintergrund-Threads. Die Ergebnisse kommen per Kanal in den UI-Thread und werden dort in [`pump`] ausgeliefert
 //! (die `done`-Callbacks sind nicht `Send` und bleiben deshalb im UI-Thread).
 //!
@@ -68,7 +68,10 @@ impl State {
         }
     }
     fn path(&self) -> PathBuf {
+        #[cfg(not(target_os = "android"))]
         let dir = self.dir.clone().or_else(|| dirs::config_dir().map(|d| d.join("owndraw"))).unwrap_or_else(|| PathBuf::from("."));
+        #[cfg(target_os = "android")]
+        let dir = self.dir.clone().unwrap_or_else(|| PathBuf::from("."));
         dir.join(FILE)
     }
     fn ensure_loaded(&mut self) {
@@ -216,6 +219,12 @@ thread_local! {
     });
 }
 
+#[cfg(not(target_os = "android"))]
+const ROOTS: ureq::tls::RootCerts = ureq::tls::RootCerts::PlatformVerifier;
+/// Android: Mozilla-Wurzelzertifikate (webpki-roots); der Plattform-Verifier bräuchte eine Java-Komponente.
+#[cfg(target_os = "android")]
+const ROOTS: ureq::tls::RootCerts = ureq::tls::RootCerts::WebPki;
+
 fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
@@ -227,8 +236,8 @@ fn agent() -> &'static ureq::Agent {
             .timeout_connect(Some(CONNECT_TIMEOUT))
             .timeout_recv_response(Some(Duration::from_secs(30)))
             .timeout_recv_body(Some(Duration::from_secs(30)))
-            .user_agent(concat!("OwnDraw-Desktop/", env!("CARGO_PKG_VERSION")))
-            .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
+            .user_agent(if cfg!(target_os = "android") { concat!("OwnDraw-Android/", env!("CARGO_PKG_VERSION")) } else { concat!("OwnDraw-Desktop/", env!("CARGO_PKG_VERSION")) })
+            .tls_config(ureq::tls::TlsConfig::builder().root_certs(ROOTS).build())
             .build()
             .into()
     })
@@ -466,6 +475,22 @@ impl Ctx {
     }
 }
 
+#[cfg(target_os = "android")]
+fn tls_config() -> Result<Arc<rustls::ClientConfig>, String> {
+    static CFG: OnceLock<Result<Arc<rustls::ClientConfig>, String>> = OnceLock::new();
+    CFG.get_or_init(|| {
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let roots = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
+        let b = rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map_err(|_| "TLS-Konfiguration fehlgeschlagen".to_string())?
+            .with_root_certificates(roots);
+        Ok(Arc::new(b.with_no_client_auth()))
+    })
+    .clone()
+}
+
+#[cfg(not(target_os = "android"))]
 fn tls_config() -> Result<Arc<rustls::ClientConfig>, String> {
     use rustls_platform_verifier::BuilderVerifierExt;
     static CFG: OnceLock<Result<Arc<rustls::ClientConfig>, String>> = OnceLock::new();

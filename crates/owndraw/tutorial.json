@@ -263,7 +263,7 @@
           "id": "tool-stiftmodus",
           "title": "Stift-Modus",
           "text": "Schalter für Tablets und Touchscreens: Ist der Stift-Modus an, zeichnet nur der Stift (und die Maus). Finger verschieben und zoomen dann nur, die aufliegende Hand malt nichts. Ist er aus, zeichnest du auch mit dem Finger.",
-          "how": ["Schalte das Werkzeug unter Einstellungen → Werkzeuge oder über „+ Weitere Werkzeuge“ ein. Ein Tipp auf den Knopf schaltet den Modus um, ein durchgestrichener Finger heißt: an.", "Gleicher Schalter wie „Mit dem Finger zeichnen“ in den Stift-Optionen, nur schneller erreichbar. Kürzel: H.", "Im Browser wird der Stift an der Zeigerart erkannt (z. B. iPad mit Apple Pencil, Android-Tablet mit Stift). Am Linux-PC zählt ein Grafiktablett- oder Touchscreen-Stift wie die Maus. Auf Android (App) lässt sich Stift und Finger noch nicht unterscheiden, dort ist der Modus gesperrt."],
+          "how": ["Schalte das Werkzeug unter Einstellungen → Werkzeuge oder über „+ Weitere Werkzeuge“ ein. Ein Tipp auf den Knopf schaltet den Modus um, ein durchgestrichener Finger heißt: an.", "Gleicher Schalter wie „Mit dem Finger zeichnen“ in den Stift-Optionen, nur schneller erreichbar. Kürzel: H.", "Im Browser wird der Stift an der Zeigerart erkannt (z. B. iPad mit Apple Pencil, Android-Tablet mit Stift). Am Linux-PC zählt ein Grafiktablett- oder Touchscreen-Stift wie die Maus. In der Android-App erkennt OwnDraw den Stift am Eingabegerät (z. B. S Pen am Galaxy Tab). Melden Stift und Finger dasselbe Gerät, sagt OwnDraw das beim Einschalten und der Modus bleibt aus."],
           "action": ["tool.penmode"],
           "covers": ["tool:Stift-Modus", "action:tool.penmode", "extra:stiftmodus"]
         },
@@ -667,7 +667,7 @@
         {
           "id": "einstellungen-kategorien",
           "title": "Einstellungen nach Themen",
-          "text": "Die Einstellungen sind nach Themen geordnet: oben „Editor“ (Werkzeuge, Tastenkürzel, Werkzeugleisten, Einrasten, Handschrift-Erkennung), darunter „App“ (Darstellung, Speichern, Updates, Über OwnDraw). Jede Zeile öffnet eine eigene Seite.",
+          "text": "Die Einstellungen sind nach Themen geordnet: oben „Editor“ (Werkzeuge, Tastenkürzel, Werkzeugleisten, Einrasten, Handschrift-Erkennung), darunter „App“ (Darstellung, Speichern, Konto & Server, Updates, Über OwnDraw). Jede Zeile öffnet eine eigene Seite.",
           "how": ["Unter jedem Thema steht kurz, was gerade eingestellt ist, z. B. „Modern · Dunkel · 100 %“.", "Der Pfeil oben links oder ein Klick auf „Einstellungen“ im Titel führt zurück zur Übersicht.", "„Alle Einstellungen zurücksetzen“ findest du unter „Über OwnDraw“."],
           "covers": ["extra:einstellungen-kategorien"]
         }
@@ -676,51 +676,51 @@
     {
       "id": "live",
       "title": "Live-Zusammenarbeit",
-      "intro": "In der Web-App und in der Desktop-App (Linux) mit Konto und Lizenz.",
+      "intro": "In der Web-App, der Desktop-App (Linux) und der Android-App mit Konto und Lizenz.",
       "entries": [
         {
           "id": "live-konto-desktop",
-          "title": "Anmelden in der Desktop-App",
-          "text": "Auch die Desktop-App arbeitet mit deinem Konto: Auf der Startseite meldest du dich an, siehst Lizenz und belegten Speicher und darunter deine Boards „Auf dem Server“. Es sind dieselben Boards wie in der Web-App.",
-          "how": ["Startseite → „Anmelden“ oder „Konto erstellen“. Im Dialog steht oben der Server, voreingestellt ist owndraw.thepepelex.at.", "Den Server änderst du auch in den Einstellungen unter „Konto & Server“. Beim Wechsel wirst du abgemeldet.", "Ohne Verbindung arbeitest du ganz normal mit Boards auf diesem Computer weiter. „Erneut versuchen“ verbindet wieder.", "Die Anmeldung bleibt gespeichert (nur für dein Benutzerkonto lesbar). „Abmelden“ löscht sie."],
-          "only": "Desktop-App",
+          "title": "Anmelden in der Desktop- und Android-App",
+          "text": "Auch die Desktop-App und die Android-App arbeiten mit deinem Konto: Auf der Startseite meldest du dich an, siehst Lizenz und belegten Speicher und darunter deine Boards „Auf dem Server“. Es sind dieselben Boards wie in der Web-App.",
+          "how": ["Startseite → „Anmelden“ oder „Konto erstellen“. Im Dialog steht oben der Server, voreingestellt ist owndraw.thepepelex.at.", "Den Server änderst du auch in den Einstellungen unter „Konto & Server“. Beim Wechsel wirst du abgemeldet.", "Ohne Verbindung arbeitest du ganz normal mit Boards auf diesem Gerät weiter. „Erneut versuchen“ verbindet wieder.", "Die Anmeldung bleibt gespeichert (nur für dein Benutzerkonto lesbar). „Abmelden“ löscht sie."],
+          "only": "Desktop- und Android-App",
           "covers": ["extra:konto-desktop", "extra:server-adresse"]
         },
         {
           "id": "live-einladung-desktop",
-          "title": "Einladungslink in der Desktop-App öffnen",
+          "title": "Einladungslink in der App öffnen",
           "text": "Hast du einen Einladungslink bekommen, klicke auf der Startseite auf „Einladungslink …“ und füge ihn ein. Du siehst, wer dich zu welchem Board einlädt, und trittst mit deinem Konto oder als Gast mit eigener Gast-ID bei.",
           "how": ["Gehört der Link zu einem anderen Server, stellt OwnDraw den Server dafür um.", "Das Board erscheint danach unter „Auf dem Server“ und öffnet sich direkt."],
-          "only": "Desktop-App",
+          "only": "Desktop- und Android-App",
           "covers": ["extra:einladungslink-desktop"]
         },
         {
           "id": "live-server",
           "title": "Auf dem Server speichern",
-          "text": "Ein Board aus dem Browser oder von diesem Computer lädst du im Editor über „…“ → „Auf dem Server speichern“ als Kopie hoch.",
-          "only": "Web-App und Desktop mit Lizenz",
+          "text": "Ein Board aus dem Browser oder von diesem Gerät lädst du im Editor über „…“ → „Auf dem Server speichern“ als Kopie hoch.",
+          "only": "Web-App, Desktop und Android mit Lizenz",
           "covers": ["menu:Auf dem Server speichern"]
         },
         {
           "id": "live-speicherort",
           "title": "Speicherort wählen: Server oder lokal",
-          "text": "Mit Lizenz wählst du für jedes Board, wo es liegt. Auf dem Server ist es auf allen Geräten verfügbar und lässt sich teilen und live gemeinsam bearbeiten. Lokal (im Browser bzw. auf diesem Computer) liegt es nur auf diesem Gerät und braucht keinen Speicherplatz der Lizenz.",
-          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Desktop: Vorgabe in den Einstellungen unter „Konto & Server“ → „Neue Boards“.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“ (Desktop: „Auf diesen Computer verschieben“). Am Desktop bleibt die Datei nach dem Hochladen als Sicherung liegen. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“ (Desktop: „Kopie auf diesem Computer“): Das Original am Server bleibt unverändert."],
-          "only": "Web-App und Desktop mit Lizenz",
+          "text": "Mit Lizenz wählst du für jedes Board, wo es liegt. Auf dem Server ist es auf allen Geräten verfügbar und lässt sich teilen und live gemeinsam bearbeiten. Lokal (im Browser bzw. auf diesem Gerät) liegt es nur auf diesem Gerät und braucht keinen Speicherplatz der Lizenz.",
+          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Desktop und Android: Vorgabe in den Einstellungen unter „Konto & Server“ → „Neue Boards“.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“ (Desktop und Android: „Auf dieses Gerät verschieben“). Dort bleibt die Datei nach dem Hochladen als Sicherung liegen. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“ (Desktop und Android: „Kopie auf diesem Gerät“): Das Original am Server bleibt unverändert."],
+          "only": "Web-App, Desktop und Android mit Lizenz",
           "covers": ["extra:speicherort"]
         },
         {
           "id": "live-teilen",
           "title": "Teilen und einladen",
           "text": "„…“ → „Teilen …“ oder der Knopf in der Live-Leiste. Lade per E-Mail ein (Konto nötig, keine Lizenz) oder erstelle einen Einladungslink, der auch ohne Konto funktioniert. Rolle: „Darf bearbeiten“ oder „Nur ansehen“. Links können nach Stunden oder Tagen ablaufen.",
-          "only": "Web-App und Desktop, Besitzer mit Lizenz",
+          "only": "Web-App, Desktop und Android, Besitzer mit Lizenz",
           "covers": ["menu:Teilen …"]
         },
         {
           "id": "live-leiste",
           "title": "Live-Leiste",
           "text": "Zeigt, ob du verbunden bist, und wer gerade mitarbeitet. Die Cursor der anderen siehst du auf dem Board, ihre Änderungen erscheinen sofort. Rückgängig macht nur deine eigenen Schritte. Web-App und Desktop-App arbeiten zusammen am selben Board.",
-          "only": "Web-App und Desktop",
+          "only": "Web-App, Desktop und Android",
           "covers": ["extra:live"]
         }
       ]

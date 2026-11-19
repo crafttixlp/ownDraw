@@ -285,7 +285,7 @@ Tipp für Updates: vorher Wartung einschalten, nach dem Neustart prüfen, dann a
 Laserpointer, Umwandeln …) und Funktionen (Teilen, Exportieren, Formelsammlung, Ebenen, Fehler melden) für alle Nutzer
 und Gäste aus, etwa wenn ein neues Werkzeug noch nicht richtig funktioniert. Sie verschwinden in der Web-App und der
 Desktop-App mit diesem Server nach dem nächsten Laden bzw. Anmelden; schon gezeichnete Objekte bleiben. Mindestens ein
-Werkzeug bleibt frei. Admins sehen immer alles. Die Android-App hat noch keine Server-Anbindung und ist nicht betroffen.
+Werkzeug bleibt frei. Admins sehen immer alles. Das gilt in Web-App, Desktop-App und Android-App (ab 4.43.0).
 Details: [`web-api.md`](web-api.md).
 
 **Fehlerberichte (ab 4.10.0).** In der Web-App können Nutzer und Gäste über „Fehler melden“ eine Beschreibung mit bis zu

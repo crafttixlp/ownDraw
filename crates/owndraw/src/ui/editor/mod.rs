@@ -16,7 +16,6 @@ mod mathed;
 mod mathin;
 mod calced;
 mod fbook;
-#[cfg(not(target_os = "android"))]
 pub mod live;
 mod menu;
 mod more;
@@ -242,7 +241,6 @@ pub struct Editor {
     /// Board seit dem letzten Abgleich mit der Live-Sitzung geändert (Browser, Server-Boards).
     pub live_dirty: bool,
     /// Live-Zusammenarbeit (nur Browser, Server-Boards `srv:<id>`).
-    #[cfg(not(target_os = "android"))]
     pub live: Option<live::Live>,
     /// Verbinder, Tabelle, Kommentar, Zuschnitt (arrange.rs).
     xs: arrange::Xs,
@@ -310,7 +308,6 @@ impl Editor {
             first_frame: true,
             fit_on_open: false,
             live_dirty: false,
-            #[cfg(not(target_os = "android"))]
             live: None,
             xs: arrange::Xs::default(),
         }
@@ -318,7 +315,7 @@ impl Editor {
 
     /// Board liegt am Server (`srv:<id>`, Web-App und Desktop)?
     pub fn is_server(&self) -> bool {
-        !cfg!(target_os = "android") && matches!(self.file(), Some(FileRef::Uri(u)) if u.starts_with("srv:"))
+        matches!(self.file(), Some(FileRef::Uri(u)) if u.starts_with("srv:"))
     }
 
     pub fn name(&self) -> &str {
@@ -602,8 +599,8 @@ impl Editor {
             return;
         }
         if t == Tool::PenMode {
-            if !crate::platform::PEN_MODE && !self.pen_mode() {
-                sh.toast_for("Stift-Modus geht auf Android noch nicht: Stift und Finger sind hier nicht unterscheidbar.", 4.0);
+            if !crate::platform::pen_mode_available() && !self.pen_mode() {
+                sh.toast_for("Stift-Modus geht auf diesem Gerät nicht: Stift und Finger kommen hier über dasselbe Eingabegerät und sind nicht unterscheidbar.", 5.0);
                 return;
             }
             self.toggle_pen_mode();
@@ -915,7 +912,6 @@ impl Editor {
 
         // Autosave
         self.sync_modified(sh.now);
-        #[cfg(not(target_os = "android"))]
         self.live_frame(ui, &ctx, sh, &lay);
         if !self.board.busy() {
             let Self { autosave, board, doc, .. } = self;
@@ -1046,7 +1042,8 @@ impl Editor {
         }
         for ev in events {
             match ev {
-                Event::Touch { id, phase, pos, force, .. } => {
+                Event::Touch { device_id, id, phase, pos, force } => {
+                    crate::platform::note_touch(device_id.0, id.0, phase == TouchPhase::Start);
                     let hp = match phase {
                         TouchPhase::Start if on_board(pos) && self.text.is_none() => hold::Ph::Down,
                         TouchPhase::Move => hold::Ph::Move,
@@ -1376,7 +1373,6 @@ impl Editor {
 
     /// Statusanzeige des Autosave für die Leiste.
     pub(super) fn save_state(&self) -> (&'static str, bool) {
-        #[cfg(not(target_os = "android"))]
         if let Some(st) = self.srv_save_state() {
             return st;
         }
@@ -1394,7 +1390,6 @@ impl Editor {
     }
 }
 
-#[cfg(not(target_os = "android"))]
 impl Editor {
     /// Live-Sitzung für Server-Boards: Verbindung, Abgleich, fremde Zeiger, Leiste mit Teilnehmern.
     fn live_frame(&mut self, ui: &Ui, ctx: &egui::Context, sh: &mut Shared, lay: &Lay) {

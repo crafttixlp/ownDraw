@@ -137,7 +137,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
                 ),
                 None => wd(
                     "Keine Lizenz. Neue Boards werden nur in diesem Browser gespeichert. Lade sie herunter, um sie zu sichern. Mit einer Lizenz speicherst du auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.",
-                    "Keine Lizenz. Neue Boards werden auf diesem Computer gespeichert. Mit einer Lizenz speicherst und teilst du Boards auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.",
+                    "Keine Lizenz. Neue Boards werden auf diesem Gerät gespeichert. Mit einer Lizenz speicherst und teilst du Boards auf dem Server. Einladungen zu Boards anderer funktionieren auch ohne Lizenz.",
                 )
                 .into(),
             };
@@ -158,7 +158,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
             super::start::banner(
                 ui,
                 compact,
-                wd("Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.", "Du bist nicht angemeldet. Boards werden auf diesem Computer gespeichert."),
+                wd("Du bist nicht angemeldet. Boards werden nur in diesem Browser gespeichert.", "Du bist nicht angemeldet. Boards werden auf diesem Gerät gespeichert."),
                 "Mit einem Konto wirst du zu Boards eingeladen und arbeitest live mit. Mit einer Lizenz speicherst und teilst du Boards auf dem Server.",
                 |ui| {
                     if style::primary_btn(ui, "Anmelden", h).clicked() {
@@ -181,7 +181,7 @@ pub fn header(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) {
         }
         (Server::Offline, _) if !crate::platform::WEB => {
             let title = format!("Server {} nicht erreichbar", host());
-            super::start::banner(ui, compact, &title, "Du arbeitest offline. Alle Boards auf diesem Computer bleiben voll nutzbar. Konto, Boards auf dem Server und Live-Zusammenarbeit gehen wieder, sobald der Server erreichbar ist.", |ui| {
+            super::start::banner(ui, compact, &title, "Du arbeitest offline. Alle Boards auf diesem Gerät bleiben voll nutzbar. Konto, Boards auf dem Server und Live-Zusammenarbeit gehen wieder, sobald der Server erreichbar ist.", |ui| {
                 if style::primary_btn(ui, "Erneut versuchen", h).clicked() {
                     api::retry();
                 }
@@ -220,7 +220,7 @@ pub fn boards(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi) -> bool {
         return true;
     }
     if list.is_empty() {
-        ui.label(egui::RichText::new(wd("Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins aus dem Browser (Kartenmenü „…“).", "Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins von diesem Computer (Kartenmenü „…“).")).color(c(p.dim)));
+        ui.label(egui::RichText::new(wd("Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins aus dem Browser (Kartenmenü „…“).", "Noch keine Boards auf dem Server. Erstelle ein neues oder verschiebe eins von diesem Gerät (Kartenmenü „…“).")).color(c(p.dim)));
         return true;
     }
     let gap = if compact { 12.0 } else { 18.0 };
@@ -294,10 +294,10 @@ fn tile(ui: &mut egui::Ui, sh: &mut Shared, st: &mut AccountUi, b: &BoardInfo, t
         let mut acts = vec![(A::Open, style::MenuItem { icon: icons::EXPORT, label: "Öffnen", danger: false })];
         if owner {
             acts.push((A::Rename, style::MenuItem { icon: icons::TEXT, label: "Umbenennen", danger: false }));
-            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: wd("In Browser verschieben", "Auf diesen Computer verschieben"), danger: false }));
+            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: wd("In Browser verschieben", "Auf dieses Gerät verschieben"), danger: false }));
             acts.push((A::Delete, style::MenuItem { icon: icons::TRASH, label: "Löschen", danger: true }));
         } else {
-            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: wd("Kopie im Browser", "Kopie auf diesem Computer"), danger: false }));
+            acts.push((A::Local, style::MenuItem { icon: icons::COPY, label: wd("Kopie im Browser", "Kopie auf diesem Gerät"), danger: false }));
         }
         let items: Vec<style::MenuItem> = acts.iter().map(|a| style::MenuItem { icon: a.1.icon, label: a.1.label, danger: a.1.danger }).collect();
         match style::card_menu(ui, ic, &items).map(|i| acts[i].0) {
@@ -488,7 +488,7 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 ui.label(if crate::platform::WEB {
                     format!("„{name}“ wird auf den Server hochgeladen und danach aus diesem Browser entfernt. Erst wenn der Server das Board gespeichert hat, wird es hier entfernt. So gehen keine Daten verloren.")
                 } else {
-                    format!("„{name}“ wird auf den Server hochgeladen. Danach öffnest du es über „Auf dem Server“. Die Datei auf diesem Computer bleibt als Sicherung erhalten, wird aber aus „Zuletzt geöffnet“ entfernt.")
+                    format!("„{name}“ wird auf den Server hochgeladen. Danach öffnest du es über „Auf dem Server“. Die Datei auf diesem Gerät bleibt als Sicherung erhalten, wird aber aus „Zuletzt geöffnet“ entfernt.")
                 });
                 ui.add_space(4.0);
                 let used = format!("Größe: {} · Frei auf dem Server: {}", super::mb_text(*size), free.map(super::mb_text).unwrap_or_else(|| "–".into()));
@@ -515,12 +515,12 @@ pub fn dialogs(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
             }
             Dlg::ToLocal { id, name, owner, .. } => {
                 if *owner {
-                    ui.label(egui::RichText::new(wd("In diesem Browser speichern?", "Auf diesem Computer speichern?")).size(style::fs::SECTION + 5.0).strong());
+                    ui.label(egui::RichText::new(wd("In diesem Browser speichern?", "Auf diesem Gerät speichern?")).size(style::fs::SECTION + 5.0).strong());
                     ui.label(format!("„{name}“ wird {} gespeichert und danach vom Server gelöscht. Erst wenn es hier gespeichert ist, wird es am Server gelöscht.", local_in()));
                     ui.add_space(4.0);
                     ui.add(egui::Label::new(egui::RichText::new(format!("Danach ist es nur noch {}. Teilen und Live-Zusammenarbeit gehen nur mit Boards auf dem Server: Wer das Board mit dir geteilt bekommen hat, verliert den Zugriff. Einladungslinks werden ungültig.", local_in())).size(12.5).color(c(p.dim))).wrap());
                 } else {
-                    ui.label(egui::RichText::new(wd("Kopie im Browser speichern?", "Kopie auf diesem Computer speichern?")).size(style::fs::SECTION + 5.0).strong());
+                    ui.label(egui::RichText::new(wd("Kopie im Browser speichern?", "Kopie auf diesem Gerät speichern?")).size(style::fs::SECTION + 5.0).strong());
                     ui.label(format!("Eine Kopie von „{name}“ wird {} gespeichert. Das Board auf dem Server bleibt unverändert. Änderungen an der Kopie sieht niemand sonst.", local_in()));
                 }
                 ui.add_space(10.0);
@@ -608,7 +608,7 @@ fn invite_dialog(ctx: &egui::Context, sh: &mut Shared, st: &mut AccountUi) {
                 style::caption(ui, "Dein Name");
                 let r = ui.add(egui::TextEdit::singleline(name).char_limit(24).desired_width(f32::INFINITY).font(egui::FontId::proportional(15.0)).margin(Vec2::new(10.0, 8.0)));
                 r.request_focus();
-                ui.label(egui::RichText::new(wd("Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird in diesem Browser gespeichert. Ein Konto brauchst du dafür nicht.", "Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird auf diesem Computer gespeichert. Ein Konto brauchst du dafür nicht.")).size(12.0).color(c(p.dim)));
+                ui.label(egui::RichText::new(wd("Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird in diesem Browser gespeichert. Ein Konto brauchst du dafür nicht.", "Du bekommst eine Gast-ID aus Name und Kennung, zum Beispiel Mila#K7Q2. Sie wird auf diesem Gerät gespeichert. Ein Konto brauchst du dafür nicht.")).size(12.0).color(c(p.dim)));
             }
         } else {
             ui.spinner();

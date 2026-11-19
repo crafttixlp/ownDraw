@@ -929,3 +929,33 @@ fn on_dialog_failed(tag: Tag) {
     lock().events.push(PlatformEvent::Picked { tag, file: None });
     repaint();
 }
+
+/// Eingabegeräte, die nur Stift sind (Quelle `SOURCE_STYLUS` ohne `SOURCE_TOUCHSCREEN`), z. B. der Wacom-Digitizer
+/// eines Galaxy Tab (S Pen). Liefert die Geräte-IDs von `InputDevice`.
+///
+/// winit gibt die Zeigerart (Stift/Finger) unter Android nicht weiter, wohl aber das Gerät jeder Berührung. Meldet ein
+/// Tablet Stift und Finger über dasselbe Gerät, ist der Stift so nicht erkennbar.
+pub fn stylus_devices() -> Vec<i32> {
+    const TOUCHSCREEN: i32 = 0x1000;
+    const STYLUS: i32 = 0x4000;
+    let r = with_env(|env, _| {
+        let arr = env.call_static_method("android/view/InputDevice", "getDeviceIds", "()[I", &[])?.l()?;
+        let arr = jni::objects::JIntArray::from(arr);
+        let n = env.get_array_length(&arr)? as usize;
+        let mut ids = vec![0i32; n];
+        env.get_int_array_region(&arr, 0, &mut ids)?;
+        let mut out = Vec::new();
+        for id in ids {
+            let dev = env.call_static_method("android/view/InputDevice", "getDevice", "(I)Landroid/view/InputDevice;", &[JValue::Int(id)])?.l()?;
+            if dev.is_null() {
+                continue;
+            }
+            let src = env.call_method(&dev, "getSources", "()I", &[])?.i()?;
+            if src & STYLUS != 0 && src & TOUCHSCREEN == 0 {
+                out.push(id);
+            }
+        }
+        Ok(out)
+    });
+    log_err("Eingabegeräte", r).unwrap_or_default()
+}

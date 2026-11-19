@@ -1,5 +1,5 @@
-//! Server-Anbindung (Vertrag: `docs/web-api.md`) für Web-App und Desktop. Transport je Plattform: `web.rs`
-//! (fetch/WebSocket des Browsers, gleiche Origin, Cookie vom Browser) bzw. `native.rs` (Desktop: ureq/tungstenite
+//! Server-Anbindung (Vertrag: `docs/web-api.md`) für Web-App, Desktop und Android. Transport je Plattform: `web.rs`
+//! (fetch/WebSocket des Browsers, gleiche Origin, Cookie vom Browser) bzw. `native.rs` (Desktop und Android: ureq/tungstenite
 //! in Hintergrund-Threads, Server-Adresse einstellbar, Sitzungs-Cookie in einer Datei mit Rechten 0600).
 //! Schreibende Anfragen mit `X-OwnDraw: 1`.
 //!
@@ -627,7 +627,7 @@ fn upload(name: &str, bytes: Vec<u8>, local: Option<FileRef>) {
                 n.opening = false;
                 n.moving = false;
             });
-            let what = if moving { if cfg!(target_arch = "wasm32") { "Board konnte nicht auf den Server verschoben werden. Es bleibt in diesem Browser" } else { "Board konnte nicht auf den Server verschoben werden. Es bleibt auf diesem Computer" } } else { "Board konnte nicht auf dem Server erstellt werden" };
+            let what = if moving { if cfg!(target_arch = "wasm32") { "Board konnte nicht auf den Server verschoben werden. Es bleibt in diesem Browser" } else { "Board konnte nicht auf den Server verschoben werden. Es bleibt auf diesem Gerät" } } else { "Board konnte nicht auf dem Server erstellt werden" };
             notice(match other {
                 Ok(r) if r.status == 507 => format!("{what}: {} Lösche Boards auf dem Server oder speichere dieses Board {}.", r.message(), crate::ui::local_in()),
                 Ok(r) => format!("{what}: {}", r.message()),

@@ -188,7 +188,6 @@ pub fn read_thumb(platform: &dyn Platform, f: &FileRef) -> Option<Vec<u8>> {
 
 /// Name und Seitenmodus einer `.owndraw` aus dem Manifest (ohne die ganze Datei zu dekodieren).
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-#[cfg_attr(target_os = "android", allow(dead_code))]
 pub fn read_summary(platform: &dyn Platform, f: &FileRef) -> Option<(String, bool)> {
     let m: serde_json::Value = serde_json::from_slice(&read_zip_entry(platform, f, "manifest.json", 4 << 20)?).ok()?;
     let name = m.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(|| f.display_name().trim_end_matches(".owndraw").to_string());

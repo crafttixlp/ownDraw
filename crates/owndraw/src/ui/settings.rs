@@ -533,11 +533,11 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
     }
 
     // ---- Konto & Zusammenarbeit (Desktop: Server-Adresse, Speicherort neuer Boards)
-    #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     section(ui, "Konto & Zusammenarbeit", |ui| {
         let sid = Id::unique("settings-server-url");
         let mut url = ui.data(|d| d.get_temp::<String>(sid)).unwrap_or_else(|| settings.server_url.clone());
-        row(ui, env, "Server", Some("Adresse des OwnDraw-Servers für Anmelden, Boards auf dem Server und Live-Zusammenarbeit. Ohne Verbindung arbeitest du wie gewohnt mit Boards auf diesem Computer."), |ui| {
+        row(ui, env, "Server", Some("Adresse des OwnDraw-Servers für Anmelden, Boards auf dem Server und Live-Zusammenarbeit. Ohne Verbindung arbeitest du wie gewohnt mit Boards auf diesem Gerät."), |ui| {
             ui.add(egui::TextEdit::singleline(&mut url).desired_width(260.0).hint_text(crate::settings::DEFAULT_SERVER).margin(egui::vec2(8.0, 6.0)));
         });
         let changed = url.trim().trim_end_matches('/') != settings.server_url.trim_end_matches('/');
@@ -565,7 +565,7 @@ fn content(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platf
         ui.data_mut(|d| d.insert_temp(sid, url));
         if crate::ui::server_store_available() {
             row(ui, env, "Neue Boards", Some("Vorgabe im Dialog „Neu“. Den Speicherort wählst du dort für jedes Board, später auch im Kartenmenü."), |ui| {
-                for (v, l) in [(true, "Auf dem Server"), (false, "Auf diesem Computer")] {
+                for (v, l) in [(true, "Auf dem Server"), (false, "Auf diesem Gerät")] {
                     if style::chip(ui, l, settings.new_on_server == v, btn).clicked() {
                         settings.new_on_server = v;
                     }

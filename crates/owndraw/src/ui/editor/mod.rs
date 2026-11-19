@@ -1030,7 +1030,9 @@ impl Editor {
         let hover = ctx.input(|i| i.pointer.hover_pos());
         let space = pan_key && !ctx.egui_wants_keyboard_input() && self.text.is_none();
         let on_board = |p: Pos2| rect.contains(p) && ctx.layer_id_at(p).map(|l| l == layer).unwrap_or(true);
-        let has_touch = !self.touches.is_empty() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
+        // Im Browser kommt eine Berührung erst als Maus-Klick (eigenes Bild), dann als Touch: den Klick nicht auswerten,
+        // sonst greift er (z. B. beim Laser) vor dem Touch zu und der Touch landet beim Board.
+        let has_touch = !self.touches.is_empty() || crate::platform::touch_pointer() || events.iter().any(|e| matches!(e, Event::Touch { .. }));
         let rel = |p: Pos2| p - rect.min;
         let now = ctx.input(|i| i.time);
         self.hover = hover.filter(|p| on_board(*p));

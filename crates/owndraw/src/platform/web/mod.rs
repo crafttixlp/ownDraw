@@ -76,6 +76,8 @@ pub fn install_page_hooks() {
 thread_local! {
     /// Letztes `pointerdown` eines Stifts: (clientX, clientY, Zeit in ms).
     static PEN_DOWN: std::cell::Cell<Option<(f64, f64, f64)>> = const { std::cell::Cell::new(None) };
+    /// Letztes `pointerdown` kam von Finger oder Stift (nicht von der Maus), bis sich die Maus wieder bewegt.
+    static TOUCH_POINTER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Touch-Kennungen (egui `TouchId`), die gerade von einem Stift stammen.
     static PEN_TOUCHES: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
 }
@@ -87,18 +89,32 @@ pub fn pen_touch(id: u64) -> bool {
     PEN_TOUCHES.with(|t| t.borrow().contains(&id))
 }
 
+/// Kommt die laufende Zeigereingabe von Finger oder Stift? egui meldet sie im Browser zuerst als Maus-Klick
+/// (`pointerdown`, eigenes Bild) und erst danach als Touch (`touchstart`); der Editor wertet dann nur den Touch aus.
+pub fn touch_pointer() -> bool {
+    TOUCH_POINTER.with(|t| t.get())
+}
+
 /// Merkt Stift-Berührungen vor egui (Erfassungsphase am Fenster, egui hört am Canvas).
 fn install_pen_hooks(w: &web_sys::Window) {
     let opts = web_sys::AddEventListenerOptions::new();
     opts.set_capture(true);
     opts.set_passive(true);
     let down = Closure::<dyn FnMut(web_sys::PointerEvent)>::new(|e: web_sys::PointerEvent| {
+        TOUCH_POINTER.with(|t| t.set(e.pointer_type() != "mouse"));
         if e.pointer_type() == "pen" {
             PEN_DOWN.with(|p| p.set(Some((e.client_x() as f64, e.client_y() as f64, js_sys::Date::now()))));
         }
     });
     let _ = w.add_event_listener_with_callback_and_add_event_listener_options("pointerdown", down.as_ref().unchecked_ref(), &opts);
     down.forget();
+    let mv = Closure::<dyn FnMut(web_sys::PointerEvent)>::new(|e: web_sys::PointerEvent| {
+        if e.pointer_type() == "mouse" {
+            TOUCH_POINTER.with(|t| t.set(false));
+        }
+    });
+    let _ = w.add_event_listener_with_callback_and_add_event_listener_options("pointermove", mv.as_ref().unchecked_ref(), &opts);
+    mv.forget();
     let start = Closure::<dyn FnMut(web_sys::TouchEvent)>::new(|e: web_sys::TouchEvent| {
         let pen = PEN_DOWN.with(|p| p.take());
         let now = js_sys::Date::now();

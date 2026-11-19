@@ -270,7 +270,7 @@
         {
           "id": "tool-laser",
           "title": "Laserpointer",
-          "text": "Zeigt mit einem leuchtenden Punkt auf etwas: dunkler Kern, durchsichtiger Hof. Der Punkt sitzt am Mauszeiger bzw. dort, wo dein Finger oder Stift den Bildschirm berührt. Nichts davon wird gespeichert oder landet im Rückgängig.",
+          "text": "Zeigt mit einem leuchtenden Punkt auf etwas: dunkler Kern, durchsichtiger Hof. Der Punkt sitzt am Mauszeiger bzw. dort, wo dein Finger oder Stift den Bildschirm berührt, und wandert beim Ziehen mit. Er zeigt auch mit dem Finger, wenn der Stift-Modus an ist. Nichts davon wird gespeichert oder landet im Rückgängig.",
           "how": ["Tippe noch einmal auf das aktive Laser-Werkzeug: In den Optionen stellst du Farbe und Größe des Punkts ein. Die Einstellung bleibt gemerkt.", "„Leuchtspur nachziehen“ zieht zusätzlich eine Spur hinter dem Punkt her, die nach 1,5 Sekunden verblasst. Praktisch zum Einkreisen.", "In der Live-Zusammenarbeit sehen alle anderen deinen Punkt in deiner Farbe und Größe, auch wenn du das Board nur ansehen darfst."],
           "action": ["tool.laser"],
           "covers": ["tool:Laserpointer", "action:tool.laser", "extra:laser-live", "extra:laser-punkt"]

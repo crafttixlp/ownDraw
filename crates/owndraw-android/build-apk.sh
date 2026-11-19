@@ -10,7 +10,7 @@
 #   ANDROID_NDK_HOME                  NDK-Ordner (sonst neuester unter $ANDROID_HOME/ndk/)
 #   OWNDRAW_ABIS                      ABIs, Standard "arm64-v8a" (z. B. "arm64-v8a x86_64" für den Emulator)
 #   OWNDRAW_PROFILE                   release (Standard) oder debug
-#   OWNDRAW_OUT                       Ausgabe-APK, Standard target/apk/owndraw-<version>.apk
+#   OWNDRAW_OUT                       Ausgabe-APK, Standard target/apk/OwnDraw-<version>.apk (Name wie im Release erwartet)
 #   BUILD_TOOLS_VERSION               build-tools-Version, Standard: neueste installierte
 #   Signatur (fehlt OWNDRAW_KEYSTORE, wird ~/.android/debug.keystore benutzt bzw. angelegt):
 #   OWNDRAW_KEYSTORE                  Pfad zum Keystore (.jks/.p12)
@@ -48,7 +48,7 @@ VERSION_CODE=$(( V_MAJ * 10000 + V_MIN * 100 + ${V_PAT:-0} ))
 PROFILE="${OWNDRAW_PROFILE:-release}"
 ABIS="${OWNDRAW_ABIS:-arm64-v8a}"
 WORK="$ROOT/target/apk-build"
-OUT="${OWNDRAW_OUT:-$ROOT/target/apk/owndraw-$VERSION.apk}"
+OUT="${OWNDRAW_OUT:-$ROOT/target/apk/OwnDraw-$VERSION.apk}"
 rm -rf "$WORK"
 mkdir -p "$WORK/stage/lib" "$WORK/classes" "$WORK/res/mipmap-xxxhdpi" "$(dirname "$OUT")"
 

@@ -110,7 +110,7 @@ sdkmanager "system-images;android-34;google_apis;x86_64" "emulator" "platform-to
 avdmanager create avd -n owndraw34 -k "system-images;android-34;google_apis;x86_64" -d pixel_tablet
 emulator -avd owndraw34 &
 OWNDRAW_ABIS="arm64-v8a x86_64" OWNDRAW_PROFILE=debug crates/owndraw-android/build-apk.sh
-adb install -r target/apk/owndraw-*.apk
+adb install -r target/apk/OwnDraw-*.apk
 adb logcat -s OwnDraw:V RustStdoutStderr:V AndroidRuntime:E
 ```
 

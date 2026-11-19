@@ -534,7 +534,6 @@ fn paint_dot(pt: &egui::Painter, at: Pos2, size: f32, color: u32, a: f32) {
     let dk = |v: u8| (v as f32 * 0.78) as u8;
     let core = (rad * 0.28).max(3.0);
     pt.circle_filled(at, core, Color32::from_rgba_unmultiplied(dk(r), dk(g), dk(b), (a * 255.0).round() as u8));
-    pt.circle_filled(at, core * 0.45, Color32::from_rgba_unmultiplied(255, 255, 255, (a * 110.0) as u8));
 }
 
 /// Optionen des Laserpointers (Farbe, Größe, Spur); in den Einstellungen gemerkt.

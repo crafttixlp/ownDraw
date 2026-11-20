@@ -311,7 +311,8 @@ impl Editor {
                         _ => {}
                     }
                 }
-                if !draws_here {
+                // Der Laser zeigt auch mit dem Finger, wenn der Stift-Modus an ist (er zeichnet nichts).
+                if !draws_here && self.ext.xtool != Some(Tool::Laser) {
                     return Hook::Pass(p);
                 }
                 let (wx, wy) = self.board.screen_to_world(p.x, p.y);
@@ -616,6 +617,25 @@ mod tests {
         e.laser_in(9, &m(vec![(0.0, 0.0), (5.0, 5.0)], None, false), 4.0);
         assert_eq!(e.remote.len(), 1);
         assert!(e.remote[0].trail.prune(4.5) && !e.remote[0].trail.prune(6.0));
+    }
+
+    #[test]
+    fn laser_folgt_finger_auch_im_stift_modus() {
+        let mut ed = crate::ui::editor::clip::tests::editor(false);
+        ed.board.finger_draw = false;
+        ed.ext.xtool = Some(Tool::Laser);
+        let n = ed.board.items.len();
+        assert!(matches!(ed.ext_hook(7, Ph::Down, Pos2::new(50.0, 50.0), true), Hook::Eat));
+        let a = ed.ext.laser_at.unwrap();
+        assert!(matches!(ed.ext_hook(7, Ph::Move, Pos2::new(90.0, 70.0), true), Hook::Eat));
+        let b = ed.ext.laser_at.unwrap();
+        assert!(b.0 > a.0 && b.1 > a.1, "Punkt folgt dem Finger");
+        assert!(matches!(ed.ext_hook(7, Ph::Up, Pos2::new(90.0, 70.0), true), Hook::Eat));
+        assert!(ed.ext.laser_at.is_none());
+        assert_eq!(ed.board.items.len(), n, "nichts gezeichnet");
+        // anderes Werkzeug im Stift-Modus: Finger geht ans Board
+        ed.ext.xtool = None;
+        assert!(matches!(ed.ext_hook(8, Ph::Down, Pos2::new(50.0, 50.0), true), Hook::Pass(_)));
     }
 
     #[test]

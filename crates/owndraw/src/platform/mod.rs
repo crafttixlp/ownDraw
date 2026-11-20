@@ -19,6 +19,15 @@ pub fn note_unsaved(_unsaved: bool) {
     web::set_unsaved(_unsaved);
 }
 
+/// Kommt die laufende Zeigereingabe im Browser von Finger oder Stift (dann zählt nur das Touch-Ereignis, nicht der
+/// vorab gemeldete Maus-Klick)? Außerhalb des Browsers immer false (dort kommen beide im selben Bild).
+pub fn touch_pointer() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    return web::touch_pointer();
+    #[cfg(not(target_arch = "wasm32"))]
+    false
+}
+
 /// Stammt die Touch-Berührung `id` (egui `TouchId`) von einem Stift? (Stift-Modus)
 ///
 /// Browser: Zeigerart. Android: Berührung von einem reinen Stift-Gerät (siehe [`note_touch`]). Desktop (X11/Wayland)

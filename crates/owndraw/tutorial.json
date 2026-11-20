@@ -347,6 +347,13 @@
           "covers": ["extra:lange-druecken"]
         },
         {
+          "id": "sel-sperren",
+          "title": "Objekte sperren",
+          "text": "Sperre fertige Teile wie Hintergrundbilder, Vorlagen oder Tabellen, damit du sie nicht aus Versehen verschiebst, änderst oder wegradierst. Halte das Objekt lange gedrückt (oder Rechtsklick auf die Auswahl) und wähle „Sperren“. Gesperrte Objekte bleiben sichtbar, lassen sich aber nicht mehr antippen, mit dem Rahmen auswählen oder radieren.",
+          "how": ["Entsperren: das gesperrte Objekt lange drücken oder rechts anklicken und „Entsperren“ wählen. Es ist danach gleich ausgewählt.", "Gruppen werden zusammen gesperrt und entsperrt.", "Die Sperre wird mit dem Board gespeichert und in der Live-Zusammenarbeit für alle übernommen. Rückgängig hebt sie wieder auf.", "Für ganze Ebenen gibt es das Schloss in der Ebenen-Liste."],
+          "covers": ["extra:objekte-sperren"]
+        },
+        {
           "id": "sel-gruppen",
           "title": "Gruppieren, ausrichten, verteilen",
           "text": "Mehrere ausgewählte Objekte fasst du zu einer Gruppe zusammen; ein Tipp auf ein Mitglied wählt dann die ganze Gruppe. Ab zwei Objekten richtest du sie links, mittig, rechts, oben, in der Mitte oder unten aus, ab drei verteilst du sie waagerecht oder senkrecht mit gleichen Abständen.",

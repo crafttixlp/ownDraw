@@ -411,7 +411,9 @@ impl Board {
 
     /// Verschiebt Objekte (id → dx, dy) in einem Rückgängig-Schritt.
     fn shift_ids(&mut self, moves: &[(Vec<u64>, f32, f32)]) -> bool {
-        let mv: HashMap<u64, (f32, f32)> = moves.iter().flat_map(|(ids, dx, dy)| ids.iter().map(move |id| (*id, (*dx, *dy)))).filter(|(_, d)| d.0.abs() > 1e-4 || d.1.abs() > 1e-4).collect();
+        // fixierte Objekte bleiben stehen
+        let fixed: HashSet<u64> = self.items.iter().filter(|it| it.locked()).map(|it| it.id).collect();
+        let mv: HashMap<u64, (f32, f32)> = moves.iter().flat_map(|(ids, dx, dy)| ids.iter().map(move |id| (*id, (*dx, *dy)))).filter(|(id, d)| !fixed.contains(id) && (d.0.abs() > 1e-4 || d.1.abs() > 1e-4)).collect();
         if mv.is_empty() {
             return false;
         }

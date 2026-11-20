@@ -231,8 +231,6 @@ pub struct Editor {
     hover: Option<Pos2>,
     /// Ort des letzten Rechtsklicks/Lang-Tippens (Einfügen-Menü).
     menu_pos: Option<Pos2>,
-    /// Gesperrtes Objekt unter dem Kontextmenü („Entsperren“).
-    menu_lock: Option<u64>,
     /// Langes Drücken auf ein Objekt (siehe `hold.rs`).
     hold: Option<hold::Hold>,
     /// Kontextmenü nach langem Drücken hier öffnen (Bildschirmpunkt).
@@ -306,7 +304,6 @@ impl Editor {
             canvas: Rect::NOTHING,
             hover: None,
             menu_pos: None,
-            menu_lock: None,
             hold: None,
             hold_menu: None,
             first_frame: true,

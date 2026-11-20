@@ -352,6 +352,8 @@ pub struct Board {
     pub bg: i32,
     pub dark: bool,
     pub finger_draw: bool,
+    /// Text auf linierten Seiten auf die Linien setzen (`line_text_rect`).
+    pub text_lines: bool,
     /// Einrast-Einstellungen (Formerkennung, Griffe).
     pub snap_cfg: recognizer::SnapCfg,
     /// Rechenkern (Werkzeug „Rechnen“): Ergebnisse von Formelzeilen.
@@ -494,6 +496,7 @@ impl Board {
             bg: 0,
             dark: false,
             finger_draw: false,
+            text_lines: true,
             snap_cfg: recognizer::SnapCfg::default(),
             calc: crate::calc::Opts::default(),
             calc_pre: crate::calc::Prelude::default(),
@@ -1155,6 +1158,11 @@ impl Board {
     /// am Weltpunkt bei aktuellem Zoom.
     pub fn new_note_rect(&self, wx: f32, wy: f32, note: bool) -> (f32, f32, f32, f32, f32) {
         let size = 18.0 * self.dp / self.sc;
+        if !note {
+            if let Some(r) = self.line_text_rect(wx, wy) {
+                return r;
+            }
+        }
         if note {
             let w = 210.0 * self.dp / self.sc;
             let mh = w * 0.72;
@@ -1162,6 +1170,30 @@ impl Board {
         } else {
             (wx, wy - size / 2.0, size, 0.0, 0.0)
         }
+    }
+
+    /// Text auf einer linierten Seite (`text_lines`): Grundlinie auf der Linie unter dem Tipp, Zeilenabstand = Linienabstand,
+    /// links nicht über den roten Rand. None ausserhalb linierter Seiten oder wenn ausgeschaltet.
+    pub fn line_text_rect(&self, wx: f32, wy: f32) -> Option<(f32, f32, f32, f32, f32)> {
+        if !self.text_lines {
+            return None;
+        }
+        let ps = self.pages()?;
+        let i = ps.page_at(wx, wy)?;
+        if ps.pages[i].bg != PageBg::Lined {
+            return None;
+        }
+        let r = ps.rects()[i];
+        let (first, last) = (r.top + 3.0 * PAGE_LINE, r.bottom - PAGE_LINE);
+        let n_max = ((last + 0.01 - first) / PAGE_LINE).floor().max(0.0);
+        // Tipp knapp unter einer Linie zählt noch zu ihr, sonst die nächste Linie darunter
+        let n = ((wy - first) / PAGE_LINE - 0.3).ceil().clamp(0.0, n_max);
+        let base = first + n * PAGE_LINE;
+        let (asc, desc) = crate::text::metrics(1.0);
+        let size = PAGE_LINE / ((asc + desc) * 1.15);
+        let margin = r.left + 2.5 * PAGE_LINE + 0.3 * PAGE_LINE;
+        let x = wx.max(margin).min(r.right - PAGE_LINE);
+        Some((x, base - asc * size, size, 0.0, 0.0))
     }
 
     pub fn add_note(&mut self, wx: f32, wy: f32, text: &str, note: bool) {
@@ -3807,6 +3839,32 @@ mod tests {
     use crate::pages::{PageSetup, PAGE_GAP};
 
     /// Board im Seitenmodus mit n A4-Seiten (595 × 842), Massstab 0,5, Ursprung bei (10, 10).
+    #[test]
+    fn text_sitzt_auf_linien() {
+        let mut b = paged(2, PageBg::Lined);
+        // Tipp knapp unter der 2. Linie (y = 4*24 = 96) → Grundlinie 96, links rechts vom Rand
+        let r = b.line_text_rect(10.0, 100.0).unwrap();
+        b.add_note_rect("eins\nzwei", r, false);
+        let n = b.items[0].as_note().unwrap();
+        let (asc, desc) = crate::text::metrics(n.size);
+        assert!((n.y + asc - 96.0).abs() < 0.01);
+        assert!(((asc + desc) * 1.15 - PAGE_LINE).abs() < 0.01);
+        assert!((n.h - 2.0 * PAGE_LINE).abs() < 0.01);
+        assert!(n.x >= 2.5 * PAGE_LINE);
+        // Tipp weiter unter der Linie → nächste Linie
+        let r = b.line_text_rect(100.0, 110.0).unwrap();
+        assert!((r.1 + asc - 120.0).abs() < 0.01);
+        // zweite Seite: Linien relativ zur Seite
+        let top2 = b.page_rects()[1].top;
+        let r = b.line_text_rect(100.0, top2 + 5.0).unwrap();
+        assert!((r.1 + asc - (top2 + 72.0)).abs() < 0.01);
+        // ausgeschaltet, andere Hintergründe, unendlich: freie Position
+        b.text_lines = false;
+        assert!(b.line_text_rect(100.0, 100.0).is_none());
+        assert!(paged(1, PageBg::Grid).line_text_rect(100.0, 100.0).is_none());
+        assert!(board().line_text_rect(100.0, 100.0).is_none());
+    }
+
     fn paged(n: usize, bg: PageBg) -> Board {
         let mut b = board();
         b.board_mode = BoardMode::Pages(PageSetup::new(595.0, 842.0, bg, n));

@@ -4,7 +4,7 @@
 //! - `OWNDRAW_DEMO=a,b,…`: Ausgangszustand herstellen. Bausteine: `start` (Beispiel-Zuletzt-Liste), `gast` (Gast-Hinweis auf der Startseite), `editor`
 //!   (unendliches Demo-Board), `pages` (Seiten-Demo), `tool=pen|marker|eraser|select|shape|text`, `options`, `menu`,
 //!   `layers`, `pagelist`, `edittools` (Werkzeugleiste im Bearbeiten-Modus), `new`, `settings`, `tutorial`, `confirm`, `rename`, `tutorial`, `confirm`, `rename`, `light` (helles Theme), `classic` (klassisches Design),
-//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `settings=<look|bars|snap|hw|save|account|update|about>` (Kategorie-Unterseite), `ruler` (Lineal), `laser` (Laserpunkte, eigener und fremde), `mathinline` (Formel direkt auf dem Blatt bearbeiten), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `convert` (Werkzeug „Umwandeln“ mit Fenster und festen Alternativen), `stamps` (alle Stempel), `fsugg` (Formel-Vorschläge), `fbook[=konst|teilen|neu]` (Formelsammlung), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
+//!   `autosave` (Board im Standard-Ort mit Strich), `textnew`, `textedit`, `textsel` (Texteingabe auf dem Blatt), `textlines` (Text auf den Linien einer linierten Seite, mit `pages`), `dock` (Leisten seitlich angedockt), `docklate` (dasselbe erst nach 10 Frames), `docktop` (bündig oben, Seiten-Kachel links), `math` (Formel-Werkzeug mit offenem Editor), `more` (Popover „Weitere Werkzeuge“), `settingstools`/`settingskeys` (Einstellungen, Unterseite), `settings=<look|bars|snap|hw|save|account|update|about>` (Kategorie-Unterseite), `ruler` (Lineal), `laser` (Laserpunkte, eigener und fremde), `mathinline` (Formel direkt auf dem Blatt bearbeiten), `calc` (Werkzeug „Rechnen“ mit Beispielzeilen, `steps` = mit Rechenweg), `convert` (Werkzeug „Umwandeln“ mit Fenster und festen Alternativen), `stamps` (alle Stempel), `fsugg` (Formel-Vorschläge), `fbook[=konst|teilen|neu]` (Formelsammlung), `export` (Export-Fenster), mit `OWNDRAW_SERVER`: `login`, `einladung`, `srv=<id>`, `share`.
 
 use crate::app::{App, Screen};
 use crate::platform::FileRef;
@@ -217,6 +217,13 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         if has("textnew") {
             ed.board.set_tool(board::TEXT);
             ed.demo_text(520.0, 120.0, "Direkt hier tippen|");
+        }
+        if has("textlines") {
+            // Text auf den Linien: fertiger Text und laufende Eingabe darunter
+            ed.board.set_tool(board::TEXT);
+            let r = ed.board.new_note_rect(80.0, 170.0, false);
+            ed.board.add_note_rect("Auf den Linien geschrieben\nzweite Zeile, nächste Linie", r, false);
+            ed.demo_text(80.0, 270.0, "Hier wird gerade getippt|");
         }
         if has("textedit") {
             ed.board.set_tool(board::TEXT);

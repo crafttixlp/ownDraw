@@ -245,6 +245,14 @@ fn content(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, t: Tool) {
                     }
                 });
             }
+            if ed.board.tool == board::TEXT {
+                ui.add_space(4.0);
+                let mut l = ed.board.text_lines;
+                if ui.checkbox(&mut l, "Auf Linien schreiben").changed() {
+                    ed.board.text_lines = l;
+                }
+                ui.label(egui::RichText::new("Auf linierten Seiten sitzt der Text auf den Linien, Enter springt zur nächsten Linie.").size(12.0).color(c(style::pal().dim)));
+            }
             colors(ui, ed, sh);
         }
         Tool::Note => colors(ui, ed, sh),

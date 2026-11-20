@@ -95,6 +95,13 @@
           "covers": ["tool:Text", "tool:Haftnotiz", "action:tool.text", "action:tool.note"]
         },
         {
+          "id": "text-linien",
+          "title": "Auf Linien schreiben",
+          "text": "Auf einer linierten Seite sitzt neuer Text automatisch auf den Linien: Tippe auf oder knapp über eine Linie, und die Schrift steht genau darauf. Jede neue Zeile (Enter) landet auf der nächsten Linie.",
+          "how": ["Die Schriftgröße passt sich dem Linienabstand an, egal wie weit du hineingezoomt hast.", "Links beginnt der Text rechts vom roten Rand.", "Abschalten: Text-Werkzeug zweimal antippen → „Auf Linien schreiben“."],
+          "covers": ["extra:text-linien"]
+        },
+        {
           "id": "tool-bild",
           "title": "Bild",
           "text": "Fügt ein Bild ein (PNG, JPG, WebP, GIF, BMP). Große Bilder werden auf höchstens 2048 Pixel verkleinert.",

@@ -273,6 +273,7 @@ impl Editor {
         board.snap_cfg = sh.settings.snap.to_core();
         board.calc = sh.settings.calc.to_core();
         board.finger_draw = x.get("finger").and_then(|v| v.as_bool()).unwrap_or_else(|| sh.platform.is_touch());
+        board.text_lines = x.get("text_lines").and_then(|v| v.as_bool()).unwrap_or(true);
         let mut ext = extras::Extras::default();
         ext.laser.color = x.get("laser_color").and_then(|v| v.as_u64()).map(|v| v as u32).unwrap_or(owndraw_core::laser::LASER_COLOR);
         ext.laser_size = x.get("laser_size").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(owndraw_core::laser::DOT_SIZE).clamp(owndraw_core::laser::DOT_MIN, owndraw_core::laser::DOT_MAX);
@@ -985,7 +986,7 @@ impl Editor {
     /// Werkzeug-Vorgaben (Modus, Breite, …) in den Einstellungen merken.
     fn sync_tool_prefs(&self, s: &mut Settings) {
         let b = &self.board;
-        let vals: [(&str, serde_json::Value); 8] = [
+        let vals: [(&str, serde_json::Value); 9] = [
             ("arrow", b.arrow_style.into()),
             ("recog", self.ext.saved_recog.unwrap_or(b.recog).into()),
             ("selmode", b.sel_mode.into()),
@@ -993,6 +994,7 @@ impl Editor {
             ("w", serde_json::json!(b.pen_w)),
             ("shape", b.shape_kind.into()),
             ("finger", b.finger_draw.into()),
+            ("text_lines", b.text_lines.into()),
             ("penstyle", b.pen_style.into()),
         ];
         for (k, v) in vals {

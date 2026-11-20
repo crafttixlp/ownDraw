@@ -259,24 +259,14 @@ pub fn insert_image_bytes(editor: &mut Editor, bytes: &[u8], at: Option<(f32, f3
 
 /// Kontextmenü der Zeichenfläche mit Kopieren/Ausschneiden/Einfügen (für Touch ohne Tastatur).
 pub fn context_menu(editor: &mut Editor, resp: &egui::Response, sh: &mut Shared) {
-    let mut opened = false;
     if resp.secondary_clicked() || resp.long_touched() {
         editor.menu_pos = resp.interact_pointer_pos();
-        opened = true;
     }
     // Langes Drücken auf ein Objekt (jedes Werkzeug): Menü am Haltepunkt öffnen
     let mut pop = egui::Popup::context_menu(resp);
     if let Some(p) = editor.take_hold_menu() {
         editor.menu_pos = Some(p);
-        opened = true;
         pop = pop.open_memory(Some(egui::SetOpenCommand::Bool(true)));
-    }
-    // Gesperrtes Objekt unter dem Menüpunkt (für „Entsperren“)
-    if opened {
-        editor.menu_lock = editor.menu_pos.filter(|p| editor.canvas.contains(*p)).and_then(|p| {
-            let r = p - editor.canvas.min;
-            editor.board.locked_at_screen(r.x, r.y)
-        });
     }
     if let Some(p) = editor.menu_pos {
         pop = pop.at_position(p);
@@ -295,12 +285,6 @@ pub fn context_menu(editor: &mut Editor, resp: &egui::Response, sh: &mut Shared)
         if ui.button("Einfügen").clicked() {
             action = 3;
         }
-        if has_sel && ui.button("Sperren").on_hover_text("Objekt festsetzen: nicht mehr auswählen, verschieben, ändern oder radieren").clicked() {
-            action = 4;
-        }
-        if editor.menu_lock.is_some() && ui.button("Entsperren").clicked() {
-            action = 5;
-        }
         if action != 0 {
             ui.close();
         }
@@ -312,14 +296,6 @@ pub fn context_menu(editor: &mut Editor, resp: &egui::Response, sh: &mut Shared)
         3 => {
             let at = editor.menu_pos.and_then(|p| world_at(editor, p));
             paste_world(editor, &*sh.platform, at);
-        }
-        4 => {
-            editor.board.lock_sel();
-        }
-        5 => {
-            if let Some(id) = editor.menu_lock.take() {
-                editor.board.unlock(id);
-            }
         }
         _ => {}
     }

@@ -437,6 +437,11 @@ pub(super) fn run(ed: &mut Editor, id: &str) {
 pub(super) fn sel_buttons(ui: &mut Ui, ed: &mut Editor, sh: &mut Shared, btn: f32) {
     let p = style::pal();
     let env = sh.env;
+    let fixed = ed.board.sel_fixed();
+    let (fi, ft) = if fixed { (ic::LOCK, "Fixiert – tippen zum Lösen") } else { (ic::UNLOCK, "Fixieren (unbeweglich machen)") };
+    if icon_btn(ui, &mut sh.icons, fi, if fixed { p.accent } else { p.text }, fixed, false, btn, ft).clicked() {
+        ed.board.set_sel_fixed(!fixed);
+    }
     if can_group(&ed.board) && icon_btn(ui, &mut sh.icons, ic::GROUP, p.text, false, false, btn, &env.tip("Gruppieren", &keys::label(&sh.settings, "group"))).clicked() {
         ed.board.group_sel();
     }
@@ -489,10 +494,15 @@ pub(super) fn context_items(ui: &mut Ui, ed: &mut Editor) {
         return;
     }
     let (grp, ungrp, n) = (can_group(&ed.board), ed.board.sel_grouped(), units(&ed.board));
+    ui.separator();
+    let fixed = ed.board.sel_fixed();
+    if ui.button(if fixed { "Fixierung lösen" } else { "Fixieren" }).on_hover_text("Unbeweglich: nicht verschieben, drehen oder skalieren").clicked() {
+        ed.board.set_sel_fixed(!fixed);
+        ui.close();
+    }
     if !(grp || ungrp || n >= 2) {
         return;
     }
-    ui.separator();
     if grp && ui.button("Gruppieren").clicked() {
         ed.board.group_sel();
         ui.close();

@@ -2217,6 +2217,24 @@ impl Item {
         it
     }
 
+    /// Gesperrt (JSON `"lk"`, seit 4.46): lässt sich nicht auswählen, verschieben, ändern oder radieren.
+    /// Ältere Versionen behalten das Feld über `extra` bei.
+    pub fn locked(&self) -> bool {
+        self.extra.as_ref().and_then(|m| m.get(LOCK_KEY)).and_then(Value::as_bool).unwrap_or(false)
+    }
+
+    /// Sperrt bzw. entsperrt das Objekt.
+    pub fn set_locked(&mut self, on: bool) {
+        if on {
+            self.extra.get_or_insert_with(Default::default).insert(LOCK_KEY.into(), Value::Bool(true));
+        } else if let Some(m) = &mut self.extra {
+            m.remove(LOCK_KEY);
+            if m.is_empty() {
+                self.extra = None;
+            }
+        }
+    }
+
     /// Ersetzt den Text einer Notiz und berechnet das Layout neu.
     pub fn set_text(&mut self, text: &str) {
         if let Kind::Note(n) = &mut self.kind {
@@ -2243,6 +2261,9 @@ fn poly_hit(q: &[f32], x: f32, y: f32, lim: f32) -> bool {
 }
 
 // ---------------------------------------------------------------- JSON-Helfer
+
+/// JSON-Feld der Objektsperre (liegt in `Item::extra`, damit ältere Versionen es unverändert zurückschreiben).
+pub const LOCK_KEY: &str = "lk";
 
 /// Vom Kern selbst geschriebene Item-Felder; alle anderen landen in `Item::extra`.
 /// Neu in 4.25: "a0"/"a1" (Verbinder), "au"/"tm"/"re" (Stecknadel), "cl"/"cw"/"rh" (Tabelle), "cr" (Zuschnitt),

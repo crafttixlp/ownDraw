@@ -662,7 +662,7 @@ impl Board {
 
     fn usable(&self, it: &Item) -> bool {
         let l = &self.layers[self.layer_idx(it.layer)];
-        l.visible && !l.locked
+        l.visible && !l.locked && !it.locked()
     }
 
     pub fn add_layer(&mut self, name: Option<&str>) {
@@ -1281,6 +1281,72 @@ impl Board {
         self.select_only(id);
         self.expand_groups();
         true
+    }
+
+    /// Oberstes gesperrtes Objekt unter dem Bildschirmpunkt (sichtbare, entsperrte Ebenen).
+    pub fn locked_at_screen(&self, x: f32, y: f32) -> Option<u64> {
+        let (wx, wy) = self.screen_to_world(x, y);
+        let r = 10.0 * self.dp / self.sc;
+        let ok = |it: &Item| {
+            let l = &self.layers[self.layer_idx(it.layer)];
+            it.locked() && l.visible && !l.locked && self.hidden != Some(it.id)
+        };
+        let near = self.items.iter().rev().find(|it| ok(it) && it.near(wx, wy, r));
+        let inside = || {
+            self.items.iter().rev().filter(|it| ok(it)).filter(|it| {
+                let b = it.bounds();
+                wx >= b.left && wx <= b.right && wy >= b.top && wy <= b.bottom
+            }).min_by(|a, b| {
+                let (ba, bb) = (a.bounds(), b.bounds());
+                (ba.width() * ba.height()).total_cmp(&(bb.width() * bb.height()))
+            })
+        };
+        near.or_else(inside).map(|it| it.id)
+    }
+
+    /// Sperrt die Auswahl (samt Gruppen) und wählt ab; gesperrte Objekte bleiben sichtbar, lassen sich aber
+    /// nicht mehr auswählen, verschieben, ändern oder radieren. Liefert die Anzahl.
+    pub fn lock_sel(&mut self) -> usize {
+        self.expand_groups();
+        let n = self.sel.len();
+        if n == 0 {
+            return 0;
+        }
+        self.checkpoint();
+        self.drop_lift();
+        self.sel_mut(|it| it.set_locked(true));
+        self.deselect();
+        self.modified = true;
+        self.refresh();
+        self.notice(if n == 1 { "Objekt gesperrt" } else { "Objekte gesperrt" });
+        self.changed();
+        n
+    }
+
+    /// Entsperrt das Objekt (und seine Gruppe) und wählt es aus. Liefert die Anzahl.
+    pub fn unlock(&mut self, id: u64) -> usize {
+        let Some(gid) = self.items.iter().find(|it| it.id == id && it.locked()).map(|it| it.gid) else { return 0 };
+        self.checkpoint();
+        let mut ids = Vec::new();
+        for it in self.items.iter_mut() {
+            if it.locked() && (it.id == id || (gid != 0 && it.gid == gid)) {
+                Rc::make_mut(it).set_locked(false);
+                ids.push(it.id);
+            }
+        }
+        if self.tool != SELECT {
+            let back = self.back_tool.or(Some(self.tool));
+            self.set_tool(SELECT);
+            self.back_tool = back;
+        }
+        self.sel_clear();
+        self.sel = ids.clone();
+        self.ensure_frame();
+        self.modified = true;
+        self.refresh();
+        self.notice(if ids.len() == 1 { "Objekt entsperrt" } else { "Objekte entsperrt" });
+        self.changed();
+        ids.len()
     }
 
     /// Waehlt genau dieses Objekt aus.
@@ -2508,7 +2574,7 @@ impl Board {
         let mut best: Option<(f32, u64)> = None;
         for it in self.items.iter().rev() {
             let l = &self.layers[self.layer_idx(it.layer)];
-            if !l.visible || l.locked {
+            if !l.visible || l.locked || it.locked() {
                 continue;
             }
             let b = it.bounds();
@@ -2533,7 +2599,7 @@ impl Board {
                 }
             }
             let l = &self.layers[li];
-            if l.visible && !l.locked && it.near(wx, wy, r) {
+            if l.visible && !l.locked && !it.locked() && it.near(wx, wy, r) {
                 best_i = Some(i);
                 best_l = Some(li);
             }
@@ -3611,6 +3677,37 @@ mod tests {
         drag(&mut b, &[(500.0, 400.0)], ToolType::Stylus);
         assert!(b.sel.is_empty());
         assert_eq!(b.tool, TEXT);
+    }
+
+    #[test]
+    fn gesperrte_objekte_bleiben_unberuehrt() {
+        let mut b = board();
+        b.items.push(Rc::new(Item::shape(item::POLY, vec![100.0, 100.0, 300.0, 100.0, 300.0, 200.0, 100.0, 200.0], INK, 2.0)));
+        let id = b.items[0].id;
+        b.set_tool(PEN);
+        assert!(b.select_at_screen(100.0, 150.0, false));
+        assert_eq!(b.lock_sel(), 1);
+        assert!(b.sel.is_empty() && b.tool == PEN && b.items[0].locked());
+        // nicht antippbar, nicht im Rahmen, nicht radierbar
+        assert!(!b.hit_at_screen(100.0, 150.0) && !b.select_at_screen(100.0, 150.0, false));
+        b.set_tool(SELECT);
+        b.sel_mode = 1;
+        drag(&mut b, &[(50.0, 50.0), (200.0, 150.0), (400.0, 300.0)], ToolType::Stylus);
+        assert!(b.sel.is_empty());
+        b.set_tool(ERASER);
+        drag(&mut b, &[(90.0, 150.0), (110.0, 150.0), (200.0, 100.0)], ToolType::Stylus);
+        assert_eq!(b.items.len(), 1);
+        // gespeichert als "lk", rückwärts lesbar
+        let j = b.items[0].json();
+        assert_eq!(j.get("lk"), Some(&serde_json::Value::Bool(true)));
+        assert!(Item::from_json(&j).unwrap().locked());
+        // entsperren: wieder ausgewählt; Rückgängig sperrt wieder
+        assert_eq!(b.locked_at_screen(100.0, 150.0), Some(id));
+        assert_eq!(b.unlock(id), 1);
+        assert_eq!(b.sel, vec![id]);
+        assert!(!b.items[0].locked() && b.items[0].json().get("lk").is_none());
+        b.undo();
+        assert!(b.items[0].locked());
     }
 
     #[test]

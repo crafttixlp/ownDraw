@@ -435,14 +435,12 @@ pub struct PasswordBody {
     new: String,
 }
 
-pub async fn change_password(State(s): State<AppState>, a: Auth, J(b): J<PasswordBody>) -> ApiResult<Json<Value>> {
+pub async fn change_password(State(s): State<AppState>, ClientIp(ip): ClientIp, a: Auth, J(b): J<PasswordBody>) -> ApiResult<Json<Value>> {
     if a.user.guest {
         return Err(ApiError::forbidden("Gäste haben kein Passwort. Lege dafür ein Konto an."));
     }
     check_password(&b.new)?;
-    if !verify_password(b.old, a.user.pw_hash.clone()).await {
-        return Err(ApiError::forbidden("Das bisherige Passwort ist falsch."));
-    }
+    crate::account::check_current(&s, &a, &ip, b.old).await?;
     let hash = hash_password(b.new).await?;
     let (uid, th) = (a.user.id.clone(), a.token_hash.clone());
     s.db.call(move |c| {

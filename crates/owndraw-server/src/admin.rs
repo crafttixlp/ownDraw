@@ -90,7 +90,19 @@ pub async fn patch_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path<
     Ok(Json(v))
 }
 
-fn owned_boards(c: &Connection, user_id: &str) -> rusqlite::Result<Vec<String>> {
+/// Löscht ein Konto samt eigenen Boards (Dateien) und Mitgliedschaften; Lizenzen werden widerrufen (Code bleibt
+/// zur Nachvollziehbarkeit erhalten). Liefert die gelöschten Boards (für `hub.kick`). Admin und Selbstlöschung.
+pub(crate) fn remove_user(c: &Connection, dir: &std::path::Path, id: &str) -> rusqlite::Result<Vec<String>> {
+    let boards = owned_boards(c, id)?;
+    c.execute("UPDATE licenses SET revoked=1, note=note || ' (Nutzer gelöscht)' WHERE redeemed_by=?1", [id])?;
+    c.execute("DELETE FROM users WHERE id=?1", [id])?;
+    for b in &boards {
+        let _ = std::fs::remove_file(board_path(dir, b));
+    }
+    Ok(boards)
+}
+
+pub(crate) fn owned_boards(c: &Connection, user_id: &str) -> rusqlite::Result<Vec<String>> {
     let mut st = c.prepare("SELECT id FROM boards WHERE owner_id=?1")?;
     let ids = st.query_map([user_id], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
     Ok(ids)
@@ -107,14 +119,7 @@ pub async fn delete_user(State(s): State<AppState>, a: AdminAuth, Path(id): Path
                 return Err(ApiError::invalid("Du kannst dein eigenes Konto nicht löschen."));
             }
             db::user_by_id(c, &id)?.ok_or_else(|| ApiError::not_found("Nutzer nicht gefunden."))?;
-            let boards = owned_boards(c, &id)?;
-            // Lizenzen des Nutzers werden widerrufen (Code bleibt zur Nachvollziehbarkeit erhalten).
-            c.execute("UPDATE licenses SET revoked=1, note=note || ' (Nutzer gelöscht)' WHERE redeemed_by=?1", [&id])?;
-            c.execute("DELETE FROM users WHERE id=?1", [&id])?;
-            for b in &boards {
-                let _ = std::fs::remove_file(board_path(&dir, b));
-            }
-            Ok(boards)
+            Ok(remove_user(c, &dir, &id)?)
         })
         .await?;
     for b in &boards {

@@ -24,6 +24,8 @@ pub enum SettingsAction {
     PickFolder,
     /// Editor im Bearbeiten-Modus der Werkzeugleiste öffnen.
     EditTools,
+    /// Konto-Dialog auf der Startseite öffnen: `login`, `registrieren`, `einloesen`, `gast-beenden`.
+    AccountDialog(&'static str),
 }
 
 const MAX_W: f32 = 720.0;
@@ -47,7 +49,7 @@ enum Page {
     Hw,
     /// Speicherort und neue Boards.
     Save,
-    /// Server-Adresse (Desktop und Android).
+    /// Konto: Name, E-Mail, Passwort, Geräte, Daten, Löschen; Desktop/Android auch die Server-Adresse.
     Account,
     /// Updates (nicht im Browser).
     Update,
@@ -66,7 +68,7 @@ impl Page {
             Page::Snap => "Einrasten",
             Page::Hw => "Handschrift-Erkennung",
             Page::Save => "Speichern",
-            Page::Account => "Konto & Server",
+            Page::Account => "Konto",
             Page::Update => "Updates",
             Page::About => "Über OwnDraw",
         }
@@ -101,6 +103,10 @@ pub fn open_page_named(ctx: &egui::Context, name: &str) {
         "hw" => Page::Hw,
         "save" => Page::Save,
         "account" => Page::Account,
+        "account-loeschen" => {
+            ctx.data_mut(|d| d.insert_temp(Id::unique("settings-acct-demo-del"), true));
+            Page::Account
+        }
         "update" => Page::Update,
         "about" => Page::About,
         _ => Page::Main,
@@ -235,8 +241,7 @@ pub fn show(ui: &mut Ui, settings: &mut Settings, platform: &dyn Platform, icons
                     Page::Snap => page_snap(ui, &env, settings, platform),
                     Page::Hw => page_hw(ui, &env, settings, platform),
                     Page::Save => page_save(ui, &env, settings, platform, &mut act),
-                    #[cfg(not(target_arch = "wasm32"))]
-                    Page::Account => page_account(ui, &env, settings),
+                    Page::Account => page_account(ui, &env, settings, platform, &mut act),
                     #[cfg(not(target_arch = "wasm32"))]
                     Page::Update => page_update(ui, settings, platform),
                     Page::About => page_about(ui, &env, settings, platform),
@@ -317,15 +322,28 @@ fn main_page(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Pla
             None => "Standard-Ort: Vorgabe des Systems".to_string(),
         }
     };
-    #[allow(unused_mut)]
-    let mut app = vec![(ic::DARK, Page::Look, look_sub, false), (ic::FOLDER, Page::Save, save_sub, false)];
     #[cfg(not(target_arch = "wasm32"))]
-    app.push((ic::CLOUD, Page::Account, settings.server_url.trim_start_matches("https://").trim_start_matches("http://").to_string(), false));
+    let host = crate::net::base_url().trim_start_matches("https://").trim_start_matches("http://").to_string();
+    #[cfg(target_arch = "wasm32")]
+    let host = String::new();
+    let acct_sub = match crate::net::with(|n| (n.server, n.me.clone())) {
+        (crate::net::Server::Ready, Some(me)) if me.guest => format!("Gast-ID {}", me.name),
+        (crate::net::Server::Ready, Some(me)) => wd(me.email.clone(), format!("{} · {host}", me.email)),
+        (crate::net::Server::Ready, None) => wd("Nicht angemeldet".into(), format!("Nicht angemeldet · {host}")),
+        _ => wd("Ohne Server: kein Konto".into(), format!("Server nicht erreichbar · {host}")),
+    };
+    #[allow(unused_mut)]
+    let mut app = vec![(ic::LOCK, Page::Account, acct_sub, false), (ic::DARK, Page::Look, look_sub, false), (ic::FOLDER, Page::Save, save_sub, false)];
     #[cfg(not(target_arch = "wasm32"))]
     app.push((ic::DOWNLOAD, Page::Update, format!("Installiert: Version {}", env!("CARGO_PKG_VERSION")), false));
     app.push((ic::HELP, Page::About, concat!("Version ", env!("CARGO_PKG_VERSION"), " · Zurücksetzen").to_string(), false));
     caption_big(ui, "App");
     rows(ui, icons, page, app);
+}
+
+/// Text für Web-App bzw. Desktop/Android.
+fn wd(web: String, other: String) -> String {
+    if crate::platform::WEB { web } else { other }
 }
 
 /// Überschrift über einer Gruppe von Kategorien.
@@ -693,15 +711,297 @@ fn page_save(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Pla
 
 }
 
-// ---------------------------------------------------------------- Unterseite „Konto & Server“ (Desktop und Android)
+// ---------------------------------------------------------------- Unterseite „Konto“
 
-#[cfg(not(target_arch = "wasm32"))]
-fn page_account(ui: &mut Ui, env: &Env, settings: &mut Settings) {
+/// Eingaben der Konto-Seite (bleiben beim Wechsel zwischen Seiten erhalten, bis das Formular abgeschickt ist).
+#[derive(Clone, Default)]
+struct AcctForm {
+    /// Konto, für das die Felder gelten (Wechsel → Felder neu füllen, Geräte neu laden).
+    uid: String,
+    name: String,
+    email_open: bool,
+    email: String,
+    email_pw: String,
+    pw_old: String,
+    pw_new: String,
+    pw_rep: String,
+    del_open: bool,
+    del_pw: String,
+    del_sure: bool,
+}
+
+fn pw_field(ui: &mut Ui, text: &mut String, hint: &str) {
+    ui.add(egui::TextEdit::singleline(text).password(true).desired_width(260.0).hint_text(hint).margin(egui::vec2(8.0, 6.0)));
+}
+
+fn text_field(ui: &mut Ui, text: &mut String, hint: &str) {
+    ui.add(egui::TextEdit::singleline(text).desired_width(260.0).hint_text(hint).margin(egui::vec2(8.0, 6.0)));
+}
+
+fn acct_date(secs: i64) -> String {
+    super::account::date(secs)
+}
+
+fn page_account(ui: &mut Ui, env: &Env, settings: &mut Settings, platform: &dyn Platform, act: &mut SettingsAction) {
+    use crate::net::{self as api, Server};
     let p = style::pal();
     let btn = env.btn;
+    let dim = |ui: &mut Ui, t: &str| {
+        ui.add(egui::Label::new(egui::RichText::new(t).size(12.5).color(c(p.dim))).wrap());
+    };
+    let fid = Id::unique("settings-acct-form");
+    let mut f: AcctForm = ui.data(|d| d.get_temp(fid)).unwrap_or_default();
+    let (server, me, busy, err, done, sessions, created) = api::with(|n| {
+        (n.server, n.me.clone(), n.acct.busy, n.acct.error.clone(), std::mem::take(&mut n.acct.done), n.acct.sessions, n.acct.created)
+    });
+    let err_for = |ui: &mut Ui, form: &str| {
+        if let Some((_, e)) = err.as_ref().filter(|(k, _)| *k == form) {
+            ui.add(egui::Label::new(egui::RichText::new(e).size(12.5).color(c(p.danger_text))).wrap());
+        }
+    };
+    match done {
+        Some("email") => (f.email_open, f.email, f.email_pw) = (false, String::new(), String::new()),
+        Some("password") => (f.pw_old, f.pw_new, f.pw_rep) = (String::new(), String::new(), String::new()),
+        _ => {}
+    }
 
-    // ---- Konto & Zusammenarbeit (Desktop: Server-Adresse, Speicherort neuer Boards)
-    section(ui, "Konto & Server", |ui| {
+    match (server, &me) {
+        (Server::Ready, Some(me)) if me.guest => {
+            section(ui, "Konto", |ui| {
+                row(ui, env, "Gast-ID", Some("Du bist über einen Einladungslink als Gast dabei. Gäste sehen nur Boards, zu denen sie eingeladen wurden."), |ui| {
+                    ui.label(egui::RichText::new(&me.name).strong());
+                });
+                row(ui, env, "", None, |ui| {
+                    if style::accent_btn(ui, "Konto erstellen", btn).clicked() {
+                        *act = SettingsAction::AccountDialog("registrieren");
+                    }
+                    if style::outline_btn(ui, "Gastzugang beenden …", btn).clicked() {
+                        *act = SettingsAction::AccountDialog("gast-beenden");
+                    }
+                });
+            });
+        }
+        (Server::Ready, Some(me)) => {
+            if f.uid != me.id {
+                let del_open = ui.data(|d| d.get_temp(Id::unique("settings-acct-demo-del"))).unwrap_or(false);
+                f = AcctForm { uid: me.id.clone(), name: me.name.clone(), del_open, ..Default::default() };
+                api::load_sessions();
+            }
+            // ---- Profil
+            section(ui, "Konto", |ui| {
+                row(ui, env, "Name", Some("So sehen dich andere beim Teilen und in der Live-Zusammenarbeit."), |ui| {
+                    let w = (ui.available_width() - 120.0).clamp(120.0, 260.0);
+                    ui.add(egui::TextEdit::singleline(&mut f.name).desired_width(w).hint_text("Dein Name").margin(egui::vec2(8.0, 6.0)));
+                    let changed = !f.name.trim().is_empty() && f.name.trim() != me.name;
+                    ui.add_enabled_ui(changed && busy.is_none(), |ui| {
+                        if style::accent_btn(ui, "Speichern", btn).clicked() {
+                            api::set_name(&f.name);
+                        }
+                    });
+                });
+                err_for(ui, "name");
+                row(ui, env, "E-Mail", Some("Damit meldest du dich an."), |ui| {
+                    ui.label(egui::RichText::new(&me.email).strong());
+                    if !f.email_open && style::plain_btn(ui, "Ändern …", btn).clicked() {
+                        f.email_open = true;
+                        f.email = me.email.clone();
+                    }
+                });
+                if f.email_open {
+                    row(ui, env, "Neue E-Mail", None, |ui| text_field(ui, &mut f.email, "name@beispiel.de"));
+                    row(ui, env, "Aktuelles Passwort", Some("Zur Bestätigung. Andere Geräte werden danach abgemeldet."), |ui| pw_field(ui, &mut f.email_pw, "Passwort"));
+                    err_for(ui, "email");
+                    row(ui, env, "", None, |ui| {
+                        let ok = f.email.contains('@') && f.email.trim() != me.email && !f.email_pw.is_empty() && busy.is_none();
+                        ui.add_enabled_ui(ok, |ui| {
+                            if style::accent_btn(ui, "E-Mail ändern", btn).clicked() {
+                                api::change_email(&f.email, &f.email_pw);
+                            }
+                        });
+                        if style::plain_btn(ui, "Abbrechen", btn).clicked() {
+                            (f.email_open, f.email, f.email_pw) = (false, String::new(), String::new());
+                            api::with(|n| n.acct.error = None);
+                        }
+                        if busy == Some("email") {
+                            ui.spinner();
+                        }
+                    });
+                }
+                let lic = match &me.license {
+                    Some(l) if l.active => format!(
+                        "{} · {:.0} von {:.0} MB belegt",
+                        l.expires_at.map(|e| format!("Gültig bis {}", acct_date(e))).unwrap_or_else(|| "Unbefristet gültig".into()),
+                        l.used_mb,
+                        l.quota_mb
+                    ),
+                    Some(l) => format!("Abgelaufen{}. Boards auf dem Server sind nur lesbar.", l.expires_at.map(|e| format!(" am {}", acct_date(e))).unwrap_or_default()),
+                    None => "Keine Lizenz. Mit einer Lizenz speicherst und teilst du Boards auf dem Server.".into(),
+                };
+                row(ui, env, "Lizenz", None, |ui| {
+                    ui.add(egui::Label::new(lic).wrap());
+                    if !me.licensed() && style::plain_btn(ui, "Lizenz einlösen …", btn).clicked() {
+                        *act = SettingsAction::AccountDialog("einloesen");
+                    }
+                });
+                if let Some(t) = created {
+                    row(ui, env, "Konto seit", None, |ui| {
+                        ui.label(acct_date(t));
+                    });
+                }
+                if me.admin {
+                    row(ui, env, "Administrator", Some("Zwei-Faktor-Anmeldung und Wiederherstellungscodes verwaltest du in der Verwaltung."), |ui| {
+                        if style::plain_btn(ui, "Verwaltung öffnen", btn).clicked() {
+                            #[cfg(target_arch = "wasm32")]
+                            platform.open_url("/admin");
+                            #[cfg(not(target_arch = "wasm32"))]
+                            platform.open_url(&format!("{}/admin", api::base_url()));
+                        }
+                    });
+                }
+            });
+
+            // ---- Passwort
+            section(ui, "Passwort ändern", |ui| {
+                row(ui, env, "Aktuelles Passwort", None, |ui| pw_field(ui, &mut f.pw_old, "Bisheriges Passwort"));
+                row(ui, env, "Neues Passwort", Some("Mindestens 8 Zeichen."), |ui| pw_field(ui, &mut f.pw_new, "Neues Passwort"));
+                row(ui, env, "Wiederholen", None, |ui| pw_field(ui, &mut f.pw_rep, "Neues Passwort wiederholen"));
+                let short = !f.pw_new.is_empty() && f.pw_new.chars().count() < 8;
+                let differ = !f.pw_rep.is_empty() && f.pw_rep != f.pw_new;
+                if short {
+                    row(ui, env, "", None, |ui| dim(ui, "Das neue Passwort ist zu kurz."));
+                } else if differ {
+                    row(ui, env, "", None, |ui| dim(ui, "Die Wiederholung stimmt nicht überein."));
+                }
+                err_for(ui, "password");
+                row(ui, env, "", None, |ui| {
+                    let ok = !f.pw_old.is_empty() && !f.pw_new.is_empty() && !short && f.pw_rep == f.pw_new && busy.is_none();
+                    ui.add_enabled_ui(ok, |ui| {
+                        if style::accent_btn(ui, "Passwort ändern", btn).clicked() {
+                            api::change_password(&f.pw_old, &f.pw_new);
+                        }
+                    });
+                    if busy == Some("password") {
+                        ui.spinner();
+                    }
+                });
+                row(ui, env, "", None, |ui| dim(ui, "Danach wirst du auf allen anderen Geräten abgemeldet."));
+            });
+
+            // ---- Geräte
+            section(ui, "Geräte", |ui| {
+                let n = sessions.unwrap_or(1).max(1);
+                let txt = if n == 1 { "Nur auf diesem Gerät angemeldet".to_string() } else { format!("Auf {n} Geräten angemeldet (mit diesem)") };
+                row(ui, env, "Anmeldungen", Some(&txt), |ui| {
+                    ui.add_enabled_ui(n > 1 && busy.is_none(), |ui| {
+                        if style::plain_btn(ui, "Überall sonst abmelden", btn).on_hover_text("Beendet die Anmeldung auf allen anderen Geräten und Browsern").clicked() {
+                            api::logout_others();
+                        }
+                    });
+                    if style::outline_btn(ui, "Hier abmelden", btn).clicked() {
+                        api::logout();
+                    }
+                });
+                err_for(ui, "others");
+            });
+
+            // ---- Daten
+            section(ui, "Deine Daten", |ui| {
+                row(ui, env, "Daten herunterladen", Some("ZIP mit allen deinen Boards auf dem Server (.owndraw) und deinen Kontodaten (konto.json)."), |ui| {
+                    ui.add_enabled_ui(busy.is_none(), |ui| {
+                        if style::plain_btn(ui, "Herunterladen …", btn).clicked() {
+                            api::export_account();
+                        }
+                    });
+                    if busy == Some("export") {
+                        ui.spinner();
+                    }
+                });
+                err_for(ui, "export");
+            });
+
+            // ---- Löschen
+            section(ui, "Konto löschen", |ui| {
+                if !f.del_open {
+                    row(ui, env, "Konto löschen", Some("Löscht dein Konto, alle deine Boards auf dem Server und deine Lizenz. Boards auf diesem Gerät bleiben."), |ui| {
+                        if style::danger_btn(ui, "Konto löschen …", btn).clicked() {
+                            f.del_open = true;
+                        }
+                    });
+                } else {
+                    ui.add(egui::Label::new(egui::RichText::new("Konto wirklich löschen?").size(style::fs::SECTION).strong().color(c(p.danger_text))).wrap());
+                    ui.add_space(4.0);
+                    ui.add(egui::Label::new("Gelöscht werden dein Konto, alle Boards, die dir auf dem Server gehören (auch für alle, mit denen du sie geteilt hast), deine Einladungslinks und deine Lizenz. Das lässt sich nicht rückgängig machen.").wrap());
+                    ui.add_space(6.0);
+                    row(ui, env, "Vorher sichern", Some("Empfohlen: lade deine Boards herunter, bevor du löschst."), |ui| {
+                        ui.add_enabled_ui(busy.is_none(), |ui| {
+                            if style::plain_btn(ui, "Daten herunterladen …", btn).clicked() {
+                                api::export_account();
+                            }
+                        });
+                    });
+                    row(ui, env, "Aktuelles Passwort", Some("Zur Bestätigung."), |ui| pw_field(ui, &mut f.del_pw, "Passwort"));
+                    row(ui, env, "", None, |ui| {
+                        ui.checkbox(&mut f.del_sure, "Ich verstehe, dass alles endgültig gelöscht wird.");
+                    });
+                    err_for(ui, "delete");
+                    row(ui, env, "", None, |ui| {
+                        ui.add_enabled_ui(f.del_sure && !f.del_pw.is_empty() && busy.is_none(), |ui| {
+                            if style::danger_btn(ui, "Endgültig löschen", btn).clicked() {
+                                api::delete_account(&f.del_pw);
+                            }
+                        });
+                        if style::plain_btn(ui, "Abbrechen", btn).clicked() {
+                            (f.del_open, f.del_pw, f.del_sure) = (false, String::new(), false);
+                            api::with(|n| n.acct.error = None);
+                        }
+                        if busy == Some("delete") {
+                            ui.spinner();
+                        }
+                    });
+                }
+            });
+        }
+        (Server::Ready, None) => {
+            section(ui, "Konto", |ui| {
+                row(ui, env, "Nicht angemeldet", Some("Mit einem Konto wirst du zu Boards eingeladen und arbeitest live mit. Mit einer Lizenz speicherst und teilst du Boards auf dem Server."), |ui| {
+                    if style::accent_btn(ui, "Anmelden", btn).clicked() {
+                        *act = SettingsAction::AccountDialog("login");
+                    }
+                    if style::outline_btn(ui, "Konto erstellen", btn).clicked() {
+                        *act = SettingsAction::AccountDialog("registrieren");
+                    }
+                });
+            });
+        }
+        _ => {
+            section(ui, "Konto", |ui| {
+                if crate::platform::WEB {
+                    row(ui, env, "Kein Server", Some("Diese Web-App läuft ohne OwnDraw-Server. Konten gibt es hier nicht, Boards bleiben in diesem Browser."), |_| {});
+                } else {
+                    row(ui, env, "Server nicht erreichbar", Some("Konto und Boards auf dem Server gehen wieder, sobald der Server erreichbar ist. Die Adresse stellst du unten ein."), |_ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if style::plain_btn(_ui, "Erneut versuchen", btn).clicked() {
+                            api::retry();
+                        }
+                    });
+                }
+            });
+        }
+    }
+    ui.data_mut(|d| d.insert_temp(fid, f));
+    let _ = platform;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    page_server(ui, env, settings);
+    #[cfg(target_arch = "wasm32")]
+    let _ = settings;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn page_server(ui: &mut Ui, env: &Env, settings: &mut Settings) {
+    let p = style::pal();
+    let btn = env.btn;
+    section(ui, "Server", |ui| {
         let sid = Id::unique("settings-server-url");
         let mut url = ui.data(|d| d.get_temp::<String>(sid)).unwrap_or_else(|| settings.server_url.clone());
         row(ui, env, "Server", Some("Adresse des OwnDraw-Servers für Anmelden, Boards auf dem Server und Live-Zusammenarbeit. Ohne Verbindung arbeitest du wie gewohnt mit Boards auf diesem Gerät."), |ui| {

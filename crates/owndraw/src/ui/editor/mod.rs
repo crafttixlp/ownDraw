@@ -490,7 +490,7 @@ impl Editor {
                 Err(e) => sh.toast(&format!("Bild konnte nicht geladen werden: {e}")),
             },
             PickPurpose::FormulasExport(_) | PickPurpose::FormulasImport => self.apply_fbook_pick(sh, purpose, &f),
-            PickPurpose::OpenDoc | PickPurpose::NewDoc | PickPurpose::DefaultDir => {}
+            PickPurpose::OpenDoc | PickPurpose::NewDoc | PickPurpose::DefaultDir | PickPurpose::AccountExport => {}
         }
     }
 

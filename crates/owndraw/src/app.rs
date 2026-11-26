@@ -34,6 +34,8 @@ pub enum PickPurpose {
     /// Formelsammlung (Index in `formulas::with(|l| l.sets)`) als Datei speichern.
     FormulasExport(usize),
     FormulasImport,
+    /// Daten-Export des Kontos (ZIP aus `net::Acct::export`) speichern.
+    AccountExport,
 }
 
 /// Aufträge der Oberfläche an die Shell (werden am Frameende abgearbeitet).
@@ -109,6 +111,8 @@ pub struct App {
     pending: HashMap<Tag, (PickPurpose, Option<NewParams>)>,
     /// Importiertes Dokument, das auf die Wahl seines Speicherorts wartet (Tag des Speichern-Dialogs).
     pending_docs: HashMap<Tag, Document>,
+    /// Geladener Daten-Export des Kontos, wartet auf den Speicherort.
+    account_export: Option<Vec<u8>>,
     /// Zeitpunkt des letzten Autosave-Erfolgs, der in „Zuletzt“ eingetragen wurde.
     last_saved: f64,
     /// Zeitpunkt der letzten Prüfung auf fehlende Dateien der Zuletzt-Liste.
@@ -138,6 +142,7 @@ impl App {
             recent,
             pending: HashMap::new(),
             pending_docs: HashMap::new(),
+            account_export: None,
             last_saved: -1.0,
             last_missing_check: -100.0,
             next_tag: 1,
@@ -409,6 +414,14 @@ impl App {
         match purpose {
             PickPurpose::OpenDoc => self.open_ref(ctx, f),
             PickPurpose::DefaultDir => self.sh.settings.default_dir = Some(f.to_key()),
+            PickPurpose::AccountExport => {
+                if let Some(b) = self.account_export.take() {
+                    match self.sh.platform.write_atomic(&f, &b) {
+                        Ok(()) => self.sh.toast("Daten gespeichert"),
+                        Err(e) => self.sh.toast_for(&format!("Speichern fehlgeschlagen: {e}"), 4.0),
+                    }
+                }
+            }
             PickPurpose::NewDoc => {
                 if let Some(p) = params {
                     self.finish_create(ctx, p, f);
@@ -576,6 +589,11 @@ impl App {
                 self.open_ref(&ctx, f);
             }
             self.web_moves();
+            if let Some(b) = crate::net::with(|n| n.acct.export.take()) {
+                self.account_export = Some(b);
+                let tag = self.tag(PickPurpose::AccountExport, None);
+                self.sh.platform.pick_save("OwnDraw-Konto.zip", FileKind::Zip, tag);
+            }
         }
         for ev in self.sh.platform.poll() {
             match ev {
@@ -611,6 +629,10 @@ impl App {
                         self.sh.platform.pick_folder(tag);
                     }
                     SettingsAction::EditTools => edit_tools = true,
+                    SettingsAction::AccountDialog(which) => {
+                        self.screen = Screen::Start;
+                        crate::ui::account::demo_dialog(&mut self.start.account, which);
+                    }
                     SettingsAction::Changed | SettingsAction::None => {}
                 }
             }

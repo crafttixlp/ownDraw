@@ -410,7 +410,7 @@ async fn session(s: AppState, sock: WebSocket, board_id: String, user: db::UserR
         let id = st.next_peer;
         st.next_peer += 1;
         let peer = Peer { id, user_id: user.id.clone(), name: user.name.clone(), color: COLORS[(id as usize - 1) % COLORS.len()], role: role.clone(), admin: user.admin, guest: user.guest, tx };
-        let hello = json!({
+        let mut hello = json!({
             "t": "hello",
             "proto": PROTO,
             "you": peer.json(),
@@ -418,9 +418,10 @@ async fn session(s: AppState, sock: WebSocket, board_id: String, user: db::UserR
             "seq": st.seq,
             "version": st.version,
             "peers": st.peers.iter().map(Peer::json).collect::<Vec<_>>(),
-            "board": st.board_json(),
-            "mode": st.board.mode,
         });
+        // Board per Zuweisung: `json!` würde den ganzen Objektbaum (unter der Raum-Sperre) noch einmal kopieren.
+        hello["board"] = st.board_json();
+        hello["mode"] = st.board.mode.clone();
         peer.send(&hello);
         st.broadcast(&json!({"t": "join", "peer": peer.json()}), None);
         st.peers.push(peer);
@@ -530,7 +531,9 @@ async fn handle(s: &AppState, room: &Arc<Room>, peer_id: u64, text: &str) {
             st.seq += 1;
             st.dirty = true;
             let seq = st.seq;
-            st.broadcast(&json!({"t": "ops", "seq": seq, "peer": peer_id, "cid": cid, "ops": oc::ops_to_json(&ops)}), None);
+            let mut m = json!({"t": "ops", "seq": seq, "peer": peer_id, "cid": cid});
+            m["ops"] = oc::ops_to_json(&ops);
+            st.broadcast(&m, None);
         }
         Some("cursor") => {
             let f = |k: &str| m.get(k).and_then(Value::as_f64).filter(|v| v.is_finite());

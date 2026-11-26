@@ -126,7 +126,9 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     println!("{:<34} {tree:8.2}", "  davon to_json (Baum)");
     let t = Instant::now();
     let th = b.thumb();
+    let tt = t.elapsed().as_secs_f64() * 1000.0;
     let png = th.encode_png().unwrap();
+    println!("{:<34} {tt:8.2}", "Vorschaubild (UI-Thread)");
     println!("{:<34} {:8.2}   (PNG {} kB)", "Vorschaubild + PNG", t.elapsed().as_secs_f64() * 1000.0, png.len() / 1000);
     let t = Instant::now();
     let v: serde_json::Value = serde_json::from_str(&s).unwrap();
@@ -213,6 +215,23 @@ fn scenario(title: &str, ps: f32, n: usize, pages: bool) {
     let (ms, f) = frame(&mut b, &mut pm, &mut up);
     st.add(ms, f);
     st.line("Bild nach Zoom");
+
+    // Übersicht: weit herausgezoomt (ganzes Board sichtbar), danach zurück
+    let mut st = Stat::default();
+    for (i, f) in [0.3f32, 1.0 / 0.3, 0.15, 1.0 / 0.15].into_iter().enumerate() {
+        now += 1.0;
+        b.tick(now);
+        b.zoom_at(960.0, 540.0, f);
+        now += 1.0;
+        b.tick(now);
+        let (ms, fr) = frame(&mut b, &mut pm, &mut up);
+        if i % 2 == 0 {
+            st.add(ms, fr);
+        }
+    }
+    st.line("Bild herausgezoomt (Übersicht)");
+    now += 1.0;
+    b.tick(now);
 
     // Rückgängig / Wiederholen
     let mut st = Stat::default();

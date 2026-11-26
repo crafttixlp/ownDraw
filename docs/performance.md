@@ -24,6 +24,14 @@ die zur GPU muss).
   Kernen abgespielt (`Recording::replay_parallel`). Objekte selbst bleiben einthreadig (`Rc`).
 - **Autosave:** Im UI-Thread nur Board-JSON und Vorschaubild; PNG, Serialisieren und Packen im Schreib-Thread.
 - **Seitenliste:** Vorschaubilder nur für Seiten, deren Inhalt sich geändert hat (`Board::content_key`).
+- **Herausgezoomt (ab 4.48):** Verkettete, fast gerade Kapseln werden vor dem Rastern zusammengefasst
+  (`merge_segs`, nur bei Auflösung < 0,75; Abweichung ≤ 0,06 px). Spart in der Übersicht und beim Vorschaubild
+  den Großteil der Segmente.
+- **Breite Striche (ab 4.48):** Voll gedeckte Zeilenmitte einer Kapsel wird direkt gefüllt, nur die Ränder laufen
+  über das Abstandsfeld; deckende Pixel werden ohne Mischen geschrieben.
+- **Speichern (ab 4.48):** `Board::to_json` baut die Map direkt (`json!` mit fertigen Values kopierte den ganzen
+  Objektbaum ein zweites Mal); der Editor hält nach dem Öffnen kein Board-JSON mehr im `Document`, daher kein
+  tiefes Kopieren beim Autosave. Live-Nachrichten (`ops`, `hello`) ebenso ohne Zweitkopie.
 - **Release-Profil:** `lto = "fat"`, `codegen-units = 1`.
 
 Test `incremental_render_matches_full` prüft, dass das schrittweise aufgebaute Bild (Teil-Updates, Ring-Speicher,

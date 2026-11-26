@@ -1262,7 +1262,8 @@ impl Item {
             return;
         }
         // Schneller Weg: Kapseln mit Abstandsfeld-Kantenglaettung (Canvas::fill_capsules)
-        let segs = self.capsule_segs(s, c.res_scale());
+        let res = c.res_scale();
+        let segs = merge_segs(self.capsule_segs(s, res), res);
         if c.fill_capsules(&segs, pt.color) {
             return;
         }
@@ -2376,6 +2377,57 @@ fn arr(a: &[f32]) -> Value {
     )
 }
 
+/// Fasst verkettete, fast gerade Kapseln zusammen: solange die übersprungenen Gelenkpunkte höchstens 0,06
+/// Gerätepixel von der neuen Strecke abweichen und die Radien um höchstens 0,04 px streuen (Radius = größter).
+/// Herausgezoomt (Übersicht, Vorschaubild) sind Segmente oft kürzer als ein Pixel – dort spart das den Großteil
+/// der Rasterarbeit; bei normalem Zoom bleibt das Bild praktisch gleich (Abweichung unter 1/16 Pixel).
+fn merge_segs(v: Vec<[f32; 5]>, res: f32) -> Vec<[f32; 5]> {
+    if v.len() < 3 || !(res > 0.0 && res < 0.75) {
+        return v;
+    }
+    let tol = 0.06 / res;
+    let (tol2, rtol) = (tol * tol, 0.04 / res);
+    let mut out = Vec::with_capacity(v.len() / 2 + 1);
+    let mut i = 0;
+    while i < v.len() {
+        let mut cur = v[i];
+        let (mut rmin, mut rmax) = (cur[4], cur[4]);
+        let mut j = i + 1;
+        while j < v.len() && j - i < 24 {
+            let g = &v[j];
+            if g[0] != cur[2] || g[1] != cur[3] {
+                break;
+            }
+            let (r0, r1) = (rmin.min(g[4]), rmax.max(g[4]));
+            if r1 - r0 > rtol {
+                break;
+            }
+            // Abstand der Gelenkpunkte v[i..j] zur Strecke Anfang(cur) → Ende(g)
+            let (ax, ay, dx, dy) = (cur[0], cur[1], g[2] - cur[0], g[3] - cur[1]);
+            let ll = dx * dx + dy * dy;
+            let inv = if ll > 1e-12 { 1.0 / ll } else { 0.0 };
+            let ok = v[i..j].iter().all(|k| {
+                let (ex, ey) = (k[2] - ax, k[3] - ay);
+                let u = ((ex * dx + ey * dy) * inv).clamp(0.0, 1.0);
+                let (qx, qy) = (ex - u * dx, ey - u * dy);
+                qx * qx + qy * qy <= tol2
+            });
+            if !ok {
+                break;
+            }
+            cur[2] = g[2];
+            cur[3] = g[3];
+            rmin = r0;
+            rmax = r1;
+            j += 1;
+        }
+        cur[4] = rmax;
+        out.push(cur);
+        i = j;
+    }
+    out
+}
+
 /// Lineare Formtypen (Linie, Pfeile): zwei Endpunkte q[0..2] und q[2..4].
 pub fn is_linear(kind: i32) -> bool {
     matches!(kind, LINE | ARROW | ARROW2 | ARROW_ENG | DIM) || (7..=10).contains(&kind)
@@ -2624,6 +2676,28 @@ pub fn jbool(o: &Value, k: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_segs_nur_herausgezoomt_und_fast_gerade() {
+        let chain = |pts: &[(f32, f32)], r: f32| -> Vec<[f32; 5]> { pts.windows(2).map(|w| [w[0].0, w[0].1, w[1].0, w[1].1, r]).collect() };
+        let line: Vec<(f32, f32)> = (0..20).map(|i| (i as f32 * 2.0, i as f32 * 0.5)).collect();
+        // normaler Zoom: unverändert
+        assert_eq!(merge_segs(chain(&line, 1.0), 1.0), chain(&line, 1.0));
+        // herausgezoomt: gerade Kette wird ein Segment mit gleichen Enden
+        let m = merge_segs(chain(&line, 1.0), 0.2);
+        assert_eq!(m, vec![[0.0, 0.0, 38.0, 9.5, 1.0]]);
+        // Zickzack (Abweichung 3 Welt-Einheiten = 0,6 px bei 0,2) bleibt erhalten
+        let zz: Vec<(f32, f32)> = (0..10).map(|i| (i as f32 * 2.0, if i % 2 == 0 { 0.0 } else { 3.0 })).collect();
+        assert_eq!(merge_segs(chain(&zz, 1.0), 0.2).len(), 9);
+        // stark wechselnder Druck (Radius) wird nicht zusammengefasst; Radius = größter der Gruppe
+        let mut v = chain(&line, 1.0);
+        for (i, g) in v.iter_mut().enumerate() {
+            g[4] = 1.0 + i as f32;
+        }
+        assert_eq!(merge_segs(v.clone(), 0.2).len(), v.len());
+        v[1][4] = 1.0 + 0.1;
+        assert_eq!(merge_segs(v, 0.2)[0][4], 1.1);
+    }
 
     #[test]
     fn json_roundtrip_java_format() {

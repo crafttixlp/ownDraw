@@ -442,7 +442,7 @@ impl<'a> Canvas<'a> {
                         Some((a, b)) => (iceil(a - 0.5 + 1e-3).max(rx0), (ifloor(b - 0.5 - 1e-3) + 1).min(rx1)),
                         None => (rx1, rx1),
                     };
-                    let mut edge = |from: i32, to: i32, cov: &mut [u8]| {
+                    let edge = |from: i32, to: i32, cov: &mut [u8]| {
                         for (px, o) in (from..to).zip(cov[base + (from - x0) as usize..base + (to - x0) as usize].iter_mut()) {
                             if *o == 255 {
                                 continue;

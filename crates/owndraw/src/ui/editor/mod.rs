@@ -250,7 +250,7 @@ pub struct Editor {
 
 impl Editor {
     /// Öffnet ein Dokument; `file` = Zieldatei für Autosave (None: nicht speichern).
-    pub fn open(sh: &mut Shared, doc: Document, file: Option<FileRef>) -> Editor {
+    pub fn open(sh: &mut Shared, mut doc: Document, file: Option<FileRef>) -> Editor {
         let img_dir = sh.platform.cache_dir().join("img").join(&doc.meta.id);
         if let Err(e) = session::prepare_images(&doc, &img_dir) {
             sh.toast(&format!("Bilder konnten nicht vorbereitet werden: {e}"));
@@ -258,6 +258,8 @@ impl Editor {
         item::set_img_dir(img_dir.clone());
         let mut board = Board::new(1.0);
         board.from_json(&doc.board);
+        // Ab hier ist das Board die Quelle; das alte JSON nicht mitschleppen (Speicher, billige Kopien beim Speichern).
+        doc.board = serde_json::Value::Null;
         board.board_mode = doc.mode.clone();
         let x = &sh.settings.extra;
         let geti = |k: &str, d: i64| x.get(k).and_then(|v| v.as_i64()).unwrap_or(d);
@@ -341,11 +343,12 @@ impl Editor {
     /// Speicherauftrag: im UI-Thread nur Board-JSON und Vorschaubild (Objekte sind nicht threadfähig),
     /// PNG-Kodierung und Serialisieren/Packen im Schreib-Thread.
     fn snapshot_bytes(board: &Board, doc: &mut Document, fmt: SaveFormat) -> crate::autosave::Job {
-        doc.board = board.to_json();
         doc.mode = board.board_mode.clone();
         doc.meta.modified = session::rfc3339_now();
         let thumb = board.thumb();
+        // doc.board bleibt leer (siehe open): kein tiefes Kopieren des Board-JSON im UI-Thread
         let mut d = doc.clone();
+        d.board = board.to_json();
         crate::autosave::Job(Box::new(move || {
             d.thumb = thumb.encode_png().ok();
             session::serialize_as(&d, fmt).unwrap_or_default()

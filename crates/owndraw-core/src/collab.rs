@@ -85,7 +85,13 @@ pub fn uid_of_json(v: &Value) -> Option<u64> {
 impl Op {
     pub fn to_json(&self) -> Value {
         match self {
-            Op::Item(Change::Upsert(it, after)) => json!({"o": "up", "item": it, "after": uid_json(*after)}),
+            Op::Item(Change::Upsert(it, after)) => {
+                let mut o = Map::new();
+                o.insert("o".into(), json!("up"));
+                o.insert("item".into(), it.clone());
+                o.insert("after".into(), uid_json(*after));
+                Value::Object(o)
+            }
             Op::Item(Change::Move(u, after)) => json!({"o": "mv", "uid": item::uid_str(*u), "after": uid_json(*after)}),
             Op::Item(Change::Delete(u)) => json!({"o": "del", "uid": item::uid_str(*u)}),
             Op::Board(b) => b.json(),

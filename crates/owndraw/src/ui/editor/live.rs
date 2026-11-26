@@ -295,7 +295,7 @@ impl Live {
                 }
             }
         }
-        self.send(json!({"t": "ops", "cid": cid, "ops": oc::ops_to_json(&ops)}));
+        self.send(ops_msg(cid, &ops));
     }
 
     fn send_cursor(&mut self, ed: &Editor, now: f64) {
@@ -335,7 +335,7 @@ impl Live {
                 self.set_live(true);
                 ed.autosave.set_read_only(!self.can_write || ed.doc.meta.read_only);
                 for (cid, ops) in resend {
-                    self.send(json!({"t": "ops", "cid": cid, "ops": oc::ops_to_json(&ops)}));
+                    self.send(ops_msg(cid, &ops));
                 }
                 self.want_images(ed, vis.items.iter().filter_map(|it| if let owndraw_core::item::Kind::Img(m) = &it.kind { Some(m.file.clone()) } else { None }).collect());
             }
@@ -818,4 +818,11 @@ fn peer_of(p: &Value, now: f64) -> Option<Peer> {
         cursor: None,
         seen: now,
     })
+}
+
+/// Nachricht „ops“; Operationen per Zuweisung eingesetzt (`json!` würde den Objektbaum noch einmal kopieren).
+fn ops_msg(cid: u64, ops: &[Op]) -> Value {
+    let mut m = json!({"t": "ops", "cid": cid});
+    m["ops"] = oc::ops_to_json(ops);
+    m
 }

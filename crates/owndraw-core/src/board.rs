@@ -1712,10 +1712,17 @@ impl Board {
     // ---------- Laden / Speichern ----------
 
     pub fn to_json(&self) -> Value {
-        let items: Vec<Value> = self.items.iter().map(|it| it.json()).collect();
-        let layers: Vec<Value> = self.layers.iter().map(|l| l.json()).collect();
-        json!({"bg": self.bg, "dark": self.dark, "s": item::num(self.sc), "tx": item::num(self.tx), "ty": item::num(self.ty),
-               "items": items, "layers": layers, "active": self.active})
+        // Map direkt füllen: `json!` mit fertigen Values würde den ganzen Objektbaum noch einmal kopieren.
+        let mut o = serde_json::Map::new();
+        o.insert("bg".into(), json!(self.bg));
+        o.insert("dark".into(), json!(self.dark));
+        o.insert("s".into(), item::num(self.sc));
+        o.insert("tx".into(), item::num(self.tx));
+        o.insert("ty".into(), item::num(self.ty));
+        o.insert("items".into(), Value::Array(self.items.iter().map(|it| it.json()).collect()));
+        o.insert("layers".into(), Value::Array(self.layers.iter().map(|l| l.json()).collect()));
+        o.insert("active".into(), json!(self.active));
+        Value::Object(o)
     }
 
     pub fn from_json(&mut self, o: &Value) {

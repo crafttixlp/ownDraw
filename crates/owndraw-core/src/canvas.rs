@@ -436,24 +436,39 @@ impl<'a> Canvas<'a> {
                     let base = row * bw;
                     let ey = cy - ay;
                     let (full2, out2) = ((re - 1.0).max(0.0) * (re - 1.0).max(0.0), re * re);
-                    for (px, o) in (rx0..rx1).zip(cov[base + (rx0 - x0) as usize..base + (rx1 - x0) as usize].iter_mut()) {
-                        if *o == 255 {
-                            continue;
+                    // Voll gedeckte Mitte der Zeile (Pixelmitte im Innern, Abstand <= re - 1) direkt füllen, etwas
+                    // nach innen geschrumpft; nur die Ränder brauchen das Abstandsfeld.
+                    let (ix0, ix1) = match (re > 4.0).then(|| capsule_row(ax, ay, bx, by, re - 1.0, cy)).flatten() {
+                        Some((a, b)) => (iceil(a - 0.5 + 1e-3).max(rx0), (ifloor(b - 0.5 - 1e-3) + 1).min(rx1)),
+                        None => (rx1, rx1),
+                    };
+                    let edge = |from: i32, to: i32, cov: &mut [u8]| {
+                        for (px, o) in (from..to).zip(cov[base + (from - x0) as usize..base + (to - x0) as usize].iter_mut()) {
+                            if *o == 255 {
+                                continue;
+                            }
+                            let ex = px as f32 + 0.5 - ax;
+                            let u = ((ex * dx + ey * dy) * inv).clamp(0.0, 1.0);
+                            let (qx, qy) = (ex - u * dx, ey - u * dy);
+                            let d2 = qx * qx + qy * qy;
+                            let v = if d2 <= full2 {
+                                255u8
+                            } else if d2 >= out2 {
+                                continue;
+                            } else {
+                                ((re - d2.sqrt()).min(1.0) * 255.0 + 0.5) as u8
+                            };
+                            if v > *o {
+                                *o = v;
+                            }
                         }
-                        let ex = px as f32 + 0.5 - ax;
-                        let u = ((ex * dx + ey * dy) * inv).clamp(0.0, 1.0);
-                        let (qx, qy) = (ex - u * dx, ey - u * dy);
-                        let d2 = qx * qx + qy * qy;
-                        let v = if d2 <= full2 {
-                            255u8
-                        } else if d2 >= out2 {
-                            continue;
-                        } else {
-                            ((re - d2.sqrt()).min(1.0) * 255.0 + 0.5) as u8
-                        };
-                        if v > *o {
-                            *o = v;
-                        }
+                    };
+                    if ix0 < ix1 {
+                        edge(rx0, ix0, cov);
+                        cov[base + (ix0 - x0) as usize..base + (ix1 - x0) as usize].fill(255);
+                        edge(ix1, rx1, cov);
+                    } else {
+                        edge(rx0, rx1, cov);
                     }
                     let rr = &mut rows[row];
                     rr.0 = rr.0.min((rx0 - x0) as u32);
@@ -487,8 +502,13 @@ impl<'a> Canvas<'a> {
                         }
                     }
                     let ea = div255(sa * k);
-                    let inv = 255 - ea;
                     let d = &mut data[idx * 4..idx * 4 + 4];
+                    if ea == 255 {
+                        // deckend: Ergebnis ist genau die Farbe (wie die Formel mit inv = 0)
+                        d.copy_from_slice(&[sr as u8, sg as u8, sb as u8, 255]);
+                        continue;
+                    }
+                    let inv = 255 - ea;
                     d[0] = (div255(sr * k) + div255(d[0] as u32 * inv)) as u8;
                     d[1] = (div255(sg * k) + div255(d[1] as u32 * inv)) as u8;
                     d[2] = (div255(sb * k) + div255(d[2] as u32 * inv)) as u8;

@@ -72,10 +72,7 @@ impl Editor {
         let Some(h) = self.hold.filter(|h| !h.fired && now - h.t0 >= HOLD) else { return };
         let tool = self.board.tool;
         let busy = self.text.is_some() || self.xs.crop.is_some() || self.ext_grabs(h.id);
-        let hit = self.board.hit_at_screen(h.rel.x, h.rel.y);
-        // gesperrte Objekte: kein Auswählen, aber Menü mit „Entsperren“
-        let locked = if hit { None } else { self.board.locked_at_screen(h.rel.x, h.rel.y) };
-        if tool == board::SELECT || tool == board::ERASER || busy || !(hit || locked.is_some()) {
+        if tool == board::SELECT || tool == board::ERASER || busy || !self.board.hit_at_screen(h.rel.x, h.rel.y) {
             self.hold = None;
             return;
         }
@@ -94,7 +91,7 @@ impl Editor {
         self.pan_start = None;
         self.xs.press = None;
         self.st.tap_down = None;
-        if locked.is_some() || self.board.select_at_screen(h.rel.x, h.rel.y, false) {
+        if self.board.select_at_screen(h.rel.x, h.rel.y, false) {
             self.board.events.push(board::Event::Haptic);
             self.hold = Some(Hold { fired: true, ..h });
         } else {
@@ -150,30 +147,6 @@ mod tests {
         // Abwählen: zurück zum Stift
         ed.board.deselect();
         assert_eq!(ed.board.tool, board::PEN);
-    }
-
-    #[test]
-    fn gesperrtes_objekt_sperren_und_entsperren() {
-        let (mut ed, p) = ed_mit_rechteck();
-        ed.board.set_tool(board::PEN);
-        druecken(&mut ed, p);
-        ed.hold_check(HOLD + 0.01);
-        assert!(ed.hold_track(extras::MOUSE, Ph::Up, p, p, 1.0));
-        assert_eq!(ed.board.lock_sel(), 1);
-        assert!(ed.board.items[0].locked() && ed.board.sel.is_empty());
-        assert_eq!(ed.board.tool, board::PEN, "zurück zum vorigen Werkzeug");
-        // Halten auf gesperrtem Objekt: nichts ausgewählt, Strich verworfen, Menü öffnet
-        let n = ed.board.items.len();
-        druecken(&mut ed, p);
-        ed.hold_check(HOLD + 0.01);
-        assert!(ed.board.sel.is_empty() && !ed.drawing);
-        assert_eq!(ed.board.items.len(), n);
-        assert!(ed.hold_track(extras::MOUSE, Ph::Up, p, p, 1.0));
-        assert_eq!(ed.take_hold_menu(), Some(p));
-        let id = ed.board.locked_at_screen(p.x, p.y).expect("gesperrt getroffen");
-        assert_eq!(ed.board.unlock(id), 1);
-        assert!(!ed.board.items[0].locked());
-        assert_eq!(ed.board.sel, vec![id]);
     }
 
     #[test]

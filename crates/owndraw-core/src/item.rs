@@ -2218,13 +2218,13 @@ impl Item {
         it
     }
 
-    /// Gesperrt (JSON `"lk"`, seit 4.46): lässt sich nicht auswählen, verschieben, ändern oder radieren.
+    /// Fixiert (JSON `"lk"`, seit 4.46): lässt sich nicht verschieben, drehen oder skalieren.
     /// Ältere Versionen behalten das Feld über `extra` bei.
     pub fn locked(&self) -> bool {
         self.extra.as_ref().and_then(|m| m.get(LOCK_KEY)).and_then(Value::as_bool).unwrap_or(false)
     }
 
-    /// Sperrt bzw. entsperrt das Objekt.
+    /// Fixiert das Objekt bzw. macht es wieder beweglich.
     pub fn set_locked(&mut self, on: bool) {
         if on {
             self.extra.get_or_insert_with(Default::default).insert(LOCK_KEY.into(), Value::Bool(true));
@@ -2263,7 +2263,7 @@ fn poly_hit(q: &[f32], x: f32, y: f32, lim: f32) -> bool {
 
 // ---------------------------------------------------------------- JSON-Helfer
 
-/// JSON-Feld der Objektsperre (liegt in `Item::extra`, damit ältere Versionen es unverändert zurückschreiben).
+/// JSON-Feld „fixiert“ (liegt in `Item::extra`, damit ältere Versionen es unverändert zurückschreiben).
 pub const LOCK_KEY: &str = "lk";
 
 /// Vom Kern selbst geschriebene Item-Felder; alle anderen landen in `Item::extra`.

@@ -347,11 +347,11 @@
           "covers": ["extra:lange-druecken"]
         },
         {
-          "id": "sel-sperren",
-          "title": "Objekte sperren",
-          "text": "Sperre fertige Teile wie Hintergrundbilder, Vorlagen oder Tabellen, damit du sie nicht aus Versehen verschiebst, änderst oder wegradierst. Halte das Objekt lange gedrückt (oder Rechtsklick auf die Auswahl) und wähle „Sperren“. Gesperrte Objekte bleiben sichtbar, lassen sich aber nicht mehr antippen, mit dem Rahmen auswählen oder radieren.",
-          "how": ["Entsperren: das gesperrte Objekt lange drücken oder rechts anklicken und „Entsperren“ wählen. Es ist danach gleich ausgewählt.", "Gruppen werden zusammen gesperrt und entsperrt.", "Die Sperre wird mit dem Board gespeichert und in der Live-Zusammenarbeit für alle übernommen. Rückgängig hebt sie wieder auf.", "Für ganze Ebenen gibt es das Schloss in der Ebenen-Liste."],
-          "covers": ["extra:objekte-sperren"]
+          "id": "sel-fixieren",
+          "title": "Objekte fixieren",
+          "text": "Mach fertige Teile wie Hintergrundbilder, Vorlagen oder Tabellen unbeweglich, damit du sie nicht aus Versehen verschiebst. Wähle das Objekt aus und tippe in der Auswahlleiste auf das Schloss (oder Rechtsklick/langes Drücken → „Fixieren“). Fixierte Objekte bleiben auswählbar und bearbeitbar, lassen sich aber nicht mehr verschieben, drehen oder skalieren.",
+          "how": ["Am Rahmen siehst du dann ein Schloss statt der Griffe.", "Lösen: Objekt auswählen und das Schloss erneut antippen bzw. „Fixierung lösen“ im Menü.", "Beim Ausrichten und Verteilen bleiben fixierte Objekte stehen. Gruppen werden zusammen fixiert.", "Die Fixierung wird mit dem Board gespeichert und in der Live-Zusammenarbeit übernommen. Rückgängig hebt sie wieder auf."],
+          "covers": ["extra:objekte-fixieren"]
         },
         {
           "id": "sel-gruppen",

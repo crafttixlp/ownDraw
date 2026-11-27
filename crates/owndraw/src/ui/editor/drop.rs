@@ -114,6 +114,30 @@ pub fn handle_drops(ctx: &egui::Context, platform: &dyn Platform, editor: Option
     out
 }
 
+/// Textdokument offen: Bilder (abgelegt oder im Browser per Strg+V eingefügt) gehen ins Dokument, Dateien werden
+/// geöffnet. Liefert (Bilder, übrige Aufträge).
+pub fn handle_drops_writer(ctx: &egui::Context, platform: &dyn Platform) -> (Vec<Vec<u8>>, Vec<DropOutcome>) {
+    let mut imgs = Vec::new();
+    let mut out = Vec::new();
+    for d in platform.take_drops(ctx) {
+        let name = if d.name.is_empty() { d.file.as_ref().map(|f| f.display_name()).unwrap_or_default() } else { d.name.clone() };
+        match kind_of(&name, d.bytes.as_deref()) {
+            FileKind::Image | FileKind::Png => match d.bytes.clone().or_else(|| d.file.as_ref().and_then(|f| platform.read(f).ok())) {
+                Some(b) => imgs.push(b),
+                None => out.push(DropOutcome::Toast(MSG_READ.into())),
+            },
+            FileKind::Owndraw | FileKind::Xopp => out.extend(d.file.map(DropOutcome::Open)),
+            _ if name.to_ascii_lowercase().ends_with(".docx") => out.extend(d.file.map(DropOutcome::Open)),
+            FileKind::Pdf => out.push(DropOutcome::Toast(MSG_PDF.into())),
+            _ => out.push(DropOutcome::Toast(MSG_TYPE.into())),
+        }
+    }
+    if platform.drag_hover(ctx) {
+        overlay(ctx);
+    }
+    (imgs, out)
+}
+
 /// Ablage-Hinweis: abgedunkelte Fläche, gestrichelter Rahmen in Akzentfarbe, Karte mit Text.
 fn overlay(ctx: &egui::Context) {
     let p = style::pal();

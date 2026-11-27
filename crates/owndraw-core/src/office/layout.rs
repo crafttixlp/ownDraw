@@ -41,7 +41,7 @@ pub fn para_style(doc: &TextDoc, k: Kind) -> PStyle {
         Kind::H3 => PStyle { fam: Family::Sans, size: 12.0, bold: true, before: 10.0, after: 3.0, ..body },
         Kind::Quote => PStyle { italic: true, before: 4.0, color: 0xFF4A4A55, ..body },
         Kind::Bullet | Kind::Number => PStyle { after: 3.0, ..body },
-        Kind::PageBreak => PStyle { after: 0.0, ..body },
+        Kind::PageBreak | Kind::Image => PStyle { after: 0.0, ..body },
     }
 }
 
@@ -117,6 +117,8 @@ pub struct Line {
     pub last: bool,
     /// Zeile eines Seitenumbruchs.
     pub pagebreak: bool,
+    /// Bild-Zeile: (Datei, x, Breite, Höhe); Oberkante `y`.
+    pub img: Option<(String, f32, f32, f32)>,
 }
 
 /// Ergebnis des Satzes.
@@ -219,10 +221,34 @@ pub fn layout(doc: &TextDoc) -> Layout {
                 page += 1;
                 y = top;
             }
-            lines.push(Line { para: pi, start: 0, end: 0, page, y, h, base: a, xs: vec![pg.ml], segs: Vec::new(), marker: None, first: true, last: true, pagebreak: true });
+            lines.push(Line { para: pi, start: 0, end: 0, page, y, h, base: a, xs: vec![pg.ml], segs: Vec::new(), marker: None, first: true, last: true, pagebreak: true, img: None });
             para_lines.push((first_idx, first_idx));
             page += 1;
             y = top;
+            continue;
+        }
+        if let (Kind::Image, Some(im)) = (p.kind, &p.img) {
+            // Bild: höchstens Inhaltsbreite/-höhe, Seitenverhältnis bleibt
+            let maxh = (bottom - top).max(24.0);
+            let k = (pg.content_w() / im.w.max(1.0)).min(maxh / im.h.max(1.0)).min(1.0);
+            let (w, h) = (im.w * k, im.h * k);
+            if y > top + 0.01 {
+                y += 4.0;
+            }
+            if y + h > bottom && y > top + 0.01 {
+                page += 1;
+                y = top;
+            }
+            let free = (pg.content_w() - w).max(0.0);
+            let x = pg.ml + match p.align {
+                Align::Center => free / 2.0,
+                Align::Right => free,
+                _ => 0.0,
+            };
+            lines.push(Line { para: pi, start: 0, end: 0, page, y, h, base: h, xs: vec![x + w], segs: Vec::new(), marker: None, first: true, last: true, pagebreak: false, img: Some((im.file.clone(), x, w, h)) });
+            para_lines.push((first_idx, first_idx));
+            y += h + 6.0;
+            prev_list = false;
             continue;
         }
         let chars = p.chars();
@@ -357,7 +383,7 @@ pub fn layout(doc: &TextDoc) -> Layout {
                 let mx = if mw <= LIST_GAP - 4.0 { x0 - LIST_GAP } else { x0 - mw - 4.0 };
                 Seg { x0: mx, x1: mx + mw, st: rs, words: vec![(mx, m)] }
             });
-            lines.push(Line { para: pi, start: s, end: e, page, y, h, base, xs, segs, marker, first: li == 0, last, pagebreak: false });
+            lines.push(Line { para: pi, start: s, end: e, page, y, h, base, xs, segs, marker, first: li == 0, last, pagebreak: false, img: None });
             y += h;
         }
         y += ps.after;

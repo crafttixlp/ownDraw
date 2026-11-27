@@ -164,7 +164,7 @@ fn menus(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
         ("Datei", datei),
         ("Bearbeiten", vec![Some(Cmd::Undo), Some(Cmd::Redo), None, Some(Cmd::Cut), Some(Cmd::Copy), Some(Cmd::Paste), Some(Cmd::SelectAll), None, Some(Cmd::Find), Some(Cmd::Replace)]),
         ("Ansicht", vec![Some(Cmd::Outline), None, Some(Cmd::ZoomIn), Some(Cmd::ZoomOut), Some(Cmd::ZoomReset)]),
-        ("Einfügen", vec![Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)]),
+        ("Einfügen", vec![Some(Cmd::Image), Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)]),
         (
             "Format",
             vec![
@@ -533,10 +533,13 @@ fn toolbar(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared, nar: bool) {
             }
             sep(ui);
             // Einfügen
-            let ins = style::icon_btn(ui, &mut sh.icons, ic::PLUS, p.text, false, false, b, "Einfügen: Seitenumbruch, Link, Datum, Zeichen …");
+            if style::icon_btn(ui, &mut sh.icons, ic::IMAGE, p.text, false, false, b, "Bild einfügen (auch Strg+V oder auf die Seite ziehen)").clicked() {
+                cmd = Some(Cmd::Image);
+            }
+            let ins = style::icon_btn(ui, &mut sh.icons, ic::PLUS, p.text, false, false, b, "Einfügen: Bild, Seitenumbruch, Link, Datum, Zeichen …");
             egui::Popup::menu(&ins).show(|ui| {
                 ui.set_min_width(250.0);
-                let mut list = vec![Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)];
+                let mut list = vec![Some(Cmd::Image), Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)];
                 if !crate::locks::locked(owndraw_core::features::OFFICE_WORD) {
                     list.extend([None, Some(Cmd::ImportDocx)]);
                 }
@@ -748,6 +751,15 @@ fn outline(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
 
 pub fn context_menu(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
     ui.set_min_width(230.0);
+    if let Some(p) = w.sel_image() {
+        menu_list(w, ui, sh, &[Some(Cmd::Align(Align::Left)), Some(Cmd::Align(Align::Center)), Some(Cmd::Align(Align::Right)), None, Some(Cmd::Paste)]);
+        style::separator(ui);
+        if row(ui, "Bild löschen", "Entf", true, false) {
+            w.remove_para(p, sh.now);
+            ui.close();
+        }
+        return;
+    }
     let mut list = vec![Some(Cmd::Cut), Some(Cmd::Copy), Some(Cmd::Paste), None, Some(Cmd::Bold), Some(Cmd::Italic), Some(Cmd::Underline), Some(Cmd::Link), None, Some(Cmd::ClearFmt)];
     if !w.has_sel() {
         list.extend([None, Some(Cmd::SelectAll), Some(Cmd::PageBreak)]);

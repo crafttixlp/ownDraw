@@ -433,6 +433,13 @@
           "covers": ["writer:Link einfügen", "writer:Datum einfügen", "writer:Sonderzeichen", "writer:Seitenumbruch"]
         },
         {
+          "id": "tx-bilder",
+          "title": "Bilder",
+          "text": "Bilder kommen mit dem Bild-Knopf in der Leiste, über „Einfügen → Bild einfügen“, mit Strg+V aus der Zwischenablage oder durch Ziehen auf die Seite ins Dokument. Jedes Bild steht in einer eigenen Zeile.",
+          "how": ["Bild antippen: Es bekommt einen Rahmen. Am Griff unten rechts ziehen ändert die Größe, das Seitenverhältnis bleibt.", "Ausrichtung links, mittig oder rechts wie bei Text über die Leiste oder per Rechtsklick.", "Entf oder Rücktaste löscht das ausgewählte Bild. Bilder kommen mit ins PDF, in den Ausdruck und in die Word-Datei."],
+          "covers": ["writer:Bild einfügen"]
+        },
+        {
           "id": "tx-seite",
           "title": "Seite, Kopf- und Fußzeile, Inhaltsverzeichnis",
           "text": "„Seite einrichten“ ändert Format, Hoch-/Querformat und Ränder. Kopf- und Fußzeile stehen auf jeder Seite; {seite} und {seiten} werden zu Seitenzahl und Seitenanzahl.",

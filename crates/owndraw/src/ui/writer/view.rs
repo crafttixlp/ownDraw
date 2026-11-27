@@ -131,11 +131,27 @@ impl Writer {
                     painter.rect_filled(r, CornerRadius::ZERO, sel_col);
                 }
             }
+            // Bilder
+            for l in &lay.lines {
+                let Some((f, x, w, h)) = &l.img else { continue };
+                let r = Rect::from_two_pos(geo.to_screen(l.page, *x, l.y), geo.to_screen(l.page, x + w, l.y + h));
+                if !r.intersects(clip) {
+                    continue;
+                }
+                match self.texture(&ctx, f) {
+                    Some(t) => {
+                        painter.image(t.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+                    }
+                    None => {
+                        painter.rect_filled(r, CornerRadius::ZERO, c(0xFFE5E7EB));
+                    }
+                }
+            }
             // Text
             if ready {
                 for l in &lay.lines {
                     let top = geo.to_screen(l.page, 0.0, l.y);
-                    if top.y > clip.bottom() + 4.0 || top.y + l.h * k < clip.top() - 4.0 {
+                    if l.img.is_some() || top.y > clip.bottom() + 4.0 || top.y + l.h * k < clip.top() - 4.0 {
                         continue;
                     }
                     if l.pagebreak {
@@ -182,7 +198,36 @@ impl Writer {
             let crect = Rect::from_min_size(ctop, Vec2::new(1.6, ch * k));
             caret_screen = Some(crect);
             let blink_on = ((sh.now - self.blink) % 1.0) < 0.6 || sh.now - self.blink < 0.6;
-            if focused && blink_on && !self.has_sel() {
+            // Ausgewähltes Bild: Rahmen und Griff zum Ziehen der Größe
+            let sel_img = self.sel_image();
+            if let Some(p) = sel_img {
+                let line = lay.para_lines.get(p).and_then(|(a, _)| lay.lines.get(*a));
+                if let Some((l, (_, x, w, h))) = line.and_then(|l| l.img.clone().map(|i| (l, i))) {
+                    let r = Rect::from_two_pos(geo.to_screen(l.page, x, l.y), geo.to_screen(l.page, x + w, l.y + h));
+                    let acc = c(pal.accent);
+                    painter.rect_stroke(r, CornerRadius::ZERO, Stroke::new(2.0, acc), egui::StrokeKind::Outside);
+                    let hs = if touch { 22.0 } else { 12.0 };
+                    let hr = Rect::from_center_size(r.right_bottom(), Vec2::splat(hs));
+                    painter.rect_filled(hr, CornerRadius::same(2), acc);
+                    painter.rect_stroke(hr, CornerRadius::same(2), Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Inside);
+                    let hresp = ui.interact(hr.expand(4.0), id.with("img-size"), Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeNwSe).on_hover_text("Ziehen ändert die Größe");
+                    let align = self.td.paras[p].align;
+                    if hresp.drag_started() {
+                        let im = self.td.paras[p].img.clone().unwrap_or_default();
+                        self.begin(super::Edit::Other, sh.now);
+                        self.resize = Some((p, im.w.min(pg.content_w()), im.h));
+                    }
+                    if let (true, Some((rp, w0, _)), Some(o), Some(cur)) = (hresp.dragged(), self.resize, ui.input(|i| i.pointer.press_origin()), hresp.interact_pointer_pos()) {
+                        let f = if align == owndraw_core::office::Align::Center { 2.0 } else { 1.0 };
+                        self.resize_image(rp, w0 + (cur.x - o.x) / k * f, sh.now);
+                    }
+                    if hresp.drag_stopped() {
+                        self.resize = None;
+                        self.changed(sh.now);
+                    }
+                }
+            }
+            if focused && blink_on && !self.has_sel() && sel_img.is_none() {
                 painter.rect_filled(crect, CornerRadius::ZERO, c(0xFF1D1D24));
             }
             if focused {
@@ -408,6 +453,8 @@ impl Writer {
             (true, false, false, Key::Minus) => Some(Cmd::ZoomOut),
             (true, false, false, Key::Num0) => Some(Cmd::ZoomReset),
             (false, false, false, Key::F1) => Some(Cmd::Help),
+            // Bild aus der Zwischenablage (Text kommt als Paste-Ereignis)
+            (true, false, false, Key::V) if matches!(sh.platform.clipboard_get(), Some(crate::platform::ClipData::Image { .. })) => Some(Cmd::Paste),
             _ => None,
         };
         if let Some(c) = shortcut {
@@ -520,4 +567,18 @@ fn paint_seg(p: &egui::Painter, geo: &Geo, page: usize, s: &Seg, y: f32, h: f32,
         }
     }
     let _ = geo.pw;
+}
+
+impl Writer {
+    /// Textur eines Bildes (einmal dekodiert, danach aus dem Zwischenspeicher).
+    fn texture(&mut self, ctx: &egui::Context, f: &str) -> Option<egui::TextureHandle> {
+        if let Some(t) = self.tex.get(f) {
+            return Some(t.clone());
+        }
+        let pm = owndraw_core::office::render::decode(self.doc.images.files.get(f)?)?;
+        let img = egui::ColorImage::from_rgba_premultiplied([pm.width() as usize, pm.height() as usize], pm.data());
+        let t = ctx.load_texture(format!("wimg-{f}"), img, egui::TextureOptions::LINEAR);
+        self.tex.insert(f.to_string(), t.clone());
+        Some(t)
+    }
 }

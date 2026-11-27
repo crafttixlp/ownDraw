@@ -50,10 +50,12 @@ pub enum Kind {
     Number,
     /// Seitenumbruch (leerer Absatz, danach beginnt eine neue Seite).
     PageBreak,
+    /// Bild als eigener Absatz (`Para::img`).
+    Image,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 9] = [Kind::Body, Kind::Title, Kind::H1, Kind::H2, Kind::H3, Kind::Quote, Kind::Bullet, Kind::Number, Kind::PageBreak];
+    pub const ALL: [Kind; 10] = [Kind::Body, Kind::Title, Kind::H1, Kind::H2, Kind::H3, Kind::Quote, Kind::Bullet, Kind::Number, Kind::PageBreak, Kind::Image];
     pub fn name(self) -> &'static str {
         match self {
             Kind::Body => "p",
@@ -65,6 +67,7 @@ impl Kind {
             Kind::Bullet => "ul",
             Kind::Number => "ol",
             Kind::PageBreak => "pb",
+            Kind::Image => "img",
         }
     }
     pub fn from_name(s: &str) -> Kind {
@@ -82,10 +85,15 @@ impl Kind {
             Kind::Bullet => "Aufzählung",
             Kind::Number => "Nummerierung",
             Kind::PageBreak => "Seitenumbruch",
+            Kind::Image => "Bild",
         }
     }
     pub fn is_heading(self) -> bool {
         matches!(self, Kind::Title | Kind::H1 | Kind::H2 | Kind::H3)
+    }
+    /// Absatz ohne Text (Seitenumbruch, Bild): Tippen legt dahinter einen neuen Absatz an.
+    pub fn is_block(self) -> bool {
+        matches!(self, Kind::PageBreak | Kind::Image)
     }
     pub fn is_list(self) -> bool {
         matches!(self, Kind::Bullet | Kind::Number)
@@ -148,6 +156,23 @@ pub struct Para {
     /// Zeilenabstand als Faktor, 0 = Vorgabe (1,15).
     pub line: f32,
     pub runs: Vec<Run>,
+    /// Bild (nur bei `Kind::Image`).
+    pub img: Option<Img>,
+}
+
+/// Bild im Textdokument: Datei im Bildspeicher des Dokuments, Größe in pt.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Img {
+    pub file: String,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Para {
+    /// Bild-Absatz.
+    pub fn image(file: &str, w: f32, h: f32) -> Para {
+        Para { kind: Kind::Image, img: Some(Img { file: file.into(), w, h }), align: Align::Center, ..Para::new(Kind::Image) }
+    }
 }
 
 /// Seite in pt (1/72 Zoll).
@@ -306,7 +331,7 @@ impl Para {
         let i = self.cut(o.min(self.len()));
         let rest: Vec<Run> = self.runs.drain(i..).collect();
         let st = self.style_at(o);
-        let mut p = Para { kind: self.kind, align: self.align, indent: self.indent, line: self.line, runs: rest };
+        let mut p = Para { kind: self.kind, align: self.align, indent: self.indent, line: self.line, runs: rest, img: None };
         if p.runs.iter().all(|r| r.text.is_empty()) {
             p.runs = vec![Run { text: String::new(), st }];
         }
@@ -369,6 +394,9 @@ impl Para {
             o.insert("ls".into(), json!(self.line as f64));
         }
         o.insert("r".into(), Value::Array(self.runs.iter().map(run_json).collect()));
+        if let Some(i) = &self.img {
+            o.insert("img".into(), json!({"f": i.file, "w": i.w as f64, "h": i.h as f64}));
+        }
         Value::Object(o)
     }
 
@@ -380,7 +408,17 @@ impl Para {
             indent: v.get("in").and_then(Value::as_u64).unwrap_or(0).min(8) as u8,
             line: v.get("ls").and_then(Value::as_f64).map(|x| x as f32).filter(|x| x.is_finite() && *x >= 0.5 && *x <= 4.0).unwrap_or(0.0),
             runs: v.get("r").and_then(Value::as_array).map(|a| a.iter().map(run_from).collect()).unwrap_or_default(),
+            img: None,
         };
+        if p.kind == Kind::Image {
+            let im = v.get("img");
+            let f = |k: &str| im.and_then(|i| i.get(k)).and_then(Value::as_f64).map(|x| x as f32).filter(|x| x.is_finite() && *x >= 4.0 && *x <= 5000.0);
+            match (im.and_then(|i| i.get("f")).and_then(Value::as_str), f("w"), f("h")) {
+                (Some(file), Some(w), Some(h)) if !file.is_empty() => p.img = Some(Img { file: file.into(), w, h }),
+                _ => p.kind = Kind::Body,
+            }
+            p.runs = vec![Run::default()];
+        }
         p.normalize();
         p
     }
@@ -518,7 +556,7 @@ impl TextDoc {
             if part.is_empty() {
                 continue;
             }
-            if self.paras[pos.p].kind == Kind::PageBreak {
+            if self.paras[pos.p].kind.is_block() {
                 // In einen Seitenumbruch wird nicht geschrieben: dahinter einen Absatz anlegen
                 self.paras.insert(pos.p + 1, Para::new(Kind::Body));
                 pos = Pos::new(pos.p + 1, 0);
@@ -537,8 +575,9 @@ impl TextDoc {
         let para = &mut self.paras[pos.p];
         let at_end = pos.o >= para.len();
         let mut rest = para.split_off(pos.o);
-        if para.kind == Kind::PageBreak {
+        if para.kind.is_block() {
             rest.kind = Kind::Body;
+            rest.align = Align::Left;
         }
         if at_end && (para.kind.is_heading() || para.kind == Kind::Quote) {
             rest.kind = Kind::Body;
@@ -567,8 +606,10 @@ impl TextDoc {
         self.paras[a.p].delete(a.o, usize::MAX);
         self.paras.drain(a.p + 1..=b.p);
         let first_empty = self.paras[a.p].is_empty() && a.o == 0;
-        if first_empty && self.paras[a.p].kind == Kind::PageBreak {
+        if first_empty && self.paras[a.p].kind.is_block() {
             self.paras[a.p].kind = tail.kind;
+            self.paras[a.p].align = tail.align;
+            self.paras[a.p].img = None;
         }
         self.paras[a.p].append(tail);
         a
@@ -597,6 +638,24 @@ impl TextDoc {
         let pos = self.clamp(pos);
         if frag.is_empty() {
             return pos;
+        }
+        if frag.iter().any(|p| p.kind.is_block()) {
+            // Bilder/Umbrüche bleiben eigene Absätze: an der Stelle teilen und dazwischen einsetzen
+            let tail = self.paras[pos.p].split_off(pos.o);
+            let mut idx = pos.p + 1;
+            if self.paras[pos.p].is_empty() && !self.paras[pos.p].kind.is_block() {
+                self.paras.remove(pos.p);
+                idx -= 1;
+            }
+            for f in frag {
+                self.paras.insert(idx, f.clone());
+                idx += 1;
+            }
+            // Leeren Rest nur behalten, wenn danach nichts Beschreibbares mehr folgt
+            if !tail.is_empty() || self.paras.get(idx).is_none_or(|n| n.kind.is_block()) {
+                self.paras.insert(idx, tail);
+            }
+            return Pos::new(idx, 0);
         }
         if frag.len() == 1 {
             let mut pos = pos;

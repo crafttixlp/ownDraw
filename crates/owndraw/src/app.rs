@@ -695,7 +695,18 @@ impl App {
                 PlatformEvent::Pause => self.flush_editor(),
             }
         }
-        for o in drops::handle_drops(&ctx, &*self.sh.platform, self.editor.as_mut()) {
+        let outcomes = if let (Screen::Writer, Some(w)) = (self.screen, self.writer.as_mut()) {
+            let (imgs, out) = drops::handle_drops_writer(&ctx, &*self.sh.platform);
+            for b in imgs {
+                if let Err(e) = w.insert_image_bytes(&b, self.sh.now) {
+                    self.sh.toast(&e);
+                }
+            }
+            out
+        } else {
+            drops::handle_drops(&ctx, &*self.sh.platform, self.editor.as_mut())
+        };
+        for o in outcomes {
             match o {
                 drops::DropOutcome::Open(f) => self.open_ref(&ctx, f),
                 drops::DropOutcome::NewWithImage(b) => self.new_with_image(&ctx, &b),
@@ -826,6 +837,13 @@ impl App {
         if let Some(w) = self.writer.as_mut().filter(|_| find) {
             w.find = Some(crate::ui::writer::Find { q: "Brücke".into(), ..Default::default() });
         }
+        // Baustein `wimg`: Beispielbild nach der Überschrift einfügen (Screenshot).
+        if let Some(w) = self.writer.as_mut().filter(|_| std::env::var("OWNDRAW_DEMO").is_ok_and(|d| d.split(',').any(|t| t.trim() == "wimg"))) {
+            let im = image::RgbaImage::from_fn(480, 240, |x, y| image::Rgba([(60 + x / 4) as u8, (120 + y / 3) as u8, 200, 255]));
+            let mut png = Vec::new();
+            let _ = image::DynamicImage::ImageRgba8(im).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png);
+            w.demo_image_at(1, &png);
+        }
     }
 
     pub fn open_editor(&mut self, ctx: &egui::Context, ed: Editor) {
@@ -925,6 +943,30 @@ mod tests {
         let w = app.writer.as_ref().expect("Textdokument offen");
         assert_eq!(w.td.plain_text().trim(), "Hallo\nWelt");
         assert!(w.td.paras[1].style_at(2).b);
+    }
+
+    /// Regression: Bild per Strg+V (im Browser als Drop) im Textdokument landet im Dokument, nicht in einem neuen Board.
+    #[test]
+    fn textdokument_bild_einfuegen() {
+        let dir = tempfile::tempdir().unwrap();
+        let pf = crate::platform::stub::StubPlatform::with_base(dir.path().to_path_buf());
+        let mut pm = owndraw_core::tiny_skia::Pixmap::new(40, 20).unwrap();
+        pm.fill(owndraw_core::tiny_skia::Color::from_rgba8(10, 200, 10, 255));
+        pf.push_drop(crate::platform::Drop { file: None, bytes: Some(pm.encode_png().unwrap()), name: "image.png".into(), pos: None });
+        let mut app = App::new(Box::new(pf), Settings::default(), None);
+        let ctx = egui::Context::default();
+        app.open_writer_demo(&ctx, Document::new_text("T"), false);
+        for i in 0..4 {
+            let mut out = ctx.run_ui(input(0.05 * i as f64, vec![]), |ui| app.frame_ui(ui));
+            out.textures_delta.clear();
+        }
+        assert!(app.editor.is_none(), "kein neues Board");
+        assert_eq!(app.screen, Screen::Writer);
+        let w = app.writer.as_ref().unwrap();
+        let im = w.td.paras.iter().find_map(|p| p.img.clone()).expect("Bild im Dokument");
+        assert!(w.doc.images.files.contains_key(&im.file));
+        assert!((im.w - 30.0).abs() < 0.01 && (im.h - 15.0).abs() < 0.01, "96 dpi → pt");
+        assert_eq!(w.sel_image(), w.td.paras.iter().position(|p| p.img.is_some()));
     }
 
     /// Regression (Browser): Das versteckte Eingabefeld für Bildschirmtastatur/IME darf nicht 1px breit sein,

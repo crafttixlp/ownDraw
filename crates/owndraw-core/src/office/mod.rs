@@ -11,4 +11,4 @@ pub mod model;
 pub mod render;
 
 pub use layout::{layout, Layout};
-pub use model::{Align, CStyle, Kind, PageSpec, Para, Pos, Run, TextDoc, VAlign};
+pub use model::{Align, CStyle, Img, Kind, PageSpec, Para, Pos, Run, TextDoc, VAlign};

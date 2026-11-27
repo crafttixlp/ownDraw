@@ -12,6 +12,7 @@ use crate::ui::dialogs::{self, Dialog, Outcome};
 use crate::ui::editor::{drop as drops, Editor};
 use crate::ui::settings::SettingsAction;
 use crate::ui::start::StartState;
+use crate::ui::writer::Writer;
 use egui::{Align2, Color32, CornerRadius, Vec2};
 use owndraw_core::doc::Document;
 use std::collections::HashMap;
@@ -27,6 +28,8 @@ pub enum PickPurpose {
     SaveCopy,
     ExportXopp,
     ImportImage,
+    /// Textdokument: Word-Datei an der Einfügestelle einfügen.
+    DocxInsert,
     OpenDoc,
     NewDoc,
     /// Standard-Ort der Einstellungen.
@@ -80,6 +83,8 @@ impl Shared {
 pub enum Screen {
     Start,
     Editor,
+    /// Textverarbeitung (Textdokument).
+    Writer,
     Settings,
     Tutorial,
 }
@@ -105,6 +110,7 @@ pub struct App {
     /// Bildschirm vor den Einstellungen.
     back_screen: Screen,
     editor: Option<Editor>,
+    writer: Option<Writer>,
     start: StartState,
     tutorial: crate::ui::tutorial::TutorialState,
     recent: Recent,
@@ -137,6 +143,7 @@ impl App {
             screen: if crate::ui::tutorial::requested_by_url() { Screen::Tutorial } else { Screen::Start },
             back_screen: Screen::Start,
             editor: None,
+            writer: None,
             start: StartState::default(),
             tutorial: Default::default(),
             recent,
@@ -162,7 +169,7 @@ impl App {
         for p in files {
             let f = FileRef::Path(p);
             let (name, pages) = session::read_summary(&*self.sh.platform, &f).unwrap_or_else(|| (f.display_name(), false));
-            self.recent.add(RecentEntry { file: f, name, modified_ms: owndraw_core::store::now_ms(), pages });
+            self.recent.add(RecentEntry { file: f, name, modified_ms: owndraw_core::store::now_ms(), pages, text: false });
         }
         if n > 0 {
             self.sh.toast_for(&format!("{n} Boards aus früheren Versionen übernommen"), 5.0);
@@ -175,7 +182,43 @@ impl App {
     }
 
     fn recent_entry(f: FileRef, e: &Editor) -> RecentEntry {
-        RecentEntry { file: f, name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board) }
+        RecentEntry { file: f, name: e.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: crate::ui::editor::pages::is_pages(&e.board), text: false }
+    }
+
+    fn recent_writer(f: FileRef, w: &Writer) -> RecentEntry {
+        RecentEntry { file: f, name: w.name().to_string(), modified_ms: owndraw_core::store::now_ms(), pages: true, text: true }
+    }
+
+    /// Textdokument öffnen (schließt ein offenes Board/Dokument).
+    fn enter_writer(&mut self, ctx: &egui::Context, w: Writer) {
+        if self.editor.is_some() || self.writer.is_some() {
+            self.close_editor(ctx);
+        }
+        if let Some(f) = w.file().cloned().filter(Self::in_recent) {
+            self.recent.add(Self::recent_writer(f, &w));
+        }
+        self.writer = Some(w);
+        self.screen = Screen::Writer;
+        self.title(ctx);
+    }
+
+    /// Textdokument öffnen; gesperrt, wenn der Admin die Textverarbeitung ausgeschaltet hat.
+    fn open_writer(&mut self, ctx: &egui::Context, doc: Document, f: Option<FileRef>, save_now: bool) {
+        if crate::locks::locked(owndraw_core::features::OFFICE) {
+            self.sh.toast_for("Die Textverarbeitung wurde vom Administrator ausgeschaltet.", 4.0);
+            return;
+        }
+        let ro = doc.meta.read_only;
+        let mut w = Writer::open(doc, f);
+        if ro {
+            w.autosave.set_read_only(true);
+            self.sh.toast_for(session::READ_ONLY_HINT, 7.0);
+        }
+        if save_now {
+            w.autosave.mark_changed(self.sh.now);
+            w.flush(&mut self.sh);
+        }
+        self.enter_writer(ctx, w);
     }
 
     /// Speichert das offene Dokument sofort (Beenden, Pause).
@@ -183,11 +226,15 @@ impl App {
         if let Some(e) = self.editor.as_mut() {
             e.flush(&mut self.sh);
         }
+        if let Some(w) = self.writer.as_mut() {
+            w.flush(&mut self.sh);
+        }
     }
 
     fn title(&self, ctx: &egui::Context) {
         let t = match (&self.editor, self.screen) {
             (Some(e), Screen::Editor) => format!("OwnDraw · {}", e.name()),
+            (_, Screen::Writer) if self.writer.is_some() => format!("OwnDraw · {}", self.writer.as_ref().map(|w| w.name()).unwrap_or("")),
             _ => "OwnDraw".to_string(),
         };
         // Browser: Seitentitel (das Web-Backend kennt ViewportCommand::Title nicht)
@@ -225,6 +272,16 @@ impl App {
                 self.start.forget(&f);
             }
         }
+        if let Some(mut w) = self.writer.take() {
+            w.flush(&mut self.sh);
+            if let Some(FileRef::Uri(u)) = w.file().filter(|f| crate::net::srv_id(f).is_some()) {
+                crate::net::with(|n| n.files.remove(u));
+            }
+            if let Some(f) = w.file().cloned().filter(Self::in_recent) {
+                self.recent.add(Self::recent_writer(f.clone(), &w));
+                self.start.forget(&f);
+            }
+        }
         // Liste der Server-Boards und Speicherplatz auffrischen
         {
             crate::net::refresh_boards();
@@ -235,7 +292,7 @@ impl App {
     }
 
     fn enter_editor(&mut self, ctx: &egui::Context, ed: Editor) {
-        if self.editor.is_some() {
+        if self.editor.is_some() || self.writer.is_some() {
             self.close_editor(ctx);
         }
         if let Some(f) = ed.file().cloned().filter(Self::in_recent) {
@@ -252,7 +309,23 @@ impl App {
             self.screen = Screen::Editor;
             return;
         }
-        let doc = match session::open_document(&*self.sh.platform, &f) {
+        if self.writer.as_ref().and_then(|w| w.file()) == Some(&f) {
+            self.screen = Screen::Writer;
+            return;
+        }
+        let docx = f.display_name().to_ascii_lowercase().ends_with(".docx");
+        if docx && (crate::locks::locked(owndraw_core::features::OFFICE_WORD) || crate::locks::locked(owndraw_core::features::OFFICE)) {
+            self.sh.toast_for(crate::locks::HINT, 4.0);
+            return;
+        }
+        let opened = if docx {
+            let name = f.display_name();
+            let name = name[..name.len() - 5].to_string();
+            self.sh.platform.read(&f).map_err(|e| format!("Datei konnte nicht gelesen werden: {e}")).and_then(|b| crate::ui::writer::doc_from_docx(&b, &name).map_err(|e| format!("Word-Datei konnte nicht geöffnet werden: {e}")))
+        } else {
+            session::open_document(&*self.sh.platform, &f)
+        };
+        let doc = match opened {
             Ok(d) => d,
             Err(e) => {
                 self.sh.toast_for(&e, 4.0);
@@ -263,13 +336,13 @@ impl App {
             }
         };
         let mut doc = doc;
-        if FileKind::of_name(&f.display_name()) == FileKind::Xopp {
+        if docx || FileKind::of_name(&f.display_name()) == FileKind::Xopp {
             // Xournal++-Import: Original bleibt unverändert; Autosave schreibt `<name>.owndraw` daneben
             // (oder direkt ins .xopp, wenn eingestellt).
             if doc.meta.name.is_empty() {
                 doc.meta.name = f.display_name().trim_end_matches(".xopp").trim_end_matches(".XOPP").to_string();
             }
-            if self.sh.settings.xopp_autosave_direct {
+            if self.sh.settings.xopp_autosave_direct && !docx {
                 let mut ed = Editor::open(&mut self.sh, doc, Some(f));
                 ed.autosave.set_format(SaveFormat::Xopp);
                 self.sh.toast("Xournal++-Datei geöffnet. Änderungen werden direkt in der .xopp-Datei gespeichert.");
@@ -302,6 +375,10 @@ impl App {
             }
             return;
         }
+        if doc.is_text() {
+            self.open_writer(ctx, doc, Some(f), false);
+            return;
+        }
         let read_only = doc.meta.read_only;
         let mut ed = Editor::open(&mut self.sh, doc, Some(f));
         if read_only {
@@ -313,6 +390,13 @@ impl App {
 
     /// Importiertes Dokument unter `target` (.owndraw) weiterführen und sofort einmal speichern.
     fn finish_import(&mut self, ctx: &egui::Context, doc: Document, target: FileRef) {
+        if doc.is_text() {
+            self.open_writer(ctx, doc, Some(target), true);
+            if self.writer.is_some() {
+                self.sh.toast("Word-Datei als Textdokument geöffnet. Das Original bleibt unverändert.");
+            }
+            return;
+        }
         let mut ed = Editor::open(&mut self.sh, doc, Some(target));
         ed.autosave.mark_changed(self.sh.now);
         ed.flush(&mut self.sh);
@@ -361,7 +445,7 @@ impl App {
             match stored {
                 Ok(f) => {
                     let pages = session::read_summary(&*self.sh.platform, &f).map(|s| s.1).unwrap_or(false);
-                    self.recent.add(RecentEntry { file: f, name: t.name.clone(), modified_ms: owndraw_core::store::now_ms(), pages });
+                    self.recent.add(RecentEntry { file: f, name: t.name.clone(), modified_ms: owndraw_core::store::now_ms(), pages, text: false });
                     match t.delete_id {
                         Some(id) => api::delete_moved(&id, &t.name),
                         None => self.sh.toast_for(&format!("Kopie von „{}“ {} gespeichert", t.name, crate::ui::local_in()), 4.0),
@@ -389,6 +473,10 @@ impl App {
         let doc = session::new_document(&params);
         if let Err(e) = session::write_document(&*self.sh.platform, &f, &doc) {
             self.sh.toast_for(&e, 4.0);
+        }
+        if doc.is_text() {
+            self.open_writer(ctx, doc, Some(f), false);
+            return;
         }
         // Datei ist angelegt und einmal geschrieben; der Autosave übernimmt ab der ersten Änderung.
         let ed = Editor::open(&mut self.sh, doc, Some(f));
@@ -425,6 +513,11 @@ impl App {
             PickPurpose::NewDoc => {
                 if let Some(p) = params {
                     self.finish_create(ctx, p, f);
+                }
+            }
+            other if self.screen == Screen::Writer && self.writer.is_some() => {
+                if let Some(w) = self.writer.as_mut() {
+                    w.apply_pick(&mut self.sh, other, f);
                 }
             }
             other => {
@@ -523,7 +616,7 @@ impl App {
             return;
         }
         ctx.request_repaint_after(std::time::Duration::from_secs_f64((until - self.sh.now).max(0.01)));
-        let (anchor, off) = if self.screen == Screen::Editor { (Align2::CENTER_TOP, Vec2::new(0.0, 76.0)) } else { (Align2::CENTER_BOTTOM, Vec2::new(0.0, -40.0)) };
+        let (anchor, off) = if matches!(self.screen, Screen::Editor | Screen::Writer) { (Align2::CENTER_TOP, Vec2::new(0.0, 76.0)) } else { (Align2::CENTER_BOTTOM, Vec2::new(0.0, -40.0)) };
         let maxw = (ctx.content_rect().width() - 32.0).max(120.0);
         egui::Area::new(egui::Id::unique("toast")).order(egui::Order::Tooltip).anchor(anchor, off).interactable(false).show(ctx, |ui| {
             egui::Frame::new()
@@ -618,11 +711,16 @@ impl App {
         let mut edit_tools = false;
         egui::CentralPanel::default().frame(egui::Frame::new().fill(bg)).show(ui, |ui| match (self.screen, self.editor.as_mut()) {
             (Screen::Editor, Some(e)) => e.ui(ui, &mut self.sh),
+            (Screen::Writer, _) if self.writer.is_some() => {
+                if let Some(w) = self.writer.as_mut() {
+                    w.ui(ui, &mut self.sh);
+                }
+            }
             (Screen::Settings, _) => {
                 let sh = &mut self.sh;
                 match crate::ui::settings::show(ui, &mut sh.settings, &*sh.platform, &mut sh.icons) {
                     SettingsAction::Back => {
-                        self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
+                        self.screen = if (self.back_screen == Screen::Editor && self.editor.is_none()) || (self.back_screen == Screen::Writer && self.writer.is_none()) { Screen::Start } else { self.back_screen };
                     }
                     SettingsAction::PickFolder => {
                         let tag = self.tag(PickPurpose::DefaultDir, None);
@@ -638,7 +736,7 @@ impl App {
             }
             (Screen::Tutorial, _) => {
                 if crate::ui::tutorial::show(ui, &self.sh.env, &mut self.tutorial, &self.sh.settings) {
-                    self.screen = if self.back_screen == Screen::Editor && self.editor.is_none() { Screen::Start } else { self.back_screen };
+                    self.screen = if (self.back_screen == Screen::Editor && self.editor.is_none()) || (self.back_screen == Screen::Writer && self.writer.is_none()) { Screen::Start } else { self.back_screen };
                 }
             }
             _ => {
@@ -681,6 +779,14 @@ impl App {
                 }
             }
         }
+        if let Some(w) = &self.writer {
+            if let (AutosaveStatus::Saved(t), Some(f)) = (w.autosave.status(), w.file().filter(|f| Self::in_recent(f))) {
+                if *t != self.last_saved {
+                    self.last_saved = *t;
+                    self.recent.add(Self::recent_writer(f.clone(), w));
+                }
+            }
+        }
         if self.screen == Screen::Start && self.sh.now - self.last_missing_check >= 3.0 {
             self.last_missing_check = self.sh.now;
             let pf = &*self.sh.platform;
@@ -712,6 +818,14 @@ impl App {
 
     pub fn set_screen(&mut self, s: Screen) {
         self.screen = s;
+    }
+
+    /// Demo: Textdokument ohne Datei öffnen (`find` = Suchleiste offen).
+    pub fn open_writer_demo(&mut self, ctx: &egui::Context, doc: Document, find: bool) {
+        self.open_writer(ctx, doc, None, false);
+        if let Some(w) = self.writer.as_mut().filter(|_| find) {
+            w.find = Some(crate::ui::writer::Find { q: "Brücke".into(), ..Default::default() });
+        }
     }
 
     pub fn open_editor(&mut self, ctx: &egui::Context, ed: Editor) {
@@ -779,6 +893,38 @@ mod tests {
             vec![vec![Ime(Enabled), Ime(Preedit { text: ch.into(), active_range_chars: None })], vec![Ime(Commit(ch.into()))], vec![]]
         });
         assert_eq!(ime.as_deref(), Some("Lola"));
+    }
+
+    /// Textdokument: Klick auf die Seite, tippen, Enter, Strg+B – landet im Dokument.
+    #[test]
+    fn textdokument_tippen() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(Box::new(crate::platform::stub::StubPlatform::with_base(dir.path().to_path_buf())), Settings::default(), None);
+        let ctx = egui::Context::default();
+        app.open_writer_demo(&ctx, Document::new_text("T"), false);
+        let mut t = 0.0;
+        let mut frame = |app: &mut App, ev: Vec<egui::Event>| {
+            t += 0.05;
+            let mut out = ctx.run_ui(input(t, ev), |ui| app.frame_ui(ui));
+            out.textures_delta.clear();
+        };
+        for _ in 0..4 {
+            frame(&mut app, vec![]);
+        }
+        let p = egui::pos2(640.0, 300.0);
+        frame(&mut app, vec![egui::Event::PointerMoved(p)]);
+        for pressed in [true, false] {
+            frame(&mut app, vec![egui::Event::PointerButton { pos: p, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }]);
+        }
+        let key = |key, modifiers| egui::Event::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers };
+        frame(&mut app, vec![egui::Event::Text("Hallo".into())]);
+        frame(&mut app, vec![key(egui::Key::Enter, Default::default())]);
+        frame(&mut app, vec![key(egui::Key::B, egui::Modifiers::COMMAND)]);
+        frame(&mut app, vec![egui::Event::Text("Welt".into())]);
+        frame(&mut app, vec![]);
+        let w = app.writer.as_ref().expect("Textdokument offen");
+        assert_eq!(w.td.plain_text().trim(), "Hallo\nWelt");
+        assert!(w.td.paras[1].style_at(2).b);
     }
 
     /// Regression (Browser): Das versteckte Eingabefeld für Bildschirmtastatur/IME darf nicht 1px breit sein,

@@ -8,6 +8,7 @@ pub mod start;
 pub mod tutorial;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod update;
+pub mod writer;
 
 use egui::Color32;
 use std::path::Path;

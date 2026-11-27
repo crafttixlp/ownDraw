@@ -42,6 +42,9 @@ impl From<std::io::Error> for DocError {
 
 /// Aktuelle Formatversion.
 pub const FORMAT_VERSION: i64 = 2;
+/// Formatversion von Textdokumenten (`"kind": "text"`, Inhalt in `text.json`). Ältere Programmversionen öffnen sie
+/// deshalb nur lesend und überschreiben den Text nicht.
+pub const TEXT_FORMAT_VERSION: i64 = 3;
 
 /// Manifest-Daten (`manifest.json`).
 #[derive(Clone, Debug, Default)]
@@ -156,6 +159,8 @@ pub struct Document {
     pub images: ImageStore,
     /// Vorschau (PNG, max. 512 px), optional.
     pub thumb: Option<Vec<u8>>,
+    /// Textdokument (Textverarbeitung): Inhalt von `text.json`; `None` = Board.
+    pub text: Option<Value>,
 }
 
 impl Document {
@@ -174,7 +179,20 @@ impl Document {
             board: empty_board_json(),
             images: ImageStore::default(),
             thumb: None,
+            text: None,
         }
+    }
+
+    /// Neues leeres Textdokument.
+    pub fn new_text(name: &str) -> Document {
+        let mut d = Document::new(name, BoardMode::Infinite);
+        d.text = Some(crate::office::TextDoc::new().to_json());
+        d
+    }
+
+    /// Ist das ein Textdokument?
+    pub fn is_text(&self) -> bool {
+        self.text.is_some()
     }
 }
 
@@ -232,7 +250,7 @@ pub fn mode_from_manifest(m: &Value) -> BoardMode {
 /// Liest `.owndraw` v2 (und v1: `meta.json` + `board.json`).
 pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
     let mut z = zip::ZipArchive::new(Cursor::new(bytes)).map_err(fmt_err("kein ZIP"))?;
-    let (mut manifest, mut meta1, mut board, mut thumb) = (None, None, None, None);
+    let (mut manifest, mut meta1, mut board, mut thumb, mut text) = (None, None, None, None, None);
     let mut images = ImageStore::default();
     let mut total = 0u64;
     for i in 0..z.len() {
@@ -245,7 +263,7 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
             continue;
         }
         let img = n.strip_prefix("img/").map(String::from);
-        if img.is_none() && !matches!(n.as_str(), "manifest.json" | "meta.json" | "board.json" | "thumb.png") {
+        if img.is_none() && !matches!(n.as_str(), "manifest.json" | "meta.json" | "board.json" | "thumb.png" | "text.json") {
             continue;
         }
         let d = read_limited(&mut e, if img.is_some() { MAX_TOTAL - total.min(MAX_TOTAL) } else { MAX_SMALL })?;
@@ -262,6 +280,7 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
             (_, "manifest.json") => manifest = Some(d),
             (_, "meta.json") => meta1 = Some(d),
             (_, "board.json") => board = Some(d),
+            (_, "text.json") => text = Some(d),
             _ => thumb = Some(d),
         }
     }
@@ -277,14 +296,15 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
             return Err(DocError::Format("kein OwnDraw-Manifest".into()));
         }
         let version = obj.get("version").and_then(Value::as_i64).unwrap_or(FORMAT_VERSION);
+        let is_text = obj.get("kind").and_then(Value::as_str) == Some("text");
         let extra: Map<String, Value> =
-            obj.iter().filter(|(k, _)| !matches!(k.as_str(), "format" | "version" | "id" | "name" | "mode" | "page" | "pages" | "modified")).map(|(k, v)| (k.clone(), v.clone())).collect();
+            obj.iter().filter(|(k, _)| !matches!(k.as_str(), "format" | "version" | "id" | "name" | "mode" | "page" | "pages" | "modified" | "kind")).map(|(k, v)| (k.clone(), v.clone())).collect();
         let meta = Meta {
             id: obj.get("id").and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(new_uuid),
             name: obj.get("name").and_then(Value::as_str).unwrap_or("Board").to_string(),
             modified: obj.get("modified").and_then(Value::as_str).map(String::from).unwrap_or(now),
             version,
-            read_only: version > FORMAT_VERSION,
+            read_only: version > if is_text { TEXT_FORMAT_VERSION } else { FORMAT_VERSION },
             extra,
         };
         (meta, mode_from_manifest(&m))
@@ -294,7 +314,11 @@ pub fn read_owndraw(bytes: &[u8]) -> Result<Document> {
         let name = m.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).unwrap_or("Importiertes Board");
         (Meta { id: new_uuid(), name: name.chars().take(80).collect(), modified: now, version: 1, read_only: false, extra: Map::new() }, BoardMode::Infinite)
     };
-    Ok(Document { meta, mode, board, images, thumb })
+    let text = match text {
+        Some(t) => Some(serde_json::from_slice::<Value>(&t).map_err(fmt_err("text.json"))?).filter(Value::is_object),
+        None => None,
+    };
+    Ok(Document { meta, mode, board, images, thumb, text })
 }
 
 fn page_json(p: &Page) -> Value {
@@ -332,7 +356,10 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     }
     let mut m = doc.meta.extra.clone();
     m.insert("format".into(), json!("owndraw"));
-    m.insert("version".into(), json!(FORMAT_VERSION));
+    m.insert("version".into(), json!(if doc.text.is_some() { TEXT_FORMAT_VERSION } else { FORMAT_VERSION }));
+    if doc.text.is_some() {
+        m.insert("kind".into(), json!("text"));
+    }
     m.entry("app").or_insert_with(|| json!(env!("CARGO_PKG_VERSION")));
     m.insert("id".into(), json!(doc.meta.id));
     m.insert("name".into(), json!(doc.meta.name));
@@ -347,6 +374,10 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     z.write_all(Value::Object(m).to_string().as_bytes())?;
     z.start_file("board.json", opt).map_err(fmt_err("ZIP schreiben"))?;
     z.write_all(board.to_string().as_bytes())?;
+    if let Some(t) = &doc.text {
+        z.start_file("text.json", opt).map_err(fmt_err("ZIP schreiben"))?;
+        z.write_all(t.to_string().as_bytes())?;
+    }
     if let Some(t) = &doc.thumb {
         z.start_file("thumb.png", st).map_err(fmt_err("ZIP schreiben"))?;
         z.write_all(t)?;
@@ -483,5 +514,28 @@ mod tests {
         assert_ne!(u, new_uuid());
         assert_eq!(rfc3339(0), "1970-01-01T00:00:00Z");
         assert_eq!(rfc3339(1_700_000_000_000), "2023-11-14T22:13:20Z");
+    }
+
+    #[test]
+    fn textdokument_rundreise_und_alte_versionen() {
+        let mut d = Document::new_text("Brief");
+        let mut t = crate::office::TextDoc::new();
+        t.insert_text(crate::office::Pos::default(), "Hallo", &Default::default());
+        d.text = Some(t.to_json());
+        let bytes = write_owndraw(&d).unwrap();
+        let r = read_owndraw(&bytes).unwrap();
+        assert!(r.is_text() && !r.meta.read_only);
+        assert_eq!(crate::office::TextDoc::from_json(r.text.as_ref().unwrap()), t);
+        assert!(!r.meta.extra.contains_key("kind"));
+        // Board bleibt Version 2 ohne text.json
+        let b = read_owndraw(&write_owndraw(&Document::new("B", BoardMode::Infinite)).unwrap()).unwrap();
+        assert!(!b.is_text() && b.meta.version == FORMAT_VERSION);
+        // Ein Board mit Version 3 (ohne "kind": "text") stammt aus der Zukunft: nur lesen
+        let mut z = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        z.start_file("manifest.json", SimpleFileOptions::default()).unwrap();
+        z.write_all(br#"{"format":"owndraw","version":3}"#).unwrap();
+        z.start_file("board.json", SimpleFileOptions::default()).unwrap();
+        z.write_all(b"{}").unwrap();
+        assert!(read_owndraw(&z.finish().unwrap().into_inner()).unwrap().meta.read_only);
     }
 }

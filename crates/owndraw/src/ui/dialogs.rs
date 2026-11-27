@@ -159,22 +159,39 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                 close |= cl || esc;
             }
             Dialog::New(n) => {
-                header(ui, "Neues Board", Some("Was möchtest du zeichnen?"));
+                header(ui, if n.params.text { "Neues Textdokument" } else { "Neues Board" }, Some("Was möchtest du erstellen?"));
                 egui::ScrollArea::vertical().max_height(max_body).auto_shrink([false, true]).show(ui, |ui| {
-                    // Art: zwei Karten
+                    // Art: Karten (Unendlich, Seiten, Textdokument)
+                    let office = !crate::locks::locked(owndraw_core::features::OFFICE);
+                    if !office {
+                        n.params.text = false;
+                    }
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = style::sp::S;
-                        let cw = (ui.available_width() - style::sp::S) / 2.0;
-                        for (pages, title, sub) in [(false, "Unendlich", "Frei zeichnen, beliebig groß"), (true, "Seiten", "Feste Seiten wie Papier")] {
+                        let cards: &[(u8, &str, &str)] = &[(0, "Unendlich", "Frei zeichnen, beliebig groß"), (1, "Seiten", "Feste Seiten wie Papier"), (2, "Textdokument", "Schreiben wie in Word")];
+                        let cards = if office { cards } else { &cards[..2] };
+                        let nc = cards.len() as f32;
+                        let cw = (ui.available_width() - style::sp::S * (nc - 1.0)) / nc;
+                        for &(kind, title, sub) in cards {
+                            let pages = kind == 1;
                             let (r, resp) = ui.allocate_exact_size(Vec2::new(cw, 108.0), Sense::click());
-                            let sel = n.params.pages == pages;
+                            let sel = if n.params.text { kind == 2 } else { kind < 2 && n.params.pages == pages };
                             let pt = ui.painter();
                             let rr = egui::CornerRadius::same(10);
                             pt.rect_filled(r, rr, c(if sel { p.active } else if resp.hovered() { p.hover } else { p.card }));
                             pt.rect_stroke(r, rr, Stroke::new(if sel { 1.5 } else { 1.0 }, c(if sel { p.accent } else { p.line })), egui::StrokeKind::Inside);
                             // kleines Sinnbild
                             let ic = egui::Rect::from_center_size(r.center_top() + Vec2::new(0.0, 30.0), Vec2::new(40.0, 32.0));
-                            if pages {
+                            if kind == 2 {
+                                let pr = egui::Rect::from_center_size(ic.center(), Vec2::new(24.0, 31.0));
+                                pt.rect_filled(pr, 2.0, c(0xFFFBFBF8));
+                                pt.rect_stroke(pr, 2.0, Stroke::new(1.0, c(p.dim)), egui::StrokeKind::Inside);
+                                for l in 0..5 {
+                                    let y = pr.top() + 7.0 + l as f32 * 4.5;
+                                    let x1 = if l == 4 { pr.center().x } else { pr.right() - 4.0 };
+                                    pt.line_segment([egui::pos2(pr.left() + 4.0, y), egui::pos2(x1, y)], Stroke::new(1.4, c(if l == 0 { p.accent } else { p.dim })));
+                                }
+                            } else if pages {
                                 for k in 0..2 {
                                     let pr = egui::Rect::from_min_size(ic.min + Vec2::new(5.0 + k as f32 * 14.0, 2.0), Vec2::new(20.0, 28.0));
                                     pt.rect_filled(pr, 2.0, c(0xFFFBFBF8));
@@ -190,7 +207,8 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                             pt.text(r.center() + Vec2::new(0.0, 26.0), egui::Align2::CENTER_CENTER, title, egui::FontId::proportional(style::fs::BODY), c(p.text));
                             pt.text(r.center() + Vec2::new(0.0, 44.0), egui::Align2::CENTER_CENTER, tsub, egui::FontId::proportional(style::fs::CAPTION), c(p.dim));
                             if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                n.params.pages = pages;
+                                n.params.text = kind == 2;
+                                n.params.pages = kind != 0;
                             }
                         }
                     });
@@ -210,6 +228,8 @@ pub fn show(ctx: &egui::Context, sh: &mut Shared) -> Option<Outcome> {
                                 }
                             }
                         });
+                    }
+                    if n.params.pages && !n.params.text {
                         style::caption(ui, "Hintergrund");
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().item_spacing = Vec2::splat(style::sp::S);

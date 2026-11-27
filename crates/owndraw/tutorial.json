@@ -386,6 +386,89 @@
       ]
     },
     {
+      "id": "textdokument",
+      "title": "Textdokumente (Office)",
+      "intro": "Schreiben wie in Word, so einfach wie in Google Docs: echte Seiten, Überschriften, Listen, PDF und Word-Dateien.",
+      "entries": [
+        {
+          "id": "tx-neu",
+          "title": "Textdokument anlegen und öffnen",
+          "text": "Auf der Startseite unter „Neu“ die Karte „Textdokument“ wählen. Format (A4, A5, Letter) und Hoch/Quer lassen sich gleich festlegen. Textdokumente liegen wie Boards in „Zuletzt geöffnet“ (Marke „Text“) und speichern sich automatisch.",
+          "how": ["Name oben antippen, um das Dokument umzubenennen.", "Mit dem Pfeil oben links geht es zurück zur Startseite.", "Word-Dateien (.docx) über „Öffnen“ wählen: Es entsteht ein Textdokument, das Original bleibt unverändert.", "Hat der Administrator die Textverarbeitung ausgeschaltet, fehlt die Karte."],
+          "covers": ["extra:textdokument", "writer:Umbenennen", "writer:Zurück zur Startseite"]
+        },
+        {
+          "id": "tx-schreiben",
+          "title": "Schreiben und markieren",
+          "text": "Einfach lostippen. Enter beginnt einen neuen Absatz. Doppelklick markiert ein Wort, Dreifachklick den ganzen Absatz, mit gedrückter Umschalttaste erweiterst du die Auswahl.",
+          "how": ["Strg+Z / Strg+Y: Rückgängig und Wiederholen (auch oben links in der Leiste).", "Strg+X, Strg+C, Strg+V: Ausschneiden, Kopieren, Einfügen. Innerhalb von OwnDraw bleibt die Formatierung erhalten.", "Strg+A markiert alles; Rechtsklick öffnet ein Menü mit den wichtigsten Befehlen.", "Am Handy liegt die Leiste unten; Kopieren und Einfügen stecken hinter dem Kopieren-Symbol."],
+          "covers": ["writer:Rückgängig", "writer:Wiederholen", "writer:Ausschneiden", "writer:Kopieren", "writer:Einfügen", "writer:Alles auswählen"]
+        },
+        {
+          "id": "tx-zeichen",
+          "title": "Zeichen formatieren",
+          "text": "Fett, kursiv, unterstrichen, durchgestrichen, Textfarbe und Markierfarbe stehen in der Leiste. Ohne Auswahl gilt das Format für das Wort am Cursor oder für das, was du als Nächstes tippst.",
+          "how": ["Strg+B, Strg+I, Strg+U; Hochgestellt Strg+. und Tiefgestellt Strg+,.", "Schriftgröße mit − und + oder aus der Liste; Schriftart Serif (wie Times New Roman) oder Sans (wie Arial).", "Strg+Leertaste entfernt die Formatierung."],
+          "covers": ["extra:textfarbe", "writer:Fett", "writer:Kursiv", "writer:Unterstrichen", "writer:Durchgestrichen", "writer:Hochgestellt", "writer:Tiefgestellt", "writer:Formatierung entfernen", "writer:Schrift größer", "writer:Schrift kleiner", "writer:Schrift: Serif", "writer:Schrift: Sans"]
+        },
+        {
+          "id": "tx-absatz",
+          "title": "Überschriften, Ausrichtung, Zeilenabstand",
+          "text": "Das Feld ganz links in der Leiste legt fest, was ein Absatz ist: Normaler Text, Titel, Überschrift 1–3 oder Zitat. Überschriften erscheinen in der Gliederung und im Inhaltsverzeichnis.",
+          "how": ["Strg+Alt+1, 2, 3 für Überschriften, Strg+Alt+0 für normalen Text.", "Ausrichtung: links, zentriert, rechts oder Blocksatz (Strg+Umschalt+L/E/R/J).", "Zeilenabstand einfach, 1,15, 1,5 oder doppelt im Menü „Format“ oder in der Leiste."],
+          "covers": ["writer:Normaler Text", "writer:Titel", "writer:Überschrift 1", "writer:Überschrift 2", "writer:Überschrift 3", "writer:Zitat", "writer:Linksbündig", "writer:Zentriert", "writer:Rechtsbündig", "writer:Blocksatz", "writer:Zeilenabstand einfach", "writer:Zeilenabstand 1,15", "writer:Zeilenabstand 1,5", "writer:Zeilenabstand doppelt"]
+        },
+        {
+          "id": "tx-listen",
+          "title": "Listen und Einzüge",
+          "text": "Aufzählung und Nummerierung schaltest du in der Leiste ein und aus. Tab rückt einen Listenpunkt eine Ebene tiefer, Umschalt+Tab wieder heraus.",
+          "how": ["Enter in einem leeren Listenpunkt beendet die Liste.", "Rücktaste am Anfang eines Listenpunkts hebt erst den Einzug, dann die Liste auf.", "Strg+Umschalt+8 Aufzählung, Strg+Umschalt+7 Nummerierung."],
+          "covers": ["writer:Aufzählung", "writer:Nummerierung", "writer:Einzug vergrößern", "writer:Einzug verkleinern"]
+        },
+        {
+          "id": "tx-einfuegen",
+          "title": "Links, Datum, Zeichen, Seitenumbruch",
+          "text": "Über das Plus in der Leiste oder das Menü „Einfügen“ kommen Links, das heutige Datum, Sonderzeichen (€, ©, Pfeile, griechische Buchstaben …) und Seitenumbrüche ins Dokument.",
+          "how": ["Strg+K: Link für die Auswahl setzen; Strg+Klick öffnet einen Link.", "Strg+Enter: Seitenumbruch – der Text danach beginnt auf einer neuen Seite."],
+          "covers": ["writer:Link einfügen", "writer:Datum einfügen", "writer:Sonderzeichen", "writer:Seitenumbruch"]
+        },
+        {
+          "id": "tx-seite",
+          "title": "Seite, Kopf- und Fußzeile, Inhaltsverzeichnis",
+          "text": "„Seite einrichten“ ändert Format, Hoch-/Querformat und Ränder. Kopf- und Fußzeile stehen auf jeder Seite; {seite} und {seiten} werden zu Seitenzahl und Seitenanzahl.",
+          "how": ["„Seitenzahlen“ schreibt „Seite x von y“ in die Fußzeile (nochmal wählen entfernt sie).", "„Inhaltsverzeichnis“ fügt alle Überschriften mit Seitenzahl ein. Nach größeren Änderungen einfach neu einfügen."],
+          "covers": ["writer:Seite einrichten", "writer:Kopf- und Fußzeile", "writer:Seitenzahlen", "writer:Inhaltsverzeichnis"]
+        },
+        {
+          "id": "tx-suchen",
+          "title": "Suchen und ersetzen",
+          "text": "Strg+F öffnet die Suchleiste, alle Treffer werden gelb markiert. Enter springt zum nächsten, Umschalt+Enter zum vorherigen Treffer. Strg+H zeigt zusätzlich „Ersetzen“ und „Alle ersetzen“.",
+          "covers": ["writer:Suchen", "writer:Suchen und ersetzen"]
+        },
+        {
+          "id": "tx-ansicht",
+          "title": "Gliederung, Zoom, Wörter zählen",
+          "text": "Die Gliederung links zeigt alle Überschriften – ein Klick springt hin. Unten stehen Seite, Wortzahl und Zoom.",
+          "how": ["Strg++ / Strg+- / Strg+0 zoomen.", "Ein Klick auf die Wortzahl (oder Strg+Umschalt+C) zeigt Wörter, Zeichen, Absätze und Seiten – auch nur für die Auswahl."],
+          "covers": ["writer:Gliederung ein/aus", "writer:Vergrößern", "writer:Verkleinern", "writer:Zoom 100 %", "writer:Wörter zählen"]
+        },
+        {
+          "id": "tx-datei",
+          "title": "PDF, Word-Datei, Drucken",
+          "text": "Über das Download-Symbol oben rechts oder das Menü „Datei“ speicherst du das Dokument als PDF oder Word-Datei (.docx), druckst es oder legst eine Kopie an. PDF und Ausdruck sehen genau so aus wie die Seiten im Editor.",
+          "how": ["„Word-Datei einfügen“ holt den Inhalt einer .docx an die Cursor-Stelle.", "Strg+P druckt."],
+          "covers": ["writer:Als PDF speichern", "writer:Als Word-Datei speichern", "writer:Word-Datei einfügen", "writer:Drucken", "writer:Kopie speichern"]
+        },
+        {
+          "id": "tx-befehle",
+          "title": "Funktion suchen",
+          "text": "Du weißt nicht, wo etwas steckt? Oben „Funktion suchen …“ antippen (Strg+Umschalt+P) und lostippen, z. B. „Seitenzahlen“ oder „doppelt“. Enter führt den Befehl aus.",
+          "how": ["Extras → Tastenkürzel zeigt alle Kürzel.", "F1 öffnet diese Anleitung."],
+          "covers": ["extra:befehlssuche", "writer:Tastenkürzel", "writer:Anleitung & Tipps"]
+        }
+      ]
+    },
+    {
       "id": "ansicht",
       "title": "Zoom und Ansicht",
       "entries": [

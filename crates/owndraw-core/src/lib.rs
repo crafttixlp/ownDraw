@@ -16,6 +16,7 @@ pub mod laser;
 pub mod layer;
 pub mod math;
 pub mod migrate;
+pub mod office;
 pub mod pages;
 pub mod recognizer;
 pub mod store;

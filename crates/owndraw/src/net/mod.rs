@@ -216,7 +216,25 @@ pub struct Net {
     pub to_local: Vec<ToLocal>,
     /// Konto wurde gesperrt: Nachricht des Admins (leer = keine). Die App zeigt die Meldung, die Sitzung ist beendet.
     pub blocked: Option<String>,
+    /// Einstellungen → „Konto“ (Name, E-Mail, Passwort, Geräte, Export, Löschen).
+    pub acct: Acct,
     puts: HashMap<String, Put>,
+}
+
+/// Zustand der Konto-Seite in den Einstellungen.
+#[derive(Default)]
+pub struct Acct {
+    /// Formular, dessen Anfrage gerade läuft (`name`, `email`, `password`, `others`, `export`, `delete`).
+    pub busy: Option<&'static str>,
+    /// Fehlertext je Formular.
+    pub error: Option<(&'static str, String)>,
+    /// Formular erfolgreich abgeschickt (die Seite leert dann die Eingaben).
+    pub done: Option<&'static str>,
+    /// Angemeldete Geräte (Sitzungen) und Erstellungsdatum des Kontos (`GET /api/me/sessions`).
+    pub sessions: Option<i64>,
+    pub created: Option<i64>,
+    /// Fertig geladener Daten-Export (ZIP), die App fragt dann nach dem Speicherort.
+    pub export: Option<Vec<u8>>,
 }
 
 /// Vom Server geladenes Board für den Browser-Speicher („In diesem Browser speichern“).
@@ -254,6 +272,7 @@ thread_local! {
         moved: Vec::new(),
         to_local: Vec::new(),
         blocked: None,
+        acct: Acct { busy: None, error: None, done: None, sessions: None, created: None, export: None },
         puts: HashMap::new(),
     });
 }
@@ -516,6 +535,113 @@ pub fn redeem(code: &str) {
             }
         }
     });
+}
+
+// ---------------------------------------------------------------- Eigenes Konto (Einstellungen → „Konto“)
+
+/// Anfrage eines Konto-Formulars; `ok` läuft nur bei Erfolg (Fehlertext landet in `acct.error`).
+fn acct_request(form: &'static str, method: &'static str, path: &str, body: Option<Value>, ok: impl FnOnce(Resp) + 'static) {
+    with(|n| {
+        n.acct.busy = Some(form);
+        n.acct.error = None;
+        n.acct.done = None;
+    });
+    request(method, path.into(), body.map(Body::Json), vec![], move |r| {
+        let err = match &r {
+            Ok(x) if x.ok() => None,
+            Ok(x) if x.code() == "account_disabled" => None,
+            Ok(x) if x.code() == "rate_limited" => Some("Zu viele Versuche. Bitte warte ein paar Minuten.".to_string()),
+            Ok(x) => Some(x.message()),
+            Err(e) => Some(format!("Server nicht erreichbar. Prüfe deine Verbindung: {e}")),
+        };
+        with(|n| {
+            n.acct.busy = None;
+            n.acct.done = err.is_none().then_some(form);
+            n.acct.error = err.map(|e| (form, e));
+        });
+        if let Ok(r) = r.filter_ok() {
+            ok(r);
+        }
+    });
+}
+
+trait FilterOk {
+    fn filter_ok(self) -> Result<Resp, ()>;
+}
+
+impl FilterOk for Result<Resp, String> {
+    /// Nur erfolgreiche Antworten (2xx).
+    fn filter_ok(self) -> Result<Resp, ()> {
+        self.ok().filter(Resp::ok).ok_or(())
+    }
+}
+
+/// Nach Konto löschen: lokal abmelden (wie `logout`, ohne Anfrage).
+fn signed_out(msg: &str) {
+    #[cfg(not(target_arch = "wasm32"))]
+    tr::forget_session();
+    with(|n| {
+        n.me = None;
+        n.boards.clear();
+        n.boards_loaded = false;
+        n.acct = Acct::default();
+    });
+    refresh_features();
+    notice(msg);
+}
+
+pub fn set_name(name: &str) {
+    acct_request("name", "PATCH", "/api/me", Some(json!({"name": name.trim()})), |r| {
+        set_me(&r.json());
+        notice("Name geändert");
+    });
+}
+
+pub fn change_email(email: &str, password: &str) {
+    acct_request("email", "POST", "/api/me/email", Some(json!({"email": email.trim(), "password": password})), |r| {
+        set_me(&r.json());
+        load_sessions();
+        notice("E-Mail-Adresse geändert. Andere Geräte wurden abgemeldet.");
+    });
+}
+
+pub fn change_password(old: &str, new: &str) {
+    acct_request("password", "POST", "/api/me/password", Some(json!({"old": old, "new": new})), |_| {
+        load_sessions();
+        notice("Passwort geändert. Andere Geräte wurden abgemeldet.");
+    });
+}
+
+pub fn load_sessions() {
+    request("GET", "/api/me/sessions".into(), None, vec![], |r| {
+        if let Ok(r) = r.filter_ok() {
+            let v = r.json();
+            with(|n| {
+                n.acct.sessions = v["count"].as_i64();
+                n.acct.created = v["created"].as_i64();
+            });
+        }
+    });
+}
+
+pub fn logout_others() {
+    acct_request("others", "POST", "/api/me/sessions/logout-others", Some(json!({})), |r| {
+        let k = r.json()["ended"].as_i64().unwrap_or(0);
+        load_sessions();
+        notice(match k {
+            0 => "Du warst auf keinem anderen Gerät angemeldet.".to_string(),
+            1 => "Ein anderes Gerät wurde abgemeldet.".to_string(),
+            k => format!("{k} andere Geräte wurden abgemeldet."),
+        });
+    });
+}
+
+pub fn export_account() {
+    acct_request("export", "GET", "/api/me/export", None, |r| with(|n| n.acct.export = Some(r.body)));
+}
+
+pub fn delete_account(password: &str) {
+    acct_request("delete", "POST", "/api/me/delete", Some(json!({"password": password})), |_| signed_out("Dein Konto wurde gelöscht."));
 }
 
 // ---------------------------------------------------------------- Boards

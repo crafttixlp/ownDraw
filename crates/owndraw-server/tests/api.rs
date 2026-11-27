@@ -1638,3 +1638,71 @@ async fn admin_sperrt_werkzeuge_und_funktionen() {
     let r = app.post(&format!("/api/boards/{id}/members"), Some(&owner), json!({"email": "edit@example.org", "role": "edit"})).await;
     assert_eq!(r.status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn eigenes_konto_verwalten() {
+    let app = App::new();
+    let admin = app.admin().await;
+    let c1 = app.register("berta@example.org").await;
+    app.give_license(&admin, &c1, Value::Null, 50).await;
+    let r = app.upload(&c1, "Mein/Board", zip_bytes(10)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let c2 = cookie_of(&app.login("berta@example.org", "geheim1234").await);
+
+    // Name
+    let r = app.patch("/api/me", Some(&c1), json!({"name": "  Berta B.  "})).await;
+    assert_eq!((r.status, r.json()["name"].as_str().unwrap()), (StatusCode::OK, "Berta B."));
+    assert_eq!(app.patch("/api/me", Some(&c1), json!({"name": " "})).await.status, StatusCode::BAD_REQUEST);
+
+    // Sitzungen
+    assert_eq!(app.get("/api/me/sessions", Some(&c1)).await.json()["count"], 2);
+
+    // E-Mail: falsches Passwort, vergeben, richtig (andere Sitzungen enden)
+    let r = app.post("/api/me/email", Some(&c1), json!({"email": "neu@example.org", "password": "falsch123"})).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = app.post("/api/me/email", Some(&c1), json!({"email": "admin@example.org", "password": "geheim1234"})).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    let r = app.post("/api/me/email", Some(&c1), json!({"email": "Neu@Example.org", "password": "geheim1234"})).await;
+    assert_eq!((r.status, r.json()["email"].as_str().unwrap()), (StatusCode::OK, "neu@example.org"));
+    assert_eq!(app.get("/api/me", Some(&c2)).await.status, StatusCode::UNAUTHORIZED);
+    let c3 = cookie_of(&app.login("neu@example.org", "geheim1234").await);
+    let r = app.post("/api/me/sessions/logout-others", Some(&c1), json!({})).await;
+    assert_eq!(r.json()["ended"], 1);
+    assert_eq!(app.get("/api/me", Some(&c3)).await.status, StatusCode::UNAUTHORIZED);
+
+    // Export: ZIP mit konto.json und dem Board
+    let r = app.get("/api/me/export", Some(&c1)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(r.bytes)).unwrap();
+    assert!(z.by_name("boards/Mein_Board.owndraw").is_ok());
+    let mut s = String::new();
+    std::io::Read::read_to_string(&mut z.by_name("konto.json").unwrap(), &mut s).unwrap();
+    let info: Value = serde_json::from_str(&s).unwrap();
+    assert_eq!(info["email"], "neu@example.org");
+    assert_eq!(info["boards"].as_array().unwrap().len(), 1);
+
+    // Löschen: falsches Passwort, dann richtig
+    assert_eq!(app.post("/api/me/delete", Some(&c1), json!({"password": "falsch123"})).await.status, StatusCode::FORBIDDEN);
+    let r = app.post("/api/me/delete", Some(&c1), json!({"password": "geheim1234"})).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.headers.get(header::SET_COOKIE).unwrap().to_str().unwrap().contains("Max-Age=0"));
+    assert_eq!(app.get("/api/me", Some(&c1)).await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(app.login("neu@example.org", "geheim1234").await.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(std::fs::read_dir(app.state.cfg.boards_dir()).unwrap().count(), 0);
+
+    // Einziger Admin kann sich nicht löschen
+    let r = app.post("/api/me/delete", Some(&admin), json!({"password": "adminpasswort"})).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn konto_passwort_fehlversuche_begrenzt() {
+    let app = App::new();
+    let c = app.register("carl@example.org").await;
+    for _ in 0..10 {
+        assert_eq!(app.post("/api/me/delete", Some(&c), json!({"password": "falsch123"})).await.status, StatusCode::FORBIDDEN);
+    }
+    // auch mit richtigem Passwort gesperrt
+    assert_eq!(app.post("/api/me/delete", Some(&c), json!({"password": "geheim1234"})).await.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(app.get("/api/me", Some(&c)).await.status, StatusCode::OK);
+}

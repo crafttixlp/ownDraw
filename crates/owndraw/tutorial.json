@@ -681,7 +681,7 @@
         {
           "id": "einstellungen-kategorien",
           "title": "Einstellungen nach Themen",
-          "text": "Die Einstellungen sind nach Themen geordnet: oben „Editor“ (Werkzeuge, Tastenkürzel, Werkzeugleisten, Einrasten, Handschrift-Erkennung), darunter „App“ (Darstellung, Speichern, Konto & Server, Updates, Über OwnDraw). Jede Zeile öffnet eine eigene Seite.",
+          "text": "Die Einstellungen sind nach Themen geordnet: oben „Editor“ (Werkzeuge, Tastenkürzel, Werkzeugleisten, Einrasten, Handschrift-Erkennung), darunter „App“ (Konto, Darstellung, Speichern, Updates, Über OwnDraw). Jede Zeile öffnet eine eigene Seite.",
           "how": ["Unter jedem Thema steht kurz, was gerade eingestellt ist, z. B. „Modern · Dunkel · 100 %“.", "Der Pfeil oben links oder ein Klick auf „Einstellungen“ im Titel führt zurück zur Übersicht.", "„Alle Einstellungen zurücksetzen“ findest du unter „Über OwnDraw“."],
           "covers": ["extra:einstellungen-kategorien"]
         }
@@ -696,9 +696,16 @@
           "id": "live-konto-desktop",
           "title": "Anmelden in der Desktop- und Android-App",
           "text": "Auch die Desktop-App und die Android-App arbeiten mit deinem Konto: Auf der Startseite meldest du dich an, siehst Lizenz und belegten Speicher und darunter deine Boards „Auf dem Server“. Es sind dieselben Boards wie in der Web-App.",
-          "how": ["Startseite → „Anmelden“ oder „Konto erstellen“. Im Dialog steht oben der Server, voreingestellt ist owndraw.thepepelex.at.", "Den Server änderst du auch in den Einstellungen unter „Konto & Server“. Beim Wechsel wirst du abgemeldet.", "Ohne Verbindung arbeitest du ganz normal mit Boards auf diesem Gerät weiter. „Erneut versuchen“ verbindet wieder.", "Die Anmeldung bleibt gespeichert (nur für dein Benutzerkonto lesbar). „Abmelden“ löscht sie."],
+          "how": ["Startseite → „Anmelden“ oder „Konto erstellen“. Im Dialog steht oben der Server, voreingestellt ist owndraw.thepepelex.at.", "Den Server änderst du auch in den Einstellungen unter „Konto“ → „Server“. Beim Wechsel wirst du abgemeldet.", "Ohne Verbindung arbeitest du ganz normal mit Boards auf diesem Gerät weiter. „Erneut versuchen“ verbindet wieder.", "Die Anmeldung bleibt gespeichert (nur für dein Benutzerkonto lesbar). „Abmelden“ löscht sie."],
           "only": "Desktop- und Android-App",
           "covers": ["extra:konto-desktop", "extra:server-adresse"]
+        },
+        {
+          "id": "live-konto-verwalten",
+          "title": "Konto verwalten: Passwort, E-Mail, Löschen",
+          "text": "In den Einstellungen unter „Konto“ verwaltest du dein Konto: Name und E-Mail-Adresse ändern, Passwort ändern, sehen auf wie vielen Geräten du angemeldet bist, deine Daten herunterladen und das Konto löschen.",
+          "how": ["E-Mail ändern, Passwort ändern und Konto löschen fragen zur Sicherheit dein aktuelles Passwort ab. Danach bist du auf allen anderen Geräten abgemeldet.", "„Überall sonst abmelden“ beendet die Anmeldung auf allen anderen Geräten und Browsern, zum Beispiel wenn du ein Gerät verloren hast.", "„Daten herunterladen“ speichert eine ZIP-Datei mit allen deinen Boards auf dem Server als .owndraw-Dateien und deinen Kontodaten.", "„Konto löschen“ löscht dein Konto, deine Boards auf dem Server (auch für alle, mit denen du sie geteilt hast) und deine Lizenz. Lade vorher deine Daten herunter. Boards auf deinem Gerät bleiben."],
+          "covers": ["extra:konto-verwalten"]
         },
         {
           "id": "live-einladung-desktop",
@@ -719,7 +726,7 @@
           "id": "live-speicherort",
           "title": "Speicherort wählen: Server oder lokal",
           "text": "Mit Lizenz wählst du für jedes Board, wo es liegt. Auf dem Server ist es auf allen Geräten verfügbar und lässt sich teilen und live gemeinsam bearbeiten. Lokal (im Browser bzw. auf diesem Gerät) liegt es nur auf diesem Gerät und braucht keinen Speicherplatz der Lizenz.",
-          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Desktop und Android: Vorgabe in den Einstellungen unter „Konto & Server“ → „Neue Boards“.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“ (Desktop und Android: „Auf dieses Gerät verschieben“). Dort bleibt die Datei nach dem Hochladen als Sicherung liegen. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“ (Desktop und Android: „Kopie auf diesem Gerät“): Das Original am Server bleibt unverändert."],
+          "how": ["Beim Anlegen: Dialog „Neu“ → Speicherort „Auf dem Server“ oder „In diesem Browser“.", "Die Vorgabe stellst du in den Einstellungen unter „Speichern“ → „Neue Boards“ ein.", "Desktop und Android: Vorgabe in den Einstellungen unter „Konto“ → „Server“ → „Neue Boards“.", "Nachträglich auf der Startseite im Kartenmenü „…“: „Auf Server verschieben“ bzw. „In Browser verschieben“ (Desktop und Android: „Auf dieses Gerät verschieben“). Dort bleibt die Datei nach dem Hochladen als Sicherung liegen. Das Board wird erst an der alten Stelle entfernt, wenn es an der neuen sicher gespeichert ist.", "Reicht der Speicherplatz am Server nicht, sagt OwnDraw das vorher und das Board bleibt im Browser.", "Bei geteilten Boards anderer gibt es „Kopie im Browser“ (Desktop und Android: „Kopie auf diesem Gerät“): Das Original am Server bleibt unverändert."],
           "only": "Web-App, Desktop und Android mit Lizenz",
           "covers": ["extra:speicherort"]
         },

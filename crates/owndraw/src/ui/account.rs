@@ -41,7 +41,7 @@ pub struct AccountUi {
     invite_name: String,
 }
 
-fn date(secs: i64) -> String {
+pub(crate) fn date(secs: i64) -> String {
     let s = owndraw_core::doc::rfc3339(secs * 1000);
     // JJJJ-MM-TT → TT.MM.JJJJ
     format!("{}.{}.{}", &s[8..10], &s[5..7], &s[0..4])
@@ -66,10 +66,14 @@ fn server_text() -> String {
     String::new()
 }
 
-/// Demo/Screenshots: Dialog `login` oder `einladung` öffnen.
+/// Dialog öffnen (Einstellungen → „Konto“, Demo/Screenshots): `login`, `registrieren`, `einloesen`, `gast-beenden`, `einladung`.
 pub fn demo_dialog(st: &mut AccountUi, which: &str) {
+    api::with(|n| n.form_error = None);
     st.dlg = Some(match which {
         "einladung" => Dlg::InviteLink { link: String::new(), focus: true },
+        "registrieren" => Dlg::Login { register: true, email: String::new(), password: String::new(), name: String::new(), server: server_text(), focus: true },
+        "einloesen" => Dlg::Redeem { code: String::new(), focus: true },
+        "gast-beenden" => Dlg::LeaveGuest,
         _ => Dlg::Login { register: false, email: String::new(), password: String::new(), name: String::new(), server: server_text(), focus: true },
     });
 }

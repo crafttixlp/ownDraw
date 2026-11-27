@@ -1,5 +1,6 @@
 //! OwnDraw-Server: JSON-API, Admin-Panel und Auslieferung der Web-App (Vertrag: `docs/web-api.md`).
 
+pub mod account;
 pub mod admin;
 pub mod auth;
 pub mod bugreports;
@@ -132,8 +133,13 @@ pub fn build_app(state: AppState) -> Router {
         .route("/auth/2fa/enable", post(totp::enable))
         .route("/auth/2fa/verify", post(totp::verify))
         .route("/admin/2fa/recovery-codes", post(totp::regenerate))
-        .route("/me", get(auth::me))
+        .route("/me", get(auth::me).patch(account::set_name))
         .route("/me/password", post(auth::change_password))
+        .route("/me/email", post(account::set_email))
+        .route("/me/sessions", get(account::sessions))
+        .route("/me/sessions/logout-others", post(account::logout_others))
+        .route("/me/export", get(account::export))
+        .route("/me/delete", post(account::delete))
         .route("/license/redeem", post(auth::redeem))
         .route("/boards", get(boards::list).post(boards::create))
         .route("/boards/{id}", get(boards::get).put(boards::put).patch(boards::rename).delete(boards::delete))

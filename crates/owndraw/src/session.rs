@@ -34,11 +34,13 @@ pub struct NewParams {
     pub format: PageFormat,
     pub landscape: bool,
     pub bg: PageBg,
+    /// Textdokument (Textverarbeitung) statt Board.
+    pub text: bool,
 }
 
 impl Default for NewParams {
     fn default() -> Self {
-        NewParams { name: String::new(), pages: true, format: PageFormat::A4, landscape: false, bg: PageBg::Lined }
+        NewParams { name: String::new(), pages: true, format: PageFormat::A4, landscape: false, bg: PageBg::Lined, text: false }
     }
 }
 
@@ -57,6 +59,22 @@ impl NewParams {
 
 /// Neues leeres Dokument.
 pub fn new_document(p: &NewParams) -> Document {
+    if p.text {
+        let mut td = owndraw_core::office::TextDoc::new();
+        let (mut w, mut h) = match p.format {
+            PageFormat::A5 => (419.53, 595.28),
+            PageFormat::Letter => (612.0, 792.0),
+            _ => (595.28, 841.89),
+        };
+        if p.landscape {
+            std::mem::swap(&mut w, &mut h);
+        }
+        td.page.w = w;
+        td.page.h = h;
+        let mut d = Document::new_text(&p.name);
+        d.text = Some(td.to_json());
+        return d;
+    }
     Document::new(&p.name, p.mode())
 }
 
@@ -191,7 +209,7 @@ pub fn read_thumb(platform: &dyn Platform, f: &FileRef) -> Option<Vec<u8>> {
 pub fn read_summary(platform: &dyn Platform, f: &FileRef) -> Option<(String, bool)> {
     let m: serde_json::Value = serde_json::from_slice(&read_zip_entry(platform, f, "manifest.json", 4 << 20)?).ok()?;
     let name = m.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(|| f.display_name().trim_end_matches(".owndraw").to_string());
-    Some((name, m.get("mode").and_then(|v| v.as_str()) == Some("pages")))
+    Some((name, m.get("mode").and_then(|v| v.as_str()) == Some("pages") || m.get("kind").and_then(|v| v.as_str()) == Some("text")))
 }
 
 #[cfg(test)]
@@ -200,7 +218,7 @@ mod tests {
 
     #[test]
     fn neu_parameter_und_dokument() {
-        let p = NewParams { name: "T".into(), pages: true, format: PageFormat::A5, landscape: true, bg: PageBg::Grid };
+        let p = NewParams { name: "T".into(), pages: true, format: PageFormat::A5, landscape: true, bg: PageBg::Grid, text: false };
         match p.mode() {
             BoardMode::Pages(s) => {
                 assert_eq!((s.w, s.h), (595.0, 420.0));

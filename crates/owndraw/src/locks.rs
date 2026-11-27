@@ -11,6 +11,9 @@ thread_local! {
     static OFF: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Hinweis, wenn eine gesperrte Funktion aufgerufen wird.
+pub const HINT: &str = "Diese Funktion wurde vom Administrator ausgeschaltet.";
+
 /// Neue Liste gesperrter Kennungen übernehmen.
 pub fn set(off: Vec<String>) {
     OFF.with(|o| *o.borrow_mut() = off);

@@ -39,6 +39,20 @@ owndraw (Desktop, egui/eframe)  ──►  owndraw-core (keine UI-Abhängigkeit)
   Anwenden, `Sync` (Schatten des Server-Stands + ausstehende eigene Änderungen); fremde Änderungen werden auch in
   die Undo-Schnappschüsse eingearbeitet (`Board::patch_history`). Genutzt von Web-App und Server.
 
+## Office: Textverarbeitung (ab 4.51)
+
+- **Kern** `owndraw_core::office`: Modell (`model.rs`: Absätze mit Art, Ausrichtung, Einzug, Zeilenabstand und
+  formatierten Läufen; Positionen `Pos { p, o }` in Zeichen), Seitenumbruch (`layout.rs`, Einheit pt, A4 mit 2,5-cm-
+  Rändern), Zeichnen als Umrisse (`render.rs`: PDF und Vorschaubild), Word-Datei lesen/schreiben (`docx.rs`).
+  Schriften: „OwnDraw Sans/Serif“ (Liberation 2, umbenannt und verkleinert nach OFL, `fonts/`).
+- **Datei:** dieselbe `.owndraw` (ZIP) mit `manifest.json` `"kind": "text"`, `"version": 3` und `text.json`;
+  ältere Programmversionen öffnen sie schreibgeschützt. Speicherorte, Zuletzt-Liste, Server und Autosave wie Boards.
+- **Oberfläche** `ui/writer/`: `mod.rs` Zustand, Bearbeiten, Befehle (`Cmd`, Liste `CMDS` = Menüs, Befehlssuche,
+  Tastenkürzel; jeder Eintrag braucht einen Eintrag in `tutorial.json` mit `covers: "writer:<Name>"`), `view.rs`
+  Seiten zeichnen mit egui (gleiche Schriften wie PDF, Grundlinie aus dem Galley) und Eingabe (Maus, Touch, IME),
+  `bars.rs` Leisten, Menüs, Suche, Gliederung, Fenster.
+- **Admin:** Funktionen `office` (Textverarbeitung) und `office_word` (Word-Dateien) in `owndraw_core::features`.
+
 ## Desktop
 
 - egui 0.37 / eframe (glow, X11 + Wayland). Alle Leisten sind `Area`s über der Board-Textur. Kacheln (`toolbar::tile`) lassen sich am Griff verschieben; am Rand losgelassen docken sie an (oben/unten waagerecht, links/rechts senkrecht), gespeichert in `Settings.tile_pos` + `tile_dock`. Strichstärken sind Weltkoordinaten (Punkt) und hängen nicht vom Zoom ab.

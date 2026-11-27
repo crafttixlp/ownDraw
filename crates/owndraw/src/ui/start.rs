@@ -3,7 +3,7 @@
 use super::{elide, fmt_time};
 use crate::app::{PickPurpose, Req, Shared};
 use crate::layout::FormFactor;
-use crate::platform::{FileKind, FileRef};
+use crate::platform::FileRef;
 use crate::recent::Recent;
 use crate::session;
 use crate::style::{self, c};
@@ -105,7 +105,7 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                     sh.reqs.push(Req::NewDialog);
                 }
                 if ui.add_sized([btn_w, h], egui::Button::new(egui::RichText::new("Öffnen …").color(c(p.accent)).strong()).fill(c(p.accent_soft)).corner_radius(CornerRadius::same(14))).clicked() {
-                    sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
+                    sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: crate::ui::writer::open_kinds() });
                 }
             });
             {
@@ -160,14 +160,14 @@ pub fn show(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: &Re
                             egui::Image::new(&t).uv(uv).corner_radius(top).paint_at(ui, img_r);
                         }
                         None => {
-                            let g = if e.pages { "▤" } else { "∞" };
+                            let g = if e.text { "¶" } else if e.pages { "▤" } else { "∞" };
                             ui.painter().text(img_r.center(), Align2::CENTER_CENTER, g, egui::FontId::proportional(34.0), c(0xFFB8B9C0));
                         }
                     }
                     let pt = ui.painter();
                     pt.line_segment([img_r.left_bottom(), img_r.right_bottom()], Stroke::new(1.0, c(0x14000000)));
                     // Art-Marke
-                    let badge = if e.pages { "Seiten" } else { "Unendlich" };
+                    let badge = if e.text { "Text" } else if e.pages { "Seiten" } else { "Unendlich" };
                     let bg = pt.layout_no_wrap(badge.to_string(), egui::FontId::proportional(11.0), c(0xFFFFFFFF));
                     let br = Rect::from_min_size(img_r.left_top() + Vec2::new(8.0, 8.0), bg.size() + Vec2::new(12.0, 6.0));
                     pt.rect_filled(br, CornerRadius::same(255), egui::Color32::from_black_alpha(120));
@@ -471,7 +471,7 @@ fn empty_state(ui: &mut egui::Ui, sh: &mut Shared, h: f32) {
                         sh.reqs.push(Req::NewDialog);
                     }
                     if icon_label_btn(ui, &mut sh.icons, owndraw_core::icons::FOLDER, b, "", BtnKind::Outline, h).clicked() {
-                        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
+                        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: crate::ui::writer::open_kinds() });
                     }
                 });
             });
@@ -540,7 +540,7 @@ fn board_card(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, e: &crate
         (r.left() + sp::L, fy - 10.0, fy + 11.0, mr.left() - r.left() - sp::L, mr)
     };
     let name = elide(&e.name, fs::BODY, max_w, ui);
-    let kind = if e.pages { "Seiten" } else { "Unendlich" };
+    let kind = if e.text { "Textdokument" } else if e.pages { "Seiten" } else { "Unendlich" };
     let sub = if missing { "Datei nicht gefunden".to_string() } else { format!("{kind} · {}", fmt_rel(e.modified_ms)) };
     let sub = elide(&sub, fs::SMALL, max_w + 20.0, ui);
     let pt = ui.painter();
@@ -660,7 +660,7 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                 };
                 let open = |ui: &mut egui::Ui, sh: &mut Shared| {
                     if icon_label_btn(ui, &mut sh.icons, icons::FOLDER, "Öffnen …", "Board aus einer Datei öffnen", BtnKind::Outline, h).clicked() {
-                        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: vec![FileKind::Owndraw, FileKind::Xopp] });
+                        sh.reqs.push(Req::PickOpen { purpose: PickPurpose::OpenDoc, kinds: crate::ui::writer::open_kinds() });
                     }
                 };
                 // rechtsbündig (rtl): erster Knopf steht ganz rechts, daher in beiden Fällen dieselbe Reihenfolge
@@ -776,7 +776,7 @@ fn show_modern(ui: &mut egui::Ui, sh: &mut Shared, st: &mut StartState, recent: 
                     sh.icons.paint(ui, Rect::from_center_size(ic, Vec2::splat(48.0)), icons::PLUS, if hov { p.on_accent } else { p.accent }, false, 22.0);
                     let pt = ui.painter();
                     pt.text(r.center() + Vec2::new(0.0, 26.0), Align2::CENTER_CENTER, "Neues Board", egui::FontId::proportional(fs::BODY), c(p.text));
-                    pt.text(r.center() + Vec2::new(0.0, 46.0), Align2::CENTER_CENTER, "Unendlich oder Seiten", egui::FontId::proportional(fs::SMALL), c(p.dim));
+                    pt.text(r.center() + Vec2::new(0.0, 46.0), Align2::CENTER_CENTER, if crate::locks::locked(owndraw_core::features::OFFICE) { "Unendlich oder Seiten" } else { "Board oder Textdokument" }, egui::FontId::proportional(fs::SMALL), c(p.dim));
                     if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         sh.reqs.push(Req::NewDialog);
                     }

@@ -50,6 +50,10 @@ pub const FORMULAS: &str = "formulas";
 pub const LAYERS: &str = "layers";
 /// „Fehler melden“.
 pub const BUGREPORT: &str = "bugreport";
+/// Office: Textverarbeitung (Textdokumente anlegen und öffnen).
+pub const OFFICE: &str = "office";
+/// Office: Word-Dateien öffnen, einfügen und speichern.
+pub const OFFICE_WORD: &str = "office_word";
 
 /// Alle sperrbaren Einträge (Werkzeuge in Leisten-Reihenfolge, danach Funktionen).
 pub const ALL: &[Feature] = &[
@@ -80,6 +84,8 @@ pub const ALL: &[Feature] = &[
     feature(FORMULAS, "Formelsammlung", "Fenster „Formelsammlung“ und eigene Formeln am Server."),
     feature(LAYERS, "Ebenen", "Ebenen-Liste im Menü des Editors."),
     feature(BUGREPORT, "Fehler melden", "Menüpunkt „Fehler melden“ in der Web-App."),
+    feature(OFFICE, "Office: Textverarbeitung", "Textdokumente (wie Word) anlegen und öffnen. Gesperrt: Karte „Textdokument“ fehlt, vorhandene öffnen nicht."),
+    feature(OFFICE_WORD, "Office: Word-Dateien", "Word-Dateien (.docx) öffnen, in Textdokumente einfügen und als Word-Datei speichern."),
 ];
 
 /// Eintrag nach Kennung.

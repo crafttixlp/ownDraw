@@ -526,6 +526,10 @@ mod tests {
         for l in literals_after(&rows, "menu_row(ui, ") {
             f.insert(format!("menu:{l}"));
         }
+        // Befehle der Textverarbeitung (Leiste, Menüs, Befehlssuche)
+        for e in crate::ui::writer::CMDS {
+            f.insert(format!("writer:{}", e.1));
+        }
         // Einträge des Export-Fensters
         for e in crate::ui::editor::export::all_entries() {
             f.insert(format!("export:{}", e.label()));

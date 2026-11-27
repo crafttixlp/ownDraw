@@ -581,7 +581,7 @@ pub fn import(bytes: &[u8]) -> Result<TextDoc, String> {
     let body = d.descendants().find(|n| n.tag_name().name() == "body").ok_or("Word-Datei ohne Inhalt")?;
     let mut paras = Vec::new();
     block(body, &cx, &mut paras);
-    if let Some(sp) = body.descendants().filter(|n| n.tag_name().name() == "sectPr").last() {
+    if let Some(sp) = body.descendants().rfind(|n| n.tag_name().name() == "sectPr") {
         let num = |n: Option<roxmltree::Node>, k: &str| n.and_then(|n| wattr(n, k)).and_then(|v| v.parse::<f32>().ok()).map(|v| v / 20.0);
         let sz = child(sp, "pgSz");
         let mar = child(sp, "pgMar");

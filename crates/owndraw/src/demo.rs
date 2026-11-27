@@ -145,6 +145,10 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
         }
     }
     let ms = owndraw_core::store::now_ms();
+    if has("writer") {
+        app.open_writer_demo(ctx, writer_sample(), has("wfind"));
+        return;
+    }
     if has("start") {
         let names = [("Maschinenbau Skizze", false), ("Analysis Vorlesung", true), ("Ideen", false), ("Einkaufsliste", true), ("Logo-Entwurf", false), ("Statik Übung 3", true), ("Whiteboard Montag", false)];
         let (sh, start, recent) = app.parts();
@@ -158,7 +162,7 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
                 let _ = std::fs::write(&path, b"");
             }
             let f = FileRef::Path(path);
-            recent.add(RecentEntry { file: f.clone(), name: n.to_string(), modified_ms: ms - (i as i64) * 86_400_000 - 3_600_000, pages: *pages });
+            recent.add(RecentEntry { file: f.clone(), name: n.to_string(), modified_ms: ms - (i as i64) * 86_400_000 - 3_600_000, pages: *pages, text: false });
             if i != 4 {
                 let b = demo_board(i as u32, 0.0, 0.0);
                 start.set_thumb(&f, thumb_texture(ctx, &b, &format!("demo-thumb-{i}")));
@@ -393,4 +397,50 @@ pub fn setup(app: &mut App, ctx: &egui::Context, spec: &str) {
     if has("rename") {
         app.sh.dialog = Some(Dialog::Rename { what: crate::ui::dialogs::RenameWhat::Doc, title: "Board umbenennen", text: "Maschinenbau Skizze".into(), focus: true });
     }
+}
+
+/// Beispiel-Textdokument für Screenshots.
+fn writer_sample() -> owndraw_core::doc::Document {
+    use owndraw_core::office::{CStyle, Kind, Para, Run, TextDoc};
+    let mut td = TextDoc::new();
+    let run = |t: &str, st: CStyle| Run { text: t.into(), st };
+    let n = CStyle::default;
+    let mut ps = vec![
+        Para::with_text(Kind::Title, "Projektbericht Brückenbau"),
+        Para::with_text(Kind::H1, "1  Ausgangslage"),
+    ];
+    let mut p = Para::new(Kind::Body);
+    p.runs = vec![
+        run("Die Fußgängerbrücke über die Ilm wird ", n()),
+        run("bis Ende März", CStyle { b: true, ..n() }),
+        run(" erneuert. Dieser Bericht fasst ", n()),
+        run("Statik, Kosten und Zeitplan", CStyle { hl: 0xFFFDE68A, ..n() }),
+        run(" zusammen und dient als Grundlage für die Sitzung am Donnerstag. Alle Werte sind gerundet; die genauen Zahlen stehen im Anhang.", n()),
+    ];
+    ps.push(p);
+    ps.push(Para::with_text(Kind::H2, "1.1  Ziele"));
+    for t in ["Tragfähigkeit von 5 kN/m² nachweisen", "Bauzeit unter sechs Wochen halten", "Kosten im Rahmen von 180 000 € bleiben"] {
+        ps.push(Para::with_text(Kind::Bullet, t));
+    }
+    ps.push(Para::with_text(Kind::H2, "1.2  Nächste Schritte"));
+    for t in ["Angebote einholen", "Gutachten beauftragen", "Termin mit der Stadt vereinbaren"] {
+        ps.push(Para::with_text(Kind::Number, t));
+    }
+    let mut q = Para::with_text(Kind::Quote, "„Gute Planung spart doppelt so viel Zeit, wie sie kostet.“");
+    q.align = owndraw_core::office::Align::Center;
+    ps.push(q);
+    let mut p = Para::new(Kind::Body);
+    p.runs = vec![
+        run("Weitere Informationen gibt es auf ", n()),
+        run("owndraw.de", CStyle { link: Some("https://owndraw.de".into()), ..n() }),
+        run(". Die Formel für die Durchbiegung lautet w = 5qL", n()),
+        run("4", CStyle { va: owndraw_core::office::VAlign::Sup, ..n() }),
+        run("/384EI.", n()),
+    ];
+    ps.push(p);
+    td.paras = ps;
+    td.footer = "Seite {seite} von {seiten}".into();
+    let mut d = owndraw_core::doc::Document::new_text("Projektbericht Brückenbau");
+    d.text = Some(td.to_json());
+    d
 }

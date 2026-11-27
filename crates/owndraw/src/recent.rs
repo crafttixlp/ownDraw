@@ -19,6 +19,8 @@ pub struct RecentEntry {
     pub modified_ms: i64,
     /// Seitenmodus (für das Symbol der Kachel).
     pub pages: bool,
+    /// Textdokument (Textverarbeitung).
+    pub text: bool,
 }
 
 pub struct Recent {
@@ -44,6 +46,7 @@ impl Recent {
                             name: e.get("name")?.as_str()?.to_string(),
                             modified_ms: e.get("modified")?.as_i64()?,
                             pages: e.get("pages").and_then(Value::as_bool).unwrap_or(false),
+                            text: e.get("text").and_then(Value::as_bool).unwrap_or(false),
                         })
                     })
                     .collect()
@@ -53,7 +56,7 @@ impl Recent {
     }
 
     fn save(&self) {
-        let v: Vec<Value> = self.items.iter().map(|e| json!({"file": e.file.to_key(), "name": e.name, "modified": e.modified_ms, "pages": e.pages})).collect();
+        let v: Vec<Value> = self.items.iter().map(|e| json!({"file": e.file.to_key(), "name": e.name, "modified": e.modified_ms, "pages": e.pages, "text": e.text})).collect();
         let _ = crate::kv::write(&self.path, Value::Array(v).to_string().as_bytes());
     }
 
@@ -97,9 +100,9 @@ mod tests {
         let mut r = Recent::load(&dir);
         let a = FileRef::Path(PathBuf::from("/x/a.owndraw"));
         let b = FileRef::Path(PathBuf::from("/x/b.owndraw"));
-        r.add(RecentEntry { file: a.clone(), name: "A".into(), modified_ms: 1, pages: false });
-        r.add(RecentEntry { file: b.clone(), name: "B".into(), modified_ms: 2, pages: true });
-        r.add(RecentEntry { file: a.clone(), name: "A2".into(), modified_ms: 3, pages: false });
+        r.add(RecentEntry { file: a.clone(), name: "A".into(), modified_ms: 1, pages: false, text: false });
+        r.add(RecentEntry { file: b.clone(), name: "B".into(), modified_ms: 2, pages: true, text: false });
+        r.add(RecentEntry { file: a.clone(), name: "A2".into(), modified_ms: 3, pages: false, text: false });
         let r2 = Recent::load(&dir);
         assert_eq!(r2.list().len(), 2);
         assert_eq!(r2.list()[0].name, "A2");
@@ -118,15 +121,15 @@ mod tests {
         let weg = FileRef::Path(dir.join("weg.owndraw"));
         let da = FileRef::Path(da);
         let mut r = Recent::load(&dir);
-        r.add(RecentEntry { file: da.clone(), name: "da".into(), modified_ms: 1, pages: false });
-        r.add(RecentEntry { file: weg.clone(), name: "weg".into(), modified_ms: 2, pages: true });
+        r.add(RecentEntry { file: da.clone(), name: "da".into(), modified_ms: 1, pages: false, text: false });
+        r.add(RecentEntry { file: weg.clone(), name: "weg".into(), modified_ms: 2, pages: true, text: false });
         r.check_missing(|f| matches!(f, FileRef::Path(p) if p.exists()));
         assert!(r.is_missing(&weg) && !r.is_missing(&da));
         r.remove(&weg);
         assert!(!r.is_missing(&weg));
         // Höchstzahl und kaputte Datei
         for i in 0..(MAX_RECENT + 5) {
-            r.add(RecentEntry { file: FileRef::Uri(format!("content://x/{i}")), name: i.to_string(), modified_ms: i as i64, pages: false });
+            r.add(RecentEntry { file: FileRef::Uri(format!("content://x/{i}")), name: i.to_string(), modified_ms: i as i64, pages: false, text: false });
         }
         assert_eq!(Recent::load(&dir).list().len(), MAX_RECENT);
         std::fs::write(dir.join("recent.json"), b"{kaputt").unwrap();

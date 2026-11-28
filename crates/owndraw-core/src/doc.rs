@@ -44,7 +44,9 @@ impl From<std::io::Error> for DocError {
 pub const FORMAT_VERSION: i64 = 2;
 /// Formatversion von Textdokumenten (`"kind": "text"`, Inhalt in `text.json`). Ältere Programmversionen öffnen sie
 /// deshalb nur lesend und überschreiben den Text nicht.
-pub const TEXT_FORMAT_VERSION: i64 = 4;
+pub const TEXT_FORMAT_VERSION: i64 = 5;
+/// Textdokumente mit Bildern, aber ohne Tabellen/Objekte/Felder (Textformat "v":1) schreiben Version 4.
+const TEXT_VERSION_IMAGES: i64 = 4;
 /// Textdokumente ohne Bilder schreiben weiter Version 3 (lesbar ab 4.51.0); mit Bildern 4 (ältere öffnen schreibgeschützt).
 const TEXT_VERSION_NO_IMAGES: i64 = 3;
 
@@ -371,7 +373,8 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     let mut m = doc.meta.extra.clone();
     m.insert("format".into(), json!("owndraw"));
     let version = match &text {
-        Some(t) if t.get("paras").and_then(Value::as_array).is_some_and(|a| a.iter().any(|p| p.get("img").is_some())) => TEXT_FORMAT_VERSION,
+        Some(t) if t.get("v").and_then(Value::as_i64).unwrap_or(1) >= 2 => TEXT_FORMAT_VERSION,
+        Some(t) if t.get("paras").and_then(Value::as_array).is_some_and(|a| a.iter().any(|p| p.get("img").is_some())) => TEXT_VERSION_IMAGES,
         Some(_) => TEXT_VERSION_NO_IMAGES,
         None => FORMAT_VERSION,
     };

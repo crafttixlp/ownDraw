@@ -463,6 +463,7 @@ fn merge(a: &CStyle, b: &CStyle) -> CStyle {
         fam: b.fam.or(a.fam),
         va: if b.va != VAlign::Base { b.va } else { a.va },
         link: None,
+        ..CStyle::default()
     }
 }
 
@@ -510,7 +511,7 @@ fn para_of(n: roxmltree::Node, cx: &Ctx, out: &mut Vec<Para>) {
     let mut runs = Vec::new();
     let mut pb = false;
     runs_of(n, cx, &base, None, &mut runs, &mut pb);
-    let mut p = Para { kind, align, indent, line, runs, img: None };
+    let mut p = Para { kind, align, indent, line, runs, ..Para::default() };
     p.normalize();
     let empty = p.is_empty();
     let pics = std::mem::take(&mut *cx.pending.borrow_mut());

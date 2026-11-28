@@ -41,7 +41,8 @@ pub fn para_style(doc: &TextDoc, k: Kind) -> PStyle {
         Kind::H3 => PStyle { fam: Family::Sans, size: 12.0, bold: true, before: 10.0, after: 3.0, ..body },
         Kind::Quote => PStyle { italic: true, before: 4.0, color: 0xFF4A4A55, ..body },
         Kind::Bullet | Kind::Number => PStyle { after: 3.0, ..body },
-        Kind::PageBreak | Kind::Image => PStyle { after: 0.0, ..body },
+        Kind::PageBreak | Kind::Image | Kind::Table | Kind::Object => PStyle { after: 0.0, ..body },
+        Kind::Caption => PStyle { fam: Family::Sans, size: (doc.size - 1.5).max(6.0), italic: true, before: 2.0, after: 10.0, color: 0xFF4A4A55, ..body },
     }
 }
 

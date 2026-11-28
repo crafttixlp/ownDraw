@@ -5,9 +5,11 @@
 //! (siehe [`crate::doc`]). So funktionieren Speicherorte, Server, Teilen und „Zuletzt“ wie bei Boards.
 
 pub mod docx;
+pub mod fields;
 pub mod fonts;
 pub mod layout;
 pub mod model;
+pub mod objects;
 pub mod render;
 
 pub use layout::{layout, Layout};

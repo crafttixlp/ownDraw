@@ -8,6 +8,7 @@
 //! Unbekannte Felder werden beim Lesen ignoriert. Kopf- und Fußzeile dürfen `{seite}` und `{seiten}` enthalten.
 
 pub use super::fonts::Family;
+pub use super::objects::{Extras, Field, Obj, Table, Wrap, OBJ};
 use serde_json::{json, Map, Value};
 
 /// Hoch-/Tiefstellung.
@@ -34,6 +35,13 @@ pub struct CStyle {
     pub fam: Option<Family>,
     pub va: VAlign,
     pub link: Option<String>,
+    /// Feld oder Fußnote (Text des Laufs besteht dann aus Platzhaltern [`OBJ`]).
+    pub field: Option<Field>,
+    /// Kommentar-ID (0 = keiner).
+    pub cmt: u32,
+    /// Nachverfolgte Einfügung / Löschung (ID der Änderung, 0 = keine).
+    pub ins: u32,
+    pub del: u32,
 }
 
 /// Absatzvorlage.
@@ -52,10 +60,16 @@ pub enum Kind {
     PageBreak,
     /// Bild als eigener Absatz (`Para::img`).
     Image,
+    /// Tabelle (`Para::table`).
+    Table,
+    /// Form, Textfeld, Zeichnung, Formel oder Diagramm (`Para::obj`).
+    Object,
+    /// Beschriftung („Abbildung 1: …“), Art in `Para::cap`.
+    Caption,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [Kind::Body, Kind::Title, Kind::H1, Kind::H2, Kind::H3, Kind::Quote, Kind::Bullet, Kind::Number, Kind::PageBreak, Kind::Image];
+    pub const ALL: [Kind; 13] = [Kind::Body, Kind::Title, Kind::H1, Kind::H2, Kind::H3, Kind::Quote, Kind::Bullet, Kind::Number, Kind::PageBreak, Kind::Image, Kind::Table, Kind::Object, Kind::Caption];
     pub fn name(self) -> &'static str {
         match self {
             Kind::Body => "p",
@@ -68,6 +82,9 @@ impl Kind {
             Kind::Number => "ol",
             Kind::PageBreak => "pb",
             Kind::Image => "img",
+            Kind::Table => "table",
+            Kind::Object => "obj",
+            Kind::Caption => "cap",
         }
     }
     pub fn from_name(s: &str) -> Kind {
@@ -86,6 +103,9 @@ impl Kind {
             Kind::Number => "Nummerierung",
             Kind::PageBreak => "Seitenumbruch",
             Kind::Image => "Bild",
+            Kind::Table => "Tabelle",
+            Kind::Object => "Objekt",
+            Kind::Caption => "Beschriftung",
         }
     }
     pub fn is_heading(self) -> bool {
@@ -93,7 +113,11 @@ impl Kind {
     }
     /// Absatz ohne Text (Seitenumbruch, Bild): Tippen legt dahinter einen neuen Absatz an.
     pub fn is_block(self) -> bool {
-        matches!(self, Kind::PageBreak | Kind::Image)
+        matches!(self, Kind::PageBreak | Kind::Image | Kind::Table | Kind::Object)
+    }
+    /// Braucht Textformat 2.
+    pub fn is_v2(self) -> bool {
+        matches!(self, Kind::Table | Kind::Object | Kind::Caption)
     }
     pub fn is_list(self) -> bool {
         matches!(self, Kind::Bullet | Kind::Number)
@@ -121,7 +145,7 @@ pub enum Align {
 }
 
 impl Align {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Align::Left => "l",
             Align::Center => "c",
@@ -129,7 +153,7 @@ impl Align {
             Align::Justify => "j",
         }
     }
-    fn from_name(s: &str) -> Align {
+    pub(crate) fn from_name(s: &str) -> Align {
         match s {
             "c" => Align::Center,
             "r" => Align::Right,
@@ -158,6 +182,16 @@ pub struct Para {
     pub runs: Vec<Run>,
     /// Bild (nur bei `Kind::Image`).
     pub img: Option<Img>,
+    /// Tabelle (nur bei `Kind::Table`).
+    pub table: Option<Table>,
+    /// Objekt (nur bei `Kind::Object`).
+    pub obj: Option<Obj>,
+    /// Textumfluss bei Bild/Objekt.
+    pub wrap: Wrap,
+    /// Ziel-ID für Querverweise (0 = keine).
+    pub id: u32,
+    /// Art der Beschriftung („Abbildung“, „Tabelle“, „Formel“).
+    pub cap: String,
 }
 
 /// Bild im Textdokument: Datei im Bildspeicher des Dokuments, Größe in pt.
@@ -331,7 +365,7 @@ impl Para {
         let i = self.cut(o.min(self.len()));
         let rest: Vec<Run> = self.runs.drain(i..).collect();
         let st = self.style_at(o);
-        let mut p = Para { kind: self.kind, align: self.align, indent: self.indent, line: self.line, runs: rest, img: None };
+        let mut p = Para { kind: self.kind, align: self.align, indent: self.indent, line: self.line, runs: rest, cap: self.cap.clone(), ..Para::default() };
         if p.runs.iter().all(|r| r.text.is_empty()) {
             p.runs = vec![Run { text: String::new(), st }];
         }
@@ -397,6 +431,21 @@ impl Para {
         if let Some(i) = &self.img {
             o.insert("img".into(), json!({"f": i.file, "w": i.w as f64, "h": i.h as f64}));
         }
+        if let Some(t) = &self.table {
+            o.insert("tbl".into(), t.to_json());
+        }
+        if let Some(ob) = &self.obj {
+            o.insert("obj".into(), ob.to_json());
+        }
+        if self.wrap != Wrap::Inline {
+            o.insert("wr".into(), json!(self.wrap.name()));
+        }
+        if self.id > 0 {
+            o.insert("id".into(), json!(self.id));
+        }
+        if !self.cap.is_empty() {
+            o.insert("cap".into(), json!(self.cap));
+        }
         Value::Object(o)
     }
 
@@ -408,8 +457,28 @@ impl Para {
             indent: v.get("in").and_then(Value::as_u64).unwrap_or(0).min(8) as u8,
             line: v.get("ls").and_then(Value::as_f64).map(|x| x as f32).filter(|x| x.is_finite() && *x >= 0.5 && *x <= 4.0).unwrap_or(0.0),
             runs: v.get("r").and_then(Value::as_array).map(|a| a.iter().map(run_from).collect()).unwrap_or_default(),
-            img: None,
+            wrap: Wrap::from_name(s("wr")),
+            id: v.get("id").and_then(Value::as_u64).unwrap_or(0).min(u32::MAX as u64) as u32,
+            cap: s("cap").to_string(),
+            ..Para::default()
         };
+        match p.kind {
+            Kind::Table => match v.get("tbl").and_then(Table::from_json) {
+                Some(t) => {
+                    p.table = Some(t);
+                    p.runs = vec![Run::default()];
+                }
+                None => p.kind = Kind::Body,
+            },
+            Kind::Object => match v.get("obj").and_then(Obj::from_json) {
+                Some(o) => {
+                    p.obj = Some(o);
+                    p.runs = vec![Run::default()];
+                }
+                None => p.kind = Kind::Body,
+            },
+            _ => {}
+        }
         if p.kind == Kind::Image {
             let im = v.get("img");
             let f = |k: &str| im.and_then(|i| i.get(k)).and_then(Value::as_f64).map(|x| x as f32).filter(|x| x.is_finite() && *x >= 4.0 && *x <= 5000.0);
@@ -457,6 +526,14 @@ fn run_json(r: &Run) -> Value {
     if let Some(l) = &st.link {
         o.insert("ln".into(), json!(l));
     }
+    if let Some(f) = &st.field {
+        o.insert("fd".into(), f.to_json());
+    }
+    for (k, v) in [("cm", st.cmt), ("ins", st.ins), ("del", st.del)] {
+        if v > 0 {
+            o.insert(k.into(), json!(v));
+        }
+    }
     Value::Object(o)
 }
 
@@ -483,6 +560,10 @@ fn run_from(v: &Value) -> Run {
                 _ => VAlign::Base,
             },
             link: v.get("ln").and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from),
+            field: v.get("fd").and_then(Field::from_json),
+            cmt: super::objects::u(v, "cm"),
+            ins: super::objects::u(v, "ins"),
+            del: super::objects::u(v, "del"),
         },
     }
 }
@@ -497,11 +578,13 @@ pub struct TextDoc {
     pub size: f32,
     pub header: String,
     pub footer: String,
+    /// Kommentare, Änderungen, Quellen, Versionen, Spalten, Schutz …
+    pub ex: Extras,
 }
 
 impl Default for TextDoc {
     fn default() -> Self {
-        TextDoc { paras: vec![Para::new(Kind::Body)], page: PageSpec::default(), family: Family::Serif, size: 11.0, header: String::new(), footer: String::new() }
+        TextDoc { paras: vec![Para::new(Kind::Body)], page: PageSpec::default(), family: Family::Serif, size: 11.0, header: String::new(), footer: String::new(), ex: Extras::default() }
     }
 }
 
@@ -539,8 +622,11 @@ impl TextDoc {
     /// Zeichenformat für neuen Text an `pos`.
     pub fn style_at(&self, pos: Pos) -> CStyle {
         let mut st = self.paras.get(pos.p).map(|p| p.style_at(pos.o)).unwrap_or_default();
-        // Links setzen sich beim Weiterschreiben nicht fort
+        // Links, Felder und Änderungsmarken setzen sich beim Weiterschreiben nicht fort
         st.link = None;
+        st.field = None;
+        st.ins = 0;
+        st.del = 0;
         st
     }
 
@@ -579,7 +665,7 @@ impl TextDoc {
             rest.kind = Kind::Body;
             rest.align = Align::Left;
         }
-        if at_end && (para.kind.is_heading() || para.kind == Kind::Quote) {
+        if at_end && (para.kind.is_heading() || para.kind == Kind::Quote || para.kind == Kind::Caption) {
             rest.kind = Kind::Body;
             rest.align = Align::Left;
             for r in &mut rest.runs {
@@ -610,6 +696,9 @@ impl TextDoc {
             self.paras[a.p].kind = tail.kind;
             self.paras[a.p].align = tail.align;
             self.paras[a.p].img = None;
+            self.paras[a.p].table = None;
+            self.paras[a.p].obj = None;
+            self.paras[a.p].wrap = Wrap::Inline;
         }
         self.paras[a.p].append(tail);
         a
@@ -837,15 +926,19 @@ impl TextDoc {
 
     pub fn to_json(&self) -> Value {
         let p = &self.page;
-        json!({
-            "v": 1,
-            "page": {"w": p.w as f64, "h": p.h as f64, "ml": p.ml as f64, "mr": p.mr as f64, "mt": p.mt as f64, "mb": p.mb as f64},
-            "font": self.family.name(),
-            "size": self.size as f64,
-            "header": self.header,
-            "footer": self.footer,
-            "paras": Value::Array(self.paras.iter().map(Para::to_json).collect()),
-        })
+        let paras: Vec<Value> = self.paras.iter().map(Para::to_json).collect();
+        // Version 2: Tabellen, Objekte, Felder, Kommentare … (ältere Programme öffnen nur lesend)
+        let v2 = !self.ex.is_default() || self.paras.iter().any(|p| p.kind.is_v2() || p.runs.iter().any(|r| r.st.field.is_some() || r.st.cmt > 0 || r.st.ins > 0 || r.st.del > 0));
+        let mut o = Map::new();
+        o.insert("v".into(), json!(if v2 { 2 } else { 1 }));
+        o.insert("page".into(), json!({"w": p.w as f64, "h": p.h as f64, "ml": p.ml as f64, "mr": p.mr as f64, "mt": p.mt as f64, "mb": p.mb as f64}));
+        o.insert("font".into(), json!(self.family.name()));
+        o.insert("size".into(), json!(self.size as f64));
+        o.insert("header".into(), json!(self.header));
+        o.insert("footer".into(), json!(self.footer));
+        self.ex.write(&mut o);
+        o.insert("paras".into(), Value::Array(paras));
+        Value::Object(o)
     }
 
     pub fn from_json(v: &Value) -> TextDoc {
@@ -860,6 +953,7 @@ impl TextDoc {
             size: v.get("size").and_then(Value::as_f64).map(|x| x as f32).filter(|x| x.is_finite() && *x >= 4.0 && *x <= 96.0).unwrap_or(11.0),
             header: v.get("header").and_then(Value::as_str).unwrap_or("").replace('\n', " "),
             footer: v.get("footer").and_then(Value::as_str).unwrap_or("").replace('\n', " "),
+            ex: Extras::read(v),
         };
         t.ensure();
         t

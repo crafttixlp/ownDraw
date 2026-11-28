@@ -4,6 +4,7 @@
 //! Leisten, Menüs, Suche und Fenster: `bars.rs`.
 
 mod bars;
+mod extra;
 mod view;
 
 use crate::app::{PickPurpose, Req, Shared};
@@ -13,7 +14,8 @@ use crate::session;
 use owndraw_core::doc::Document;
 use owndraw_core::export::formats::Fmt;
 use owndraw_core::office::fonts::Family;
-use owndraw_core::office::{self, layout, Align, CStyle, Kind, Layout, Para, Pos, TextDoc, VAlign};
+use owndraw_core::office::objects::{Shape, Wrap};
+use owndraw_core::office::{self, layout, tools, Align, CStyle, Kind, Layout, Para, Pos, TextDoc, VAlign};
 
 /// Alles, was man im Textdokument tun kann (Leiste, Menüs, Befehlssuche, Tastenkürzel).
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -68,6 +70,78 @@ pub enum Cmd {
     Rename,
     Help,
     Back,
+    // Objekte
+    Table,
+    TableFromText,
+    RowAbove,
+    RowBelow,
+    ColLeft,
+    ColRight,
+    DelRow,
+    DelCol,
+    DelTable,
+    TableHeader,
+    TableStripes,
+    TableBorder,
+    SortAsc,
+    SortDesc,
+    TableToText,
+    Shape(Shape),
+    Drawing,
+    Formula,
+    Chart,
+    EditObject,
+    Wrap(Wrap),
+    Caption,
+    // Wissenschaft
+    Columns(u8),
+    Footnote,
+    CrossRef,
+    Cite,
+    Bibliography,
+    IndexMark,
+    Index,
+    Figures,
+    PageField,
+    PagesField,
+    UpdateFields,
+    // Zusammenarbeit
+    Comment,
+    Comments,
+    Track,
+    Changes,
+    AcceptHere,
+    RejectHere,
+    AcceptAll,
+    RejectAll,
+    SaveVersion,
+    Versions,
+    // Sprache
+    Spell,
+    Hyphen,
+    AutoCorrect,
+    Language,
+    // Profi
+    MergeData,
+    MergeField,
+    MergeExport,
+    CheckBox,
+    Choice,
+    Templates,
+    Theme,
+    Watermark,
+    Protect,
+    Envelope,
+    Labels,
+    /// Speichern als ODT, RTF, HTML, Markdown, Text.
+    ExportOther,
+    /// Datei (ODT, RTF, HTML, Markdown, Text) einfügen.
+    ImportOther,
+}
+
+/// Alle Befehle (Grundfunktionen und erweiterte).
+pub fn cmds() -> impl Iterator<Item = &'static (Cmd, &'static str, &'static str, &'static str)> {
+    CMDS.iter().chain(extra::XCMDS.iter())
 }
 
 /// Einträge der Befehlssuche (Strg+K): Befehl, Name, Tastenkürzel, Suchwörter.
@@ -211,6 +285,10 @@ pub struct Writer {
     tex: std::collections::HashMap<String, egui::TextureHandle>,
     /// Bildgröße ziehen: (Absatz, Breite, Höhe beim Start).
     resize: Option<(usize, f32, f32)>,
+    /// Erweiterte Funktionen (Tabellen, Kommentare, Rechtschreibung …).
+    pub x: extra::XState,
+    /// Name für Kommentare und Änderungen.
+    pub author: String,
 }
 
 const MAX_UNDO: usize = 200;
@@ -250,6 +328,8 @@ impl Writer {
             k: 1.333,
             tex: Default::default(),
             resize: None,
+            x: extra::XState::default(),
+            author: "Ich".into(),
         }
     }
 
@@ -412,22 +492,40 @@ impl Writer {
             return false;
         }
         let (a, b) = self.sel();
-        self.cur = self.td.delete(a, b);
+        self.cur = if self.td.ex.track {
+            let rev = self.track_rev();
+            tools::track_delete(&mut self.td, a, b, rev)
+        } else {
+            self.td.delete(a, b)
+        };
         self.anchor = self.cur;
         true
     }
 
     pub fn insert(&mut self, s: &str, now: f64) {
-        if s.is_empty() {
+        if s.is_empty() || self.protected() {
             return;
         }
         self.begin(Edit::Type, now);
+        let mut one = s.chars();
+        if let (Some(ch), None) = (one.next(), one.next()) {
+            if self.pending.is_none() && self.autocorrect(ch) {
+                self.goal_x = None;
+                self.changed(now);
+                return;
+            }
+        }
         let st = self.pending.clone().unwrap_or_else(|| {
             let (a, _) = self.sel();
             self.td.style_at(if self.has_sel() { self.td.next(a) } else { self.cur })
         });
         self.delete_sel();
-        self.cur = self.td.insert_text(self.cur, s, &st);
+        self.cur = if self.td.ex.track {
+            let rev = self.track_rev();
+            tools::track_insert(&mut self.td, self.cur, s, &st, rev)
+        } else {
+            self.td.insert_text(self.cur, s, &st)
+        };
         self.anchor = self.cur;
         if !s.contains('\n') {
             self.pending = self.pending.is_some().then_some(st);
@@ -439,6 +537,9 @@ impl Writer {
     }
 
     fn enter(&mut self, now: f64) {
+        if self.protected() {
+            return;
+        }
         self.begin(Edit::Other, now);
         self.delete_sel();
         self.cur = self.td.split(self.cur);
@@ -490,6 +591,11 @@ impl Writer {
     }
 
     /// Demo/Screenshot: Bild hinter Absatz `p` einfügen.
+    /// Demo: Seitenleiste „Kommentare“ öffnen.
+    pub fn demo_comments(&mut self) {
+        self.x.panel = Some(extra::Panel::Comments);
+    }
+
     pub fn demo_image_at(&mut self, p: usize, png: &[u8]) {
         let p = p.min(self.td.paras.len() - 1);
         self.cur = Pos::new(p, self.td.paras[p].len());
@@ -518,7 +624,10 @@ impl Writer {
     }
 
     fn backspace(&mut self, word: bool, now: f64) {
-        if let Some(p) = self.sel_image() {
+        if self.protected() {
+            return;
+        }
+        if let Some(p) = self.sel_block() {
             return self.remove_para(p, now);
         }
         self.begin(Edit::Delete, now);
@@ -539,7 +648,12 @@ impl Writer {
                 });
             } else {
                 let a = if word { self.td.word_left(c) } else { self.td.prev(c) };
-                self.cur = self.td.delete(a, c);
+                self.cur = if self.td.ex.track && a.p == c.p {
+                    let rev = self.track_rev();
+                    tools::track_delete(&mut self.td, a, c, rev)
+                } else {
+                    self.td.delete(a, c)
+                };
                 self.anchor = self.cur;
             }
         }
@@ -548,14 +662,23 @@ impl Writer {
     }
 
     fn delete_fwd(&mut self, word: bool, now: f64) {
-        if let Some(p) = self.sel_image() {
+        if self.protected() {
+            return;
+        }
+        if let Some(p) = self.sel_block() {
             return self.remove_para(p, now);
         }
         self.begin(Edit::Delete, now);
         if !self.delete_sel() {
             let c = self.cur;
             let b = if word { self.td.word_right(c) } else { self.td.next(c) };
-            self.cur = self.td.delete(c, b);
+            if self.td.ex.track && b.p == c.p {
+                let rev = self.track_rev();
+                tools::track_delete(&mut self.td, c, b, rev);
+                self.cur = b;
+            } else {
+                self.cur = self.td.delete(c, b);
+            }
             self.anchor = self.cur;
         }
         self.changed(now);
@@ -563,6 +686,9 @@ impl Writer {
 
     /// Zeichenformat ändern: Auswahl, sonst das Wort am Cursor, sonst das nächste getippte Zeichen.
     fn restyle(&mut self, now: f64, f: &dyn Fn(&mut CStyle)) {
+        if self.protected() {
+            return;
+        }
         let (mut a, mut b) = self.sel();
         if a == b {
             let (wa, wb) = self.td.word_at(self.cur);
@@ -586,6 +712,9 @@ impl Writer {
     }
 
     fn repara(&mut self, now: f64, f: &dyn Fn(&mut Para)) {
+        if self.protected() {
+            return;
+        }
         self.begin(Edit::Other, now);
         let (a, b) = self.sel();
         self.td.repara(a, b, f);
@@ -653,6 +782,9 @@ impl Writer {
 
     /// Einfügen: eigene Kopie mit Formatierung, sonst reiner Text.
     pub fn paste(&mut self, s: &str, now: f64) {
+        if self.protected() {
+            return;
+        }
         let norm = |t: &str| t.replace("\r\n", "\n");
         if let Some((t, paras)) = self.clip.clone().filter(|(t, _)| norm(t) == norm(s)) {
             let _ = t;
@@ -669,6 +801,9 @@ impl Writer {
     }
 
     fn insert_paras(&mut self, paras: &[Para], now: f64) {
+        if self.protected() {
+            return;
+        }
         self.begin(Edit::Other, now);
         self.delete_sel();
         self.cur = self.td.insert_paras(self.cur, paras);
@@ -677,6 +812,9 @@ impl Writer {
     }
 
     fn page_break(&mut self, now: f64) {
+        if self.protected() {
+            return;
+        }
         self.begin(Edit::Other, now);
         self.delete_sel();
         let c = self.td.split(self.cur);
@@ -805,7 +943,14 @@ impl Writer {
 
     pub fn run(&mut self, c: Cmd, sh: &mut Shared, ctx: &egui::Context) {
         let now = sh.now;
-        self.focus_req = true;
+        self.focus_req = self.x.cell.is_none();
+        if self.protected() && !extra::is_readonly_cmd(c) {
+            sh.toast("Das Dokument ist geschützt – „Dokument schützen“ hebt den Schutz auf");
+            return;
+        }
+        if extra::run(self, c, sh, ctx) {
+            return;
+        }
         match c {
             Cmd::Undo => self.undo_redo(false, now),
             Cmd::Redo => self.undo_redo(true, now),
@@ -915,6 +1060,7 @@ impl Writer {
             Cmd::Rename => self.rename = Some(self.name().to_string()),
             Cmd::Help => sh.reqs.push(Req::OpenTutorial),
             Cmd::Back => sh.reqs.push(Req::Back),
+            _ => {}
         }
     }
 
@@ -932,9 +1078,33 @@ impl Writer {
         let now = sh.now;
         let res: Result<&str, String> = match purpose {
             PickPurpose::Export(Fmt::Docx) => office::docx::export(&self.td, self.name(), &self.doc.images.files).and_then(|b| sh.platform.write_atomic(&f, &b).map_err(|e| e.to_string())).map(|_| "Word-Datei gespeichert"),
+            PickPurpose::Export(Fmt::Pdf) if std::mem::take(&mut self.x.merge_pdf) => {
+                let td = tools::merge_all(&self.td);
+                let lay = layout(&td);
+                let pdf = office::render::pdf(&td, &lay, &self.doc.meta.name, &self.doc.images.files);
+                sh.platform.write_atomic(&f, &pdf).map_err(|e| e.to_string()).map(|_| "Serienbrief gespeichert")
+            }
             PickPurpose::Export(_) => {
                 let pdf = self.pdf_bytes();
                 sh.platform.write_atomic(&f, &pdf).map_err(|e| e.to_string()).map(|_| "PDF gespeichert")
+            }
+            PickPurpose::TextExport(tf) => office::convert::export(&self.td, tf, self.name(), &self.doc.images.files).and_then(|b| sh.platform.write_atomic(&f, &b).map_err(|e| e.to_string())).map(|_| "Gespeichert"),
+            PickPurpose::TextInsert => {
+                let name = f.display_name();
+                let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+                match office::convert::TextFmt::from_ext(&ext) {
+                    None if ext == "docx" => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| office::docx::import(&b)).map(|(d, imgs)| {
+                        self.doc.images.files.extend(imgs);
+                        self.insert_paras(&d.paras, now);
+                        "Eingefügt"
+                    }),
+                    None => Err(format!("Unbekanntes Format „.{ext}“ (geht: odt, rtf, html, md, txt, docx)")),
+                    Some(tf) => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| office::convert::import(&b, tf)).map(|(d, imgs)| {
+                        self.doc.images.files.extend(imgs);
+                        self.insert_paras(&d.paras, now);
+                        "Eingefügt"
+                    }),
+                }
             }
             PickPurpose::SaveCopy => session::save_copy_as(&*sh.platform, &self.snapshot_doc(), &f).map(|_| "Kopie gespeichert"),
             PickPurpose::ImportImage => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| self.insert_image_bytes(&b, now)).map(|_| "Bild eingefügt"),
@@ -955,6 +1125,10 @@ impl Writer {
     pub fn ui(&mut self, ui: &mut egui::Ui, sh: &mut Shared) {
         view::ensure_fonts(ui.ctx());
         self.tick(sh);
+        if self.author == "Ich" {
+            self.author = extra::author(sh);
+        }
+        self.x_frame(sh);
         if let Some(e) = self.autosave.error().map(String::from) {
             let _ = e;
         }

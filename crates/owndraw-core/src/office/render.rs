@@ -61,10 +61,73 @@ fn seg(ops: &mut Vec<VOp>, s: &Seg, y: f32, h: f32, base: f32) {
     }
 }
 
+/// Objekt als Vektor-Befehle an (x, y) in Größe w × h.
+pub fn obj_ops(obj: &super::objects::Obj, x: f32, y: f32, w: f32, h: f32) -> Vec<VOp> {
+    let Some(mut pm) = Pixmap::new(1, 1) else { return Vec::new() };
+    let mut c = crate::canvas::Canvas::new(&mut pm);
+    c.start_recording();
+    c.translate(x, y);
+    super::draw::draw_obj(&mut c, obj, w, h);
+    let (rec, _keep) = c.take_recording();
+    rec.vector_ops(w, h)
+}
+
+/// Rahmen und Inhalt einer Tabellenzeile.
+fn row_ops(ops: &mut Vec<VOp>, doc: &TextDoc, l: &super::layout::Line, rb: &super::layout::RowBox) {
+    let border = doc.paras.get(l.para).and_then(|p| p.table.as_ref()).map(|t| t.border).unwrap_or(0xFFB8BCC6);
+    for c in &rb.cells {
+        if c.bg != 0 {
+            rect(ops, c.x, l.y, c.x + c.w, l.y + l.h, c.bg);
+        }
+        for (x, by, t) in &c.lines {
+            text(ops, &[(*x, t.clone())], c.font, c.size, l.y + by, c.color);
+        }
+    }
+    if border != 0 {
+        let t = 0.6;
+        let (x0, x1) = l.block_x().unwrap_or((0.0, 0.0));
+        rect(ops, x0, l.y, x1, l.y + t, border);
+        rect(ops, x0, l.y + l.h - t, x1, l.y + l.h, border);
+        for c in &rb.cells {
+            rect(ops, c.x, l.y, c.x + t, l.y + l.h, border);
+        }
+        rect(ops, x1 - t, l.y, x1, l.y + l.h, border);
+    }
+}
+
+/// Wasserzeichen schräg über die Seite.
+fn watermark_ops(ops: &mut Vec<VOp>, s: &str, pg: &super::model::PageSpec) {
+    let font = FontKey { fam: Family::Sans, bold: true, italic: false };
+    let w: f32 = s.chars().map(|c| fonts::advance(font, c, 100.0)).sum();
+    let size = (100.0 * (pg.w.hypot(pg.h) * 0.7) / w.max(1.0)).min(140.0);
+    let tw: f32 = s.chars().map(|c| fonts::advance(font, c, size)).sum();
+    let mut pb = PathBuilder::new();
+    let mut pen = -tw / 2.0;
+    for ch in s.chars() {
+        fonts::outline(&mut pb, font, ch, pen, size * 0.35, size);
+        pen += fonts::advance(font, ch, size);
+    }
+    let m = Transform::from_translate(pg.w / 2.0, pg.h / 2.0).pre_rotate(-pg.h.atan2(pg.w).to_degrees());
+    if let Some(p) = pb.finish().and_then(|p| p.transform(m)) {
+        ops.push(VOp::Fill(p, 0x28707080));
+    }
+}
+
 /// Vektor-Befehle einer Seite (ohne Hintergrund), Koordinaten in pt.
 pub fn page_ops(doc: &TextDoc, lay: &Layout, page: usize, imgs: &Images) -> Vec<VOp> {
     let mut ops = Vec::new();
+    if !doc.ex.watermark.trim().is_empty() {
+        watermark_ops(&mut ops, doc.ex.watermark.trim(), &lay.page);
+    }
     for l in lay.lines.iter().filter(|l| l.page == page && !l.pagebreak) {
+        if let Some(rb) = &l.row {
+            row_ops(&mut ops, doc, l, rb);
+            continue;
+        }
+        if let (Some((x, w, h)), Some(o)) = (l.obj, doc.paras.get(l.para).and_then(|p| p.obj.as_ref())) {
+            ops.extend(obj_ops(o, x, l.y, w, h));
+            continue;
+        }
         if let Some((f, x, w, h)) = &l.img {
             match imgs.get(f).and_then(|b| decode(b)) {
                 Some(pm) => {
@@ -83,6 +146,18 @@ pub fn page_ops(doc: &TextDoc, lay: &Layout, page: usize, imgs: &Images) -> Vec<
         }
     }
     let pg = &lay.page;
+    // Fußnoten
+    let nf = FontKey { fam: doc.family, bold: false, italic: false };
+    let mut first = true;
+    for nb in lay.notes.iter().filter(|n| n.page == page) {
+        if first {
+            rect(&mut ops, pg.ml, nb.y - 6.0, pg.ml + 120.0, nb.y - 5.4, 0xFF9CA3AF);
+            first = false;
+        }
+        for (by, t) in &nb.lines {
+            text(&mut ops, &[(nb.x, t.clone())], nf, super::layout::NOTE_SIZE, *by, 0xFF33333D);
+        }
+    }
     let hf = FontKey { fam: Family::Sans, bold: false, italic: false };
     let size = 9.0;
     for (src, y, center) in [(&doc.header, pg.mt * 0.5, false), (&doc.footer, pg.h - pg.mb * 0.5 + size * 0.35, true)] {
@@ -95,6 +170,23 @@ pub fn page_ops(doc: &TextDoc, lay: &Layout, page: usize, imgs: &Images) -> Vec<
         text(&mut ops, &[(x, t)], hf, size, y, 0xFF6B6B78);
     }
     ops
+}
+
+/// Objekt (Form, Zeichnung, Formel, Diagramm) als PNG mit `k` Pixel je pt (für Word/ODT/HTML-Export).
+pub fn object_png(obj: &super::objects::Obj, k: f32) -> Option<Vec<u8>> {
+    object_pixmap(obj, k)?.encode_png().ok()
+}
+
+/// Objekt als Pixmap (transparent) mit `k` Pixel je pt.
+pub fn object_pixmap(obj: &super::objects::Obj, k: f32) -> Option<Pixmap> {
+    let (w, h) = (obj.w, obj.h);
+    let mut pm = Pixmap::new((w * k).ceil().clamp(1.0, 4096.0) as u32, (h * k).ceil().clamp(1.0, 4096.0) as u32)?;
+    {
+        let mut c = crate::canvas::Canvas::new(&mut pm);
+        c.scale(k, k);
+        super::draw::draw_obj(&mut c, obj, w, h);
+    }
+    Some(pm)
 }
 
 /// PDF aller Seiten.
@@ -127,6 +219,19 @@ pub fn raster_page(doc: &TextDoc, lay: &Layout, page: usize, k: f32, imgs: &Imag
             VOp::Image(img, m) => {
                 let pp = PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..PixmapPaint::default() };
                 pm.draw_pixmap(0, 0, img.as_ref(), &pp, t.pre_concat(m), None);
+            }
+            VOp::Stroke { path, color, width, round_cap, dash } => {
+                let mut paint = Paint::default();
+                paint.set_color(crate::canvas::sk_color(color));
+                paint.anti_alias = true;
+                let mut sk = tiny_skia::Stroke { width, line_join: tiny_skia::LineJoin::Round, ..Default::default() };
+                if round_cap {
+                    sk.line_cap = tiny_skia::LineCap::Round;
+                }
+                if let Some((a, b)) = dash {
+                    sk.dash = tiny_skia::StrokeDash::new(vec![a, b], 0.0);
+                }
+                pm.stroke_path(&path, &paint, &sk, t, None);
             }
             _ => {}
         }

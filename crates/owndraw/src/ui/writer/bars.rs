@@ -1,7 +1,7 @@
 //! Leisten und Fenster des Textdokuments: Kopfzeile mit Menüs, Formatleiste (am Handy unten), Suche,
 //! Gliederung, Statuszeile, Befehlssuche, Rechtsklick-Menü und kleine Fenster (Link, Seite, Zeichen …).
 
-use super::{view, Cmd, Dlg, Writer, CMDS};
+use super::{view, Cmd, Dlg, Writer};
 use crate::app::Shared;
 use crate::autosave::AutosaveStatus;
 use crate::style::{self, c, fs, pal, sp};
@@ -36,6 +36,24 @@ pub fn frame(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
     if w.find.is_some() {
         egui::Panel::top("w-find").frame(Frame::new().fill(c(p.card)).inner_margin(Margin::symmetric(10, 6)).stroke(Stroke::new(1.0, c(p.line)))).show(ui, |ui| find_bar(w, ui, sh));
     }
+    if w.x.cell.is_some() || w.sel_block().is_some() {
+        egui::Panel::top("w-ctx").exact_size(40.0).frame(Frame::new().fill(c(p.card)).inner_margin(Margin::symmetric(10, 4)).stroke(Stroke::new(1.0, c(p.line)))).show(ui, |ui| {
+            egui::ScrollArea::horizontal().show(ui, |ui| super::extra::context_bar(w, ui, sh));
+        });
+    }
+    if w.protected() {
+        egui::Panel::top("w-prot").exact_size(30.0).frame(Frame::new().fill(c(0xFFFEF3C7)).inner_margin(Margin::symmetric(10, 4))).show(ui, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.label(egui::RichText::new("Dieses Dokument ist geschützt – nur Lesen.").color(c(0xFF78350F)));
+                if ui.button("Schutz aufheben …").clicked() {
+                    w.x.dlg = Some(super::extra::XDlg::Protect(String::new()));
+                }
+            });
+        });
+    }
+    if w.x.panel.is_some() {
+        egui::Panel::right("w-side").exact_size(if nar { 220.0 } else { 300.0 }).frame(Frame::new().fill(c(p.card)).inner_margin(Margin::same(10))).show(ui, |ui| super::extra::side_panel(w, ui, sh));
+    }
     if w.outline {
         egui::Panel::left("w-outline").exact_size(if nar { 180.0 } else { 240.0 }).frame(Frame::new().fill(c(p.card)).inner_margin(Margin::same(10))).show(ui, |ui| outline(w, ui, sh));
     }
@@ -43,6 +61,7 @@ pub fn frame(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
     egui::CentralPanel::default().frame(Frame::new().fill(c(desk))).show(ui, |ui| w.canvas(ui, sh));
     palette(w, ui.ctx(), sh);
     dialogs(w, ui.ctx(), sh);
+    super::extra::dialogs(w, ui.ctx(), sh);
 }
 
 // ---------------------------------------------------------------- Kopfzeile
@@ -160,11 +179,21 @@ fn menus(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
         .chain(word.then_some([Some(Cmd::ExportDocx), Some(Cmd::ImportDocx)]).into_iter().flatten())
         .chain([Some(Cmd::Print), None, Some(Cmd::PageSetup), None, Some(Cmd::Back)])
         .collect();
-    let groups: [(&str, Vec<Option<Cmd>>); 6] = [
+    let datei: Vec<Option<Cmd>> = datei.into_iter().flat_map(|e| if e == Some(Cmd::Print) { vec![Some(Cmd::ExportOther), Some(Cmd::ImportOther), e] } else { vec![e] }).collect();
+    let datei: Vec<Option<Cmd>> = datei.into_iter().flat_map(|e| if e == Some(Cmd::PageSetup) { vec![e, Some(Cmd::Templates), Some(Cmd::Protect)] } else { vec![e] }).collect();
+    let shapes: Vec<Option<Cmd>> = owndraw_core::office::objects::Shape::ALL.iter().map(|s| Some(Cmd::Shape(*s))).collect();
+    let groups: Vec<(&str, Vec<Option<Cmd>>)> = vec![
         ("Datei", datei),
-        ("Bearbeiten", vec![Some(Cmd::Undo), Some(Cmd::Redo), None, Some(Cmd::Cut), Some(Cmd::Copy), Some(Cmd::Paste), Some(Cmd::SelectAll), None, Some(Cmd::Find), Some(Cmd::Replace)]),
-        ("Ansicht", vec![Some(Cmd::Outline), None, Some(Cmd::ZoomIn), Some(Cmd::ZoomOut), Some(Cmd::ZoomReset)]),
-        ("Einfügen", vec![Some(Cmd::Image), Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)]),
+        ("Bearbeiten", vec![Some(Cmd::Undo), Some(Cmd::Redo), None, Some(Cmd::Cut), Some(Cmd::Copy), Some(Cmd::Paste), Some(Cmd::SelectAll), None, Some(Cmd::Find), Some(Cmd::Replace), None, Some(Cmd::Versions), Some(Cmd::SaveVersion)]),
+        ("Ansicht", vec![Some(Cmd::Outline), Some(Cmd::Comments), Some(Cmd::Changes), None, Some(Cmd::ZoomIn), Some(Cmd::ZoomOut), Some(Cmd::ZoomReset)]),
+        (
+            "Einfügen",
+            [Some(Cmd::Table), Some(Cmd::Image), Some(Cmd::Drawing), Some(Cmd::Formula), Some(Cmd::Chart), None]
+                .into_iter()
+                .chain(shapes)
+                .chain([None, Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), Some(Cmd::PageField), Some(Cmd::PagesField), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Watermark), None, Some(Cmd::CheckBox), Some(Cmd::Choice), Some(Cmd::Comment)])
+                .collect(),
+        ),
         (
             "Format",
             vec![
@@ -192,10 +221,23 @@ fn menus(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                 Some(Cmd::Spacing(1.5)),
                 Some(Cmd::Spacing(2.0)),
                 None,
+                Some(Cmd::Columns(1)),
+                Some(Cmd::Columns(2)),
+                Some(Cmd::Columns(3)),
+                None,
+                Some(Cmd::Wrap(owndraw_core::office::objects::Wrap::Inline)),
+                Some(Cmd::Wrap(owndraw_core::office::objects::Wrap::Left)),
+                Some(Cmd::Wrap(owndraw_core::office::objects::Wrap::Right)),
+                None,
+                Some(Cmd::Theme),
+                Some(Cmd::TableFromText),
                 Some(Cmd::ClearFmt),
             ],
         ),
-        ("Extras", vec![Some(Cmd::WordCount), Some(Cmd::Shortcuts), Some(Cmd::Help)]),
+        ("Verweise", vec![Some(Cmd::Toc), Some(Cmd::Footnote), Some(Cmd::Caption), Some(Cmd::CrossRef), None, Some(Cmd::Cite), Some(Cmd::Bibliography), None, Some(Cmd::IndexMark), Some(Cmd::Index), Some(Cmd::Figures), None, Some(Cmd::UpdateFields)]),
+        ("Überprüfen", vec![Some(Cmd::Spell), Some(Cmd::Hyphen), Some(Cmd::AutoCorrect), Some(Cmd::Language), Some(Cmd::WordCount), None, Some(Cmd::Comment), Some(Cmd::Comments), None, Some(Cmd::Track), Some(Cmd::Changes), Some(Cmd::AcceptAll), Some(Cmd::RejectAll), None, Some(Cmd::Versions)]),
+        ("Sendungen", vec![Some(Cmd::MergeData), Some(Cmd::MergeField), Some(Cmd::MergeExport), None, Some(Cmd::Envelope), Some(Cmd::Labels)]),
+        ("Extras", vec![Some(Cmd::Shortcuts), Some(Cmd::Help)]),
     ];
     let p = pal();
     for (name, list) in groups {
@@ -207,7 +249,7 @@ fn menus(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
         ui.painter().galley(Pos2::new(r.left() + 7.0, r.center().y - g.size().y / 2.0), g, c(p.text));
         egui::Popup::menu(&resp).show(|ui| {
             ui.set_min_width(250.0);
-            menu_list(w, ui, sh, &list);
+            egui::ScrollArea::vertical().max_height(ui.ctx().content_rect().height() - 90.0).show(ui, |ui| menu_list(w, ui, sh, &list));
         });
     }
 }
@@ -219,7 +261,7 @@ fn menu_list(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared, list: &[Option<
         match e {
             None => style::separator(ui),
             Some(cmd) => {
-                let (label, key) = CMDS.iter().find(|x| x.0 == *cmd).map(|x| (x.1, x.2)).unwrap_or(("", ""));
+                let (label, key) = super::cmds().find(|x| x.0 == *cmd).map(|x| (x.1, x.2)).unwrap_or(("", ""));
                 let enabled = match cmd {
                     Cmd::Undo => w.can_undo(),
                     Cmd::Redo => w.can_redo(),
@@ -233,6 +275,15 @@ fn menu_list(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared, list: &[Option<
                         ((if l <= 0.0 { owndraw_core::office::layout::LINE } else { l }) - v).abs() < 0.01
                     }
                     Cmd::Kind(k) => w.cur_para().kind == *k,
+                    Cmd::Track => w.td.ex.track,
+                    Cmd::Spell => w.x.spell,
+                    Cmd::AutoCorrect => w.x.autocorr,
+                    Cmd::Hyphen => w.td.ex.hyph,
+                    Cmd::Columns(n) => w.td.ex.cols.max(1) == *n,
+                    Cmd::Comments => w.x.panel == Some(super::extra::Panel::Comments),
+                    Cmd::Changes => w.x.panel == Some(super::extra::Panel::Changes),
+                    Cmd::Protect => w.protected(),
+                    Cmd::Wrap(x) => w.sel_block().is_some_and(|p| w.td.paras[p].wrap == *x),
                     _ => false,
                 };
                 if row(ui, label, key, enabled, checked) {
@@ -253,7 +304,8 @@ fn row(ui: &mut egui::Ui, label: &str, right: &str, enabled: bool, checked: bool
     }
     let col = if enabled { p.text } else { p.disabled };
     if checked {
-        ui.painter().text(Pos2::new(r.left() + 12.0, r.center().y), Align2::CENTER_CENTER, "✓", FontId::proportional(13.0), c(p.accent));
+        let m = Pos2::new(r.left() + 12.0, r.center().y);
+        ui.painter().add(egui::Shape::line(vec![m + Vec2::new(-4.5, 0.0), m + Vec2::new(-1.5, 3.5), m + Vec2::new(4.5, -4.0)], egui::Stroke::new(1.8, c(p.accent))));
     }
     ui.painter().text(Pos2::new(r.left() + 26.0, r.center().y), Align2::LEFT_CENTER, label, FontId::proportional(14.0), c(col));
     if !right.is_empty() {
@@ -539,7 +591,7 @@ fn toolbar(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared, nar: bool) {
             let ins = style::icon_btn(ui, &mut sh.icons, ic::PLUS, p.text, false, false, b, "Einfügen: Bild, Seitenumbruch, Link, Datum, Zeichen …");
             egui::Popup::menu(&ins).show(|ui| {
                 ui.set_min_width(250.0);
-                let mut list = vec![Some(Cmd::Image), Some(Cmd::Link), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)];
+                let mut list = vec![Some(Cmd::Table), Some(Cmd::Image), Some(Cmd::Shape(owndraw_core::office::objects::Shape::TextBox)), Some(Cmd::Drawing), Some(Cmd::Formula), Some(Cmd::Chart), None, Some(Cmd::Link), Some(Cmd::Footnote), Some(Cmd::Comment), Some(Cmd::PageBreak), Some(Cmd::Date), Some(Cmd::Special), None, Some(Cmd::HeaderFooter), Some(Cmd::PageNumbers), Some(Cmd::Toc)];
                 if !crate::locks::locked(owndraw_core::features::OFFICE_WORD) {
                     list.extend([None, Some(Cmd::ImportDocx)]);
                 }
@@ -751,6 +803,9 @@ fn outline(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
 
 pub fn context_menu(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
     ui.set_min_width(230.0);
+    if super::extra::context_menu(w, ui, sh) {
+        return;
+    }
     if let Some(p) = w.sel_image() {
         menu_list(w, ui, sh, &[Some(Cmd::Align(Align::Left)), Some(Cmd::Align(Align::Center)), Some(Cmd::Align(Align::Right)), None, Some(Cmd::Paste)]);
         style::separator(ui);
@@ -773,7 +828,7 @@ fn palette(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
     let p = pal();
     let ql = q.to_lowercase();
     let word = !crate::locks::locked(owndraw_core::features::OFFICE_WORD);
-    let hits: Vec<_> = CMDS.iter().filter(|e| word || !matches!(e.0, Cmd::ExportDocx | Cmd::ImportDocx)).filter(|e| ql.split_whitespace().all(|t| e.1.to_lowercase().contains(t) || e.3.contains(t))).collect();
+    let hits: Vec<_> = super::cmds().filter(|e| word || !matches!(e.0, Cmd::ExportDocx | Cmd::ImportDocx)).filter(|e| ql.split_whitespace().all(|t| e.1.to_lowercase().contains(t) || e.3.contains(t))).collect();
     let mut run = None;
     let mut close = false;
     let m = egui::Modal::new(egui::Id::unique("w-palette")).frame(style::card().inner_margin(Margin::same(12))).show(ctx, |ui| {
@@ -938,7 +993,7 @@ fn dialogs(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
             }
             Dlg::Shortcuts => {
                 egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
-                    for e in CMDS.iter().filter(|e| !e.2.is_empty()) {
+                    for e in super::cmds().filter(|e| !e.2.is_empty()) {
                         ui.horizontal(|ui| {
                             ui.label(e.1);
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(style::hint(e.2)));

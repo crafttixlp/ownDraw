@@ -527,7 +527,7 @@ mod tests {
             f.insert(format!("menu:{l}"));
         }
         // Befehle der Textverarbeitung (Leiste, Menüs, Befehlssuche)
-        for e in crate::ui::writer::CMDS {
+        for e in crate::ui::writer::cmds() {
             f.insert(format!("writer:{}", e.1));
         }
         // Einträge des Export-Fensters

@@ -1,7 +1,7 @@
 //! Leisten und Fenster des Textdokuments: Kopfzeile mit Menüs, Formatleiste (am Handy unten), Suche,
 //! Gliederung, Statuszeile, Befehlssuche, Rechtsklick-Menü und kleine Fenster (Link, Seite, Zeichen …).
 
-use super::{view, Cmd, Dlg, Writer, CMDS};
+use super::{view, Cmd, Dlg, Writer};
 use crate::app::Shared;
 use crate::autosave::AutosaveStatus;
 use crate::style::{self, c, fs, pal, sp};
@@ -219,7 +219,7 @@ fn menu_list(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared, list: &[Option<
         match e {
             None => style::separator(ui),
             Some(cmd) => {
-                let (label, key) = CMDS.iter().find(|x| x.0 == *cmd).map(|x| (x.1, x.2)).unwrap_or(("", ""));
+                let (label, key) = super::cmds().find(|x| x.0 == *cmd).map(|x| (x.1, x.2)).unwrap_or(("", ""));
                 let enabled = match cmd {
                     Cmd::Undo => w.can_undo(),
                     Cmd::Redo => w.can_redo(),
@@ -773,7 +773,7 @@ fn palette(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
     let p = pal();
     let ql = q.to_lowercase();
     let word = !crate::locks::locked(owndraw_core::features::OFFICE_WORD);
-    let hits: Vec<_> = CMDS.iter().filter(|e| word || !matches!(e.0, Cmd::ExportDocx | Cmd::ImportDocx)).filter(|e| ql.split_whitespace().all(|t| e.1.to_lowercase().contains(t) || e.3.contains(t))).collect();
+    let hits: Vec<_> = super::cmds().filter(|e| word || !matches!(e.0, Cmd::ExportDocx | Cmd::ImportDocx)).filter(|e| ql.split_whitespace().all(|t| e.1.to_lowercase().contains(t) || e.3.contains(t))).collect();
     let mut run = None;
     let mut close = false;
     let m = egui::Modal::new(egui::Id::unique("w-palette")).frame(style::card().inner_margin(Margin::same(12))).show(ctx, |ui| {
@@ -938,7 +938,7 @@ fn dialogs(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
             }
             Dlg::Shortcuts => {
                 egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
-                    for e in CMDS.iter().filter(|e| !e.2.is_empty()) {
+                    for e in super::cmds().filter(|e| !e.2.is_empty()) {
                         ui.horizontal(|ui| {
                             ui.label(e.1);
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(style::hint(e.2)));

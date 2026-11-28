@@ -4,6 +4,7 @@
 //! Ein Textdokument ist eine `.owndraw`-Datei mit `"kind": "text"` im Manifest und dem Inhalt in `text.json`
 //! (siehe [`crate::doc`]). So funktionieren Speicherorte, Server, Teilen und „Zuletzt“ wie bei Boards.
 
+pub mod convert;
 pub mod docx;
 pub mod draw;
 pub mod fields;

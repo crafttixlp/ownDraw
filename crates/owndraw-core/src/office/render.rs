@@ -97,6 +97,12 @@ pub fn page_ops(doc: &TextDoc, lay: &Layout, page: usize, imgs: &Images) -> Vec<
     ops
 }
 
+/// Objekt (Form, Zeichnung, Formel, Diagramm) als PNG mit `k` Pixel je pt (für Word/ODT/HTML-Export).
+pub fn object_png(obj: &super::objects::Obj, k: f32) -> Option<Vec<u8>> {
+    let _ = (obj, k);
+    None
+}
+
 /// PDF aller Seiten.
 pub fn pdf(doc: &TextDoc, lay: &Layout, title: &str, imgs: &Images) -> Vec<u8> {
     let mut pages = Vec::with_capacity(lay.pages);

@@ -1,9 +1,11 @@
 //! Word-Dateien (DOCX): Export mit Formatvorlagen, Listen, Links, Kopf-/Fußzeile und Seitenzahlen; Import von
 //! Absätzen, Überschriften, Listen, Zeichenformat, Links, Seitenumbrüchen und Seitengröße. Tabellen werden beim
-//! Import zu Absätzen (Zellen durch Tabulator getrennt), Bilder fehlen noch.
+//! Import zu Absätzen (Zellen durch Tabulator getrennt). Bilder (eigene Absätze) in beide Richtungen.
 
 use super::fonts::Family;
-use super::model::{Align, CStyle, Kind, PageSpec, Para, Run, TextDoc, VAlign};
+use super::model::{Align, CStyle, Img, Kind, PageSpec, Para, Run, TextDoc, VAlign};
+use super::render::Images;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 use zip::write::SimpleFileOptions;
@@ -121,7 +123,8 @@ fn hf_xml(tag: &str, text: &str, center: bool) -> String {
 }
 
 /// Schreibt eine DOCX-Datei.
-pub fn export(doc: &TextDoc, title: &str) -> Result<Vec<u8>, String> {
+pub fn export(doc: &TextDoc, title: &str, imgs: &Images) -> Result<Vec<u8>, String> {
+    let mut media: Vec<(String, &[u8])> = Vec::new();
     let mut rels = vec![
         (r#"Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml""#.to_string()),
         (r#"Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml""#.to_string()),
@@ -130,6 +133,28 @@ pub fn export(doc: &TextDoc, title: &str) -> Result<Vec<u8>, String> {
     let mut nums: Vec<(usize, bool)> = Vec::new(); // (numId, Aufzählung?)
     let mut cur_list: Option<usize> = None;
     for p in &doc.paras {
+        if let (Kind::Image, Some(im)) = (p.kind, &p.img) {
+            let Some(bytes) = imgs.get(&im.file) else { continue };
+            let ext = im.file.rsplit('.').next().filter(|e| e.len() <= 4).unwrap_or("png").to_ascii_lowercase();
+            let n = media.len() + 1;
+            let name = format!("image{n}.{ext}");
+            rels.push(format!(r#"Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/{name}""#));
+            let rid = rels.len();
+            media.push((name.clone(), bytes.as_slice()));
+            // Größe wie im Satz (auf die Inhaltsbreite begrenzt)
+            let k = (doc.page.content_w() / im.w.max(1.0)).min(1.0);
+            let (cx, cy) = ((im.w * k * 12700.0) as i64, (im.h * k * 12700.0) as i64);
+            let jc = match p.align {
+                Align::Center => "center",
+                Align::Right => "right",
+                _ => "left",
+            };
+            body.push_str(&format!(
+                r#"<w:p><w:pPr><w:jc w:val="{jc}"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="{n}" name="Bild {n}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="{n}" name="{name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"#
+            ));
+            cur_list = None;
+            continue;
+        }
         if p.kind == Kind::PageBreak {
             body.push_str(r#"<w:p><w:r><w:br w:type="page"/></w:r></w:p>"#);
             cur_list = None;
@@ -208,7 +233,7 @@ pub fn export(doc: &TextDoc, title: &str) -> Result<Vec<u8>, String> {
         tw(pg.mb),
         tw(pg.ml)
     ));
-    let document = format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W}" xmlns:r="{R}"><w:body>{body}<w:sectPr>{sect}</w:sectPr></w:body></w:document>"#);
+    let document = format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W}" xmlns:r="{R}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>{body}<w:sectPr>{sect}</w:sectPr></w:body></w:document>"#);
     let font = doc.family.word_name();
     let hs = |id: &str, name: &str, sz: i64, before: i64, after: i64, lvl: i64| {
         format!(
@@ -247,7 +272,7 @@ pub fn export(doc: &TextDoc, title: &str) -> Result<Vec<u8>, String> {
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{}</Relationships>"#,
         rels.iter().enumerate().map(|(i, r)| format!(r#"<Relationship Id="rId{}" {r}/>"#, i + 1)).collect::<String>()
     );
-    let mut ct = String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>"#);
+    let mut ct = String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Default Extension="bmp" ContentType="image/bmp"/><Default Extension="webp" ContentType="image/webp"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>"#);
     for (n, _) in &parts {
         let kind = if n.contains("header") { "header" } else { "footer" };
         ct.push_str(&format!(r#"<Override PartName="/{n}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.{kind}+xml"/>"#));
@@ -273,6 +298,10 @@ pub fn export(doc: &TextDoc, title: &str) -> Result<Vec<u8>, String> {
     for (n, c) in files {
         z.start_file(n, opt).map_err(|e| e.to_string())?;
         z.write_all(c.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    for (n, b) in media {
+        z.start_file(format!("word/media/{n}"), opt).map_err(|e| e.to_string())?;
+        z.write_all(b).map_err(|e| e.to_string())?;
     }
     Ok(z.finish().map_err(|e| e.to_string())?.into_inner())
 }
@@ -369,6 +398,10 @@ struct Ctx {
     nums: HashMap<String, Vec<bool>>,
     links: HashMap<String, String>,
     doc_family: Family,
+    /// Bild-Beziehung → Dateiname im Bildspeicher.
+    media: HashMap<String, String>,
+    /// Bilder des gerade gelesenen Absatzes.
+    pending: RefCell<Vec<Img>>,
 }
 
 fn runs_of(n: roxmltree::Node, cx: &Ctx, base: &CStyle, link: Option<&str>, out: &mut Vec<Run>, page_break: &mut bool) {
@@ -390,6 +423,17 @@ fn runs_of(n: roxmltree::Node, cx: &Ctx, base: &CStyle, link: Option<&str>, out:
                         "br" if wattr(t, "type") == Some("page") => *page_break = true,
                         "br" | "cr" => text.push(' '),
                         "noBreakHyphen" => text.push('-'),
+                        "drawing" | "pict" | "object" => {
+                            let rid = t.descendants().find(|b| matches!(b.tag_name().name(), "blip" | "imagedata")).and_then(|b| b.attributes().find(|a| matches!(a.name(), "embed" | "id")).map(|a| a.value()));
+                            if let Some(file) = rid.and_then(|id| cx.media.get(id)) {
+                                let emu = |k: &str| t.descendants().find(|e| e.tag_name().name() == "extent").and_then(|e| e.attribute(k)).and_then(|v| v.parse::<f32>().ok()).map(|v| v / 12700.0);
+                                let (w, h) = match (emu("cx"), emu("cy")) {
+                                    (Some(w), Some(h)) if w >= 1.0 && h >= 1.0 => (w, h),
+                                    _ => (200.0, 150.0),
+                                };
+                                cx.pending.borrow_mut().push(Img { file: file.clone(), w, h });
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -466,11 +510,15 @@ fn para_of(n: roxmltree::Node, cx: &Ctx, out: &mut Vec<Para>) {
     let mut runs = Vec::new();
     let mut pb = false;
     runs_of(n, cx, &base, None, &mut runs, &mut pb);
-    let mut p = Para { kind, align, indent, line, runs };
+    let mut p = Para { kind, align, indent, line, runs, img: None };
     p.normalize();
     let empty = p.is_empty();
-    if !(pb && empty) {
+    let pics = std::mem::take(&mut *cx.pending.borrow_mut());
+    if !(empty && (pb || !pics.is_empty())) {
         out.push(p);
+    }
+    for im in pics {
+        out.push(Para { align, img: Some(im), ..Para::new(Kind::Image) });
     }
     if pb {
         out.push(Para::new(Kind::PageBreak));
@@ -510,14 +558,15 @@ fn block(n: roxmltree::Node, cx: &Ctx, out: &mut Vec<Para>) {
 }
 
 /// Liest eine DOCX-Datei.
-pub fn import(bytes: &[u8]) -> Result<TextDoc, String> {
+pub fn import(bytes: &[u8]) -> Result<(TextDoc, Images), String> {
     let mut z = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| "Das ist keine Word-Datei (.docx).".to_string())?;
     let doc_xml = read_entry(&mut z, "word/document.xml").ok_or("In der Datei fehlt der Text (word/document.xml).")?;
     let styles_xml = read_entry(&mut z, "word/styles.xml").unwrap_or_default();
     let num_xml = read_entry(&mut z, "word/numbering.xml").unwrap_or_default();
     let rels_xml = read_entry(&mut z, "word/_rels/document.xml.rels").unwrap_or_default();
     let opt = roxmltree::ParsingOptions { allow_dtd: false, ..Default::default() };
-    let mut cx = Ctx { styles: HashMap::new(), nums: HashMap::new(), links: HashMap::new(), doc_family: Family::Sans };
+    let mut cx = Ctx { styles: HashMap::new(), nums: HashMap::new(), links: HashMap::new(), doc_family: Family::Sans, media: HashMap::new(), pending: RefCell::new(Vec::new()) };
+    let mut store = crate::doc::ImageStore::default();
     let mut td = TextDoc::new();
     if let Ok(s) = roxmltree::Document::parse_with_options(&styles_xml, opt) {
         if let Some(rpr) = s.descendants().find(|n| n.tag_name().name() == "rPrDefault").and_then(|d| child(d, "rPr")) {
@@ -570,6 +619,18 @@ pub fn import(bytes: &[u8]) -> Result<TextDoc, String> {
     }
     if let Ok(rx) = roxmltree::Document::parse_with_options(&rels_xml, opt) {
         for r in rx.descendants().filter(|n| n.tag_name().name() == "Relationship") {
+            if let (true, Some(id), Some(t)) = (r.attribute("Type").is_some_and(|t| t.ends_with("/image")), r.attribute("Id"), r.attribute("Target")) {
+                let path = if let Some(abs) = t.strip_prefix('/') { abs.to_string() } else { format!("word/{}", t.trim_start_matches("./")) };
+                let mut buf = Vec::new();
+                if let Ok(mut e) = z.by_name(&path) {
+                    let _ = e.by_ref().take(64 << 20).read_to_end(&mut buf);
+                }
+                // nur Rasterbilder, die wir lesen können (keine EMF/WMF)
+                if let Ok(fmt) = image::guess_format(&buf) {
+                    let ext = fmt.extensions_str().first().copied().unwrap_or("png");
+                    cx.media.insert(id.to_string(), store.add(buf, ext));
+                }
+            }
             if r.attribute("Type").is_some_and(|t| t.ends_with("/hyperlink")) {
                 if let (Some(id), Some(t)) = (r.attribute("Id"), r.attribute("Target")) {
                     cx.links.insert(id.to_string(), t.to_string());
@@ -601,7 +662,7 @@ pub fn import(bytes: &[u8]) -> Result<TextDoc, String> {
     if !paras.is_empty() {
         td.paras = paras;
     }
-    Ok(td)
+    Ok((td, store.files))
 }
 
 #[cfg(test)]
@@ -627,8 +688,8 @@ mod tests {
         d.footer = "Seite {seite} von {seiten}".into();
         d.page.w = 842.0;
         d.page.h = 595.0;
-        let bytes = export(&d, "Bericht <1>").unwrap();
-        let back = import(&bytes).unwrap();
+        let bytes = export(&d, "Bericht <1>", &Images::new()).unwrap();
+        let (back, _) = import(&bytes).unwrap();
         let kinds: Vec<Kind> = back.paras.iter().map(|p| p.kind).collect();
         assert_eq!(kinds, [Kind::Title, Kind::Body, Kind::Number, Kind::Number, Kind::PageBreak, Kind::Body]);
         assert_eq!(back.paras[1].align, Align::Justify);
@@ -643,5 +704,23 @@ mod tests {
     #[test]
     fn kein_docx() {
         assert!(import(b"kein zip").is_err());
+    }
+
+    #[test]
+    fn bilder_hin_und_zurueck() {
+        let mut pm = tiny_skia::Pixmap::new(3, 3).unwrap();
+        pm.fill(tiny_skia::Color::from_rgba8(0, 0, 255, 255));
+        let png = pm.encode_png().unwrap();
+        let mut st = crate::doc::ImageStore::default();
+        let name = st.add(png.clone(), "png");
+        let mut d = TextDoc::new();
+        d.paras = vec![Para::with_text(Kind::Body, "Text"), Para::image(&name, 300.0, 150.0), Para::with_text(Kind::Body, "Ende")];
+        let bytes = export(&d, "Bild", &st.files).unwrap();
+        let (back, imgs) = import(&bytes).unwrap();
+        let im = back.paras.iter().find_map(|p| p.img.clone()).expect("Bild gelesen");
+        assert_eq!(imgs.get(&im.file), Some(&png));
+        assert!((im.w - 300.0).abs() < 0.5 && (im.h - 150.0).abs() < 0.5);
+        assert_eq!(back.paras.iter().map(|p| p.kind).collect::<Vec<_>>(), [Kind::Body, Kind::Image, Kind::Body]);
+        assert_eq!(back.paras[1].align, Align::Center);
     }
 }

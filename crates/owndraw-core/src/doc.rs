@@ -44,7 +44,9 @@ impl From<std::io::Error> for DocError {
 pub const FORMAT_VERSION: i64 = 2;
 /// Formatversion von Textdokumenten (`"kind": "text"`, Inhalt in `text.json`). Ältere Programmversionen öffnen sie
 /// deshalb nur lesend und überschreiben den Text nicht.
-pub const TEXT_FORMAT_VERSION: i64 = 3;
+pub const TEXT_FORMAT_VERSION: i64 = 4;
+/// Textdokumente ohne Bilder schreiben weiter Version 3 (lesbar ab 4.51.0); mit Bildern 4 (ältere öffnen schreibgeschützt).
+const TEXT_VERSION_NO_IMAGES: i64 = 3;
 
 /// Manifest-Daten (`manifest.json`).
 #[derive(Clone, Debug, Default)]
@@ -354,10 +356,27 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
             it["f"] = json!(n);
         }
     }
+    // Bilder in Textdokumenten (`paras[].img.f`) genauso behandeln.
+    let mut text = doc.text.clone();
+    if let Some(ps) = text.as_mut().and_then(|t| t.get_mut("paras")).and_then(Value::as_array_mut) {
+        for im in ps.iter_mut().filter_map(|p| p.get_mut("img")) {
+            let f = im.get("f").and_then(Value::as_str).unwrap_or("").to_string();
+            if let Some(b) = doc.images.files.get(&f) {
+                let ext = f.rsplit_once('.').map(|(_, e)| e).unwrap_or("png");
+                let n = out.add(b.clone(), ext);
+                im["f"] = json!(n);
+            }
+        }
+    }
     let mut m = doc.meta.extra.clone();
     m.insert("format".into(), json!("owndraw"));
-    m.insert("version".into(), json!(if doc.text.is_some() { TEXT_FORMAT_VERSION } else { FORMAT_VERSION }));
-    if doc.text.is_some() {
+    let version = match &text {
+        Some(t) if t.get("paras").and_then(Value::as_array).is_some_and(|a| a.iter().any(|p| p.get("img").is_some())) => TEXT_FORMAT_VERSION,
+        Some(_) => TEXT_VERSION_NO_IMAGES,
+        None => FORMAT_VERSION,
+    };
+    m.insert("version".into(), json!(version));
+    if text.is_some() {
         m.insert("kind".into(), json!("text"));
     }
     m.entry("app").or_insert_with(|| json!(env!("CARGO_PKG_VERSION")));
@@ -374,7 +393,7 @@ pub fn write_owndraw(doc: &Document) -> Result<Vec<u8>> {
     z.write_all(Value::Object(m).to_string().as_bytes())?;
     z.start_file("board.json", opt).map_err(fmt_err("ZIP schreiben"))?;
     z.write_all(board.to_string().as_bytes())?;
-    if let Some(t) = &doc.text {
+    if let Some(t) = &text {
         z.start_file("text.json", opt).map_err(fmt_err("ZIP schreiben"))?;
         z.write_all(t.to_string().as_bytes())?;
     }

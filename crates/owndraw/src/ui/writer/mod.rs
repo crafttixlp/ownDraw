@@ -49,6 +49,7 @@ pub enum Cmd {
     Link,
     Date,
     Special,
+    Image,
     HeaderFooter,
     PageNumbers,
     Toc,
@@ -112,6 +113,7 @@ pub const CMDS: &[(Cmd, &str, &str, &str)] = &[
     (Cmd::Link, "Link einfügen", "Strg+K", "url verknüpfung"),
     (Cmd::Date, "Datum einfügen", "", "heute"),
     (Cmd::Special, "Sonderzeichen", "", "symbol zeichen"),
+    (Cmd::Image, "Bild einfügen", "", "foto grafik png jpg"),
     (Cmd::HeaderFooter, "Kopf- und Fußzeile", "", "header footer"),
     (Cmd::PageNumbers, "Seitenzahlen", "", "nummer fußzeile"),
     (Cmd::Toc, "Inhaltsverzeichnis", "", "gliederung verzeichnis"),
@@ -205,6 +207,10 @@ pub struct Writer {
     focus_req: bool,
     /// Maßstab (Pixel je pt) des letzten Bildes.
     k: f32,
+    /// Texturen der Bilder (Dateiname → Textur).
+    tex: std::collections::HashMap<String, egui::TextureHandle>,
+    /// Bildgröße ziehen: (Absatz, Breite, Höhe beim Start).
+    resize: Option<(usize, f32, f32)>,
 }
 
 const MAX_UNDO: usize = 200;
@@ -242,6 +248,8 @@ impl Writer {
             rename: None,
             focus_req: true,
             k: 1.333,
+            tex: Default::default(),
+            resize: None,
         }
     }
 
@@ -266,7 +274,7 @@ impl Writer {
         let td = self.td.clone();
         let lay = self.layout().clone();
         crate::autosave::Job(Box::new(move || {
-            d.thumb = office::render::thumb(&td, &lay);
+            d.thumb = office::render::thumb(&td, &lay, &d.images.files);
             d.text = Some(td.to_json());
             session::serialize(&d).unwrap_or_default()
         }))
@@ -439,7 +447,80 @@ impl Writer {
         self.changed(now);
     }
 
+    /// Bild-Absatz am Cursor (Bild ist „ausgewählt“).
+    pub fn sel_image(&self) -> Option<usize> {
+        (!self.has_sel() && self.td.paras.get(self.cur.p).is_some_and(|p| p.kind == Kind::Image)).then_some(self.cur.p)
+    }
+
+    /// Entfernt den Bild-Absatz `p`; der Cursor steht danach am Anfang des folgenden Absatzes.
+    fn remove_para(&mut self, p: usize, now: f64) {
+        self.begin(Edit::Other, now);
+        self.td.paras.remove(p);
+        if self.td.paras.is_empty() {
+            self.td.paras.push(Para::new(Kind::Body));
+        }
+        let p = p.min(self.td.paras.len() - 1);
+        self.cur = Pos::new(p, 0);
+        self.anchor = self.cur;
+        self.changed(now);
+    }
+
+    /// Bild-Datei (png, jpg, …) an der Einfügestelle einsetzen: höchstens 2048 px, als PNG im Dokument.
+    pub fn insert_image_bytes(&mut self, bytes: &[u8], now: f64) -> Result<(), String> {
+        let img = image::load_from_memory(bytes).map_err(|e| format!("Bild konnte nicht geladen werden: {e}"))?;
+        let img = if img.width().max(img.height()) > 2048 { img.resize(2048, 2048, image::imageops::FilterType::Triangle) } else { img };
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(img.to_rgba8()).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        self.insert_image_png(png, img.width(), img.height(), now);
+        Ok(())
+    }
+
+    fn insert_image_png(&mut self, png: Vec<u8>, w: u32, h: u32, now: f64) {
+        let name = self.doc.images.add(png, "png");
+        // 96 dpi → pt, höchstens Inhaltsbreite
+        let (mut wp, mut hp) = (w as f32 * 0.75, h as f32 * 0.75);
+        let k = (self.td.page.content_w() / wp.max(1.0)).min(1.0);
+        wp *= k;
+        hp *= k;
+        let para = Para::image(&name, wp.max(8.0), hp.max(8.0));
+        self.insert_paras(&[para], now);
+        // Cursor auf das Bild (ausgewählt)
+        self.cur = Pos::new(self.cur.p.saturating_sub(1), 0);
+        self.anchor = self.cur;
+    }
+
+    /// Demo/Screenshot: Bild hinter Absatz `p` einfügen.
+    pub fn demo_image_at(&mut self, p: usize, png: &[u8]) {
+        let p = p.min(self.td.paras.len() - 1);
+        self.cur = Pos::new(p, self.td.paras[p].len());
+        self.anchor = self.cur;
+        let _ = self.insert_image_bytes(png, 0.0);
+    }
+
+    /// Bild aus der Zwischenablage (RGBA).
+    fn insert_rgba(&mut self, w: u32, h: u32, rgba: Vec<u8>, now: f64) -> Result<(), String> {
+        let im = image::RgbaImage::from_raw(w, h, rgba).ok_or("Bild in der Zwischenablage ist ungültig")?;
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(im).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        self.insert_image_bytes(&png, now)
+    }
+
+    /// Bild am Absatz `p` auf Breite `w` (pt) setzen, Seitenverhältnis bleibt.
+    pub fn resize_image(&mut self, p: usize, w: f32, now: f64) {
+        let maxw = self.td.page.content_w();
+        if let Some(im) = self.td.paras.get_mut(p).and_then(|q| q.img.as_mut()) {
+            let w = w.clamp(16.0, maxw);
+            im.h = im.h * w / im.w.max(1.0);
+            im.w = w;
+            self.rev += 1;
+            self.autosave.mark_changed(now);
+        }
+    }
+
     fn backspace(&mut self, word: bool, now: f64) {
+        if let Some(p) = self.sel_image() {
+            return self.remove_para(p, now);
+        }
         self.begin(Edit::Delete, now);
         if !self.delete_sel() {
             let c = self.cur;
@@ -467,6 +548,9 @@ impl Writer {
     }
 
     fn delete_fwd(&mut self, word: bool, now: f64) {
+        if let Some(p) = self.sel_image() {
+            return self.remove_para(p, now);
+        }
         self.begin(Edit::Delete, now);
         if !self.delete_sel() {
             let c = self.cur;
@@ -729,6 +813,11 @@ impl Writer {
             Cmd::Copy => self.copy(ctx),
             Cmd::Paste => match sh.platform.clipboard_get() {
                 Some(crate::platform::ClipData::Text(t)) => self.paste(&t, now),
+                Some(crate::platform::ClipData::Image { w, h, rgba }) | Some(crate::platform::ClipData::Items { image: Some((w, h, rgba)), .. }) => {
+                    if let Err(e) = self.insert_rgba(w, h, rgba, now) {
+                        sh.toast(&e);
+                    }
+                }
                 _ => match self.clip.clone() {
                     Some((t, _)) => self.paste(&t, now),
                     None => sh.toast("Zum Einfügen Strg+V drücken"),
@@ -779,6 +868,7 @@ impl Writer {
                 self.last = (Edit::Other, now);
             }
             Cmd::Special => self.dlg = Some(Dlg::Special),
+            Cmd::Image => sh.reqs.push(Req::PickOpen { purpose: PickPurpose::ImportImage, kinds: vec![FileKind::Image] }),
             Cmd::HeaderFooter => self.dlg = Some(Dlg::HeaderFooter(self.td.header.clone(), self.td.footer.clone())),
             Cmd::PageNumbers => {
                 self.begin(Edit::Other, now);
@@ -830,7 +920,7 @@ impl Writer {
 
     fn pdf_bytes(&mut self) -> Vec<u8> {
         let lay = self.layout().clone();
-        office::render::pdf(&self.td, &lay, &self.doc.meta.name)
+        office::render::pdf(&self.td, &lay, &self.doc.meta.name, &self.doc.images.files)
     }
 
     fn pick_save(&self, sh: &mut Shared, f: Fmt) {
@@ -841,13 +931,15 @@ impl Writer {
     pub fn apply_pick(&mut self, sh: &mut Shared, purpose: PickPurpose, f: FileRef) {
         let now = sh.now;
         let res: Result<&str, String> = match purpose {
-            PickPurpose::Export(Fmt::Docx) => office::docx::export(&self.td, self.name()).and_then(|b| sh.platform.write_atomic(&f, &b).map_err(|e| e.to_string())).map(|_| "Word-Datei gespeichert"),
+            PickPurpose::Export(Fmt::Docx) => office::docx::export(&self.td, self.name(), &self.doc.images.files).and_then(|b| sh.platform.write_atomic(&f, &b).map_err(|e| e.to_string())).map(|_| "Word-Datei gespeichert"),
             PickPurpose::Export(_) => {
                 let pdf = self.pdf_bytes();
                 sh.platform.write_atomic(&f, &pdf).map_err(|e| e.to_string()).map(|_| "PDF gespeichert")
             }
             PickPurpose::SaveCopy => session::save_copy_as(&*sh.platform, &self.snapshot_doc(), &f).map(|_| "Kopie gespeichert"),
-            PickPurpose::DocxInsert => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| office::docx::import(&b)).map(|d| {
+            PickPurpose::ImportImage => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| self.insert_image_bytes(&b, now)).map(|_| "Bild eingefügt"),
+            PickPurpose::DocxInsert => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| office::docx::import(&b)).map(|(d, imgs)| {
+                self.doc.images.files.extend(imgs);
                 self.insert_paras(&d.paras, now);
                 "Word-Datei eingefügt"
             }),
@@ -884,9 +976,10 @@ pub fn open_kinds() -> Vec<FileKind> {
 
 /// Textdokument aus einer Word-Datei (Öffnen von .docx).
 pub fn doc_from_docx(bytes: &[u8], name: &str) -> Result<Document, String> {
-    let td = office::docx::import(bytes)?;
+    let (td, imgs) = office::docx::import(bytes)?;
     let mut d = Document::new_text(name);
     d.text = Some(td.to_json());
+    d.images.files = imgs;
     Ok(d)
 }
 
@@ -966,5 +1059,29 @@ mod tests {
         let d = owndraw_core::doc::read_owndraw(&bytes).unwrap();
         assert!(d.is_text() && d.thumb.is_some());
         assert_eq!(TextDoc::from_json(d.text.as_ref().unwrap()).plain_text().trim(), "Inhalt");
+    }
+
+    #[test]
+    fn bild_groesse_und_loeschen() {
+        let mut w = w();
+        w.insert("Hallo", 0.0);
+        let mut pm = owndraw_core::tiny_skia::Pixmap::new(800, 400).unwrap();
+        pm.fill(owndraw_core::tiny_skia::Color::BLACK);
+        w.insert_image_bytes(&pm.encode_png().unwrap(), 1.0).unwrap();
+        let p = w.sel_image().expect("Bild ausgewählt");
+        let maxw = w.td.page.content_w();
+        assert!((w.td.paras[p].img.as_ref().unwrap().w - maxw).abs() < 0.01, "auf Seitenbreite begrenzt");
+        w.resize_image(p, 100.0, 2.0);
+        let im = w.td.paras[p].img.clone().unwrap();
+        assert!((im.w - 100.0).abs() < 0.01 && (im.h - 50.0).abs() < 0.01);
+        // Speichern: Version 4 mit Bild
+        let bytes = (w.job().0)();
+        let d = owndraw_core::doc::read_owndraw(&bytes).unwrap();
+        assert_eq!(d.meta.version, 4);
+        assert!(!d.images.files.is_empty());
+        w.backspace(false, 3.0);
+        assert!(w.td.paras.iter().all(|p| p.img.is_none()));
+        w.undo_redo(false, 4.0);
+        assert!(w.td.paras.iter().any(|p| p.img.is_some()));
     }
 }

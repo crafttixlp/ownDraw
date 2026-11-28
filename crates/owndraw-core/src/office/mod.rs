@@ -8,6 +8,7 @@ pub mod docx;
 pub mod draw;
 pub mod fields;
 pub mod fonts;
+pub mod lang;
 pub mod layout;
 pub mod model;
 pub mod objects;
@@ -19,6 +20,5 @@ pub use model::{Align, CStyle, Img, Kind, PageSpec, Para, Pos, Run, TextDoc, VAl
 
 /// Silbentrennung für den Satz (Trennstellen als Zeichenindex).
 pub(crate) fn lang_hyph(w: &str) -> Vec<usize> {
-    let _ = w;
-    Vec::new()
+    lang::hyphenate(w)
 }

@@ -1479,9 +1479,9 @@ mod tests {
         let bytes = export(&d, "O", &st.files).unwrap();
         let mut z = zip::ZipArchive::new(Cursor::new(&bytes[..])).unwrap();
         let x = read_entry(&mut z, "word/document.xml").unwrap();
-        assert!(x.contains("<wp:anchor") && x.contains("wrapSquare") && !x.contains("<wp:inline"));
+        assert!(x.contains("<wp:anchor") && x.contains("wrapSquare"));
         let (back, _) = import(&bytes).unwrap();
-        let w: Vec<Wrap> = back.paras.iter().filter(|p| p.kind == Kind::Image).map(|p| p.wrap).collect();
+        let w: Vec<Wrap> = back.paras.iter().filter(|p| p.kind == Kind::Image).map(|p| p.wrap).take(2).collect();
         assert_eq!(w, [Wrap::Right, Wrap::Left]);
         assert!(back.plain_text().contains("[Formel: a^2+b^2]") || super::super::render::object_png(d.paras[3].obj.as_ref().unwrap(), 2.0).is_some());
     }

@@ -54,6 +54,16 @@ pub const BUGREPORT: &str = "bugreport";
 pub const OFFICE: &str = "office";
 /// Office: Word-Dateien öffnen, einfügen und speichern.
 pub const OFFICE_WORD: &str = "office_word";
+/// Office: Tabellen, Formen, Zeichnungen, Formeln und Diagramme im Textdokument.
+pub const OFFICE_OBJECTS: &str = "office_objects";
+/// Office: Fußnoten, Zitate, Querverweise und Verzeichnisse.
+pub const OFFICE_REFS: &str = "office_refs";
+/// Office: Kommentare, Änderungen nachverfolgen und Versionen.
+pub const OFFICE_REVIEW: &str = "office_review";
+/// Office: Seriendruck, Formularfelder, Umschläge und Etiketten.
+pub const OFFICE_MAIL: &str = "office_mail";
+/// Office: Speichern und Einfügen als ODT, RTF, HTML, Markdown.
+pub const OFFICE_FORMATS: &str = "office_formats";
 
 /// Alle sperrbaren Einträge (Werkzeuge in Leisten-Reihenfolge, danach Funktionen).
 pub const ALL: &[Feature] = &[
@@ -86,6 +96,11 @@ pub const ALL: &[Feature] = &[
     feature(BUGREPORT, "Fehler melden", "Menüpunkt „Fehler melden“ in der Web-App."),
     feature(OFFICE, "Office: Textverarbeitung", "Textdokumente (wie Word) anlegen und öffnen. Gesperrt: Karte „Textdokument“ fehlt, vorhandene öffnen nicht."),
     feature(OFFICE_WORD, "Office: Word-Dateien", "Word-Dateien (.docx) öffnen, in Textdokumente einfügen und als Word-Datei speichern."),
+    feature(OFFICE_OBJECTS, "Office: Tabellen und Objekte", "Tabellen, Formen, Textfelder, Zeichnungen, Formeln und Diagramme in Textdokumenten einfügen."),
+    feature(OFFICE_REFS, "Office: Verweise", "Fußnoten, Zitate, Querverweise, Literatur-, Stichwort- und Abbildungsverzeichnis."),
+    feature(OFFICE_REVIEW, "Office: Überprüfen", "Kommentare, Änderungen nachverfolgen, Versionsverlauf und Vergleichen."),
+    feature(OFFICE_MAIL, "Office: Sendungen", "Seriendruck, Formularfelder, Umschläge und Etiketten."),
+    feature(OFFICE_FORMATS, "Office: Weitere Formate", "Textdokumente als ODT, RTF, HTML oder Markdown speichern und solche Dateien einfügen."),
 ];
 
 /// Eintrag nach Kennung.

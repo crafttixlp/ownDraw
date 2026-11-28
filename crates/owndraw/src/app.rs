@@ -30,6 +30,10 @@ pub enum PickPurpose {
     ImportImage,
     /// Textdokument: Word-Datei an der Einfügestelle einfügen.
     DocxInsert,
+    /// Textdokument: als ODT/RTF/HTML/Markdown/Text speichern.
+    TextExport(owndraw_core::office::convert::TextFmt),
+    /// Textdokument: ODT/RTF/HTML/Markdown/Text an der Einfügestelle einfügen.
+    TextInsert,
     OpenDoc,
     NewDoc,
     /// Standard-Ort der Einstellungen.
@@ -836,6 +840,9 @@ impl App {
         self.open_writer(ctx, doc, None, false);
         if let Some(w) = self.writer.as_mut().filter(|_| find) {
             w.find = Some(crate::ui::writer::Find { q: "Brücke".into(), ..Default::default() });
+        }
+        if let Some(w) = self.writer.as_mut().filter(|_| std::env::var("OWNDRAW_DEMO").is_ok_and(|d| d.split(',').any(|t| t.trim() == "wfull"))) {
+            w.demo_comments();
         }
         // Baustein `wimg`: Beispielbild nach der Überschrift einfügen (Screenshot).
         if let Some(w) = self.writer.as_mut().filter(|_| std::env::var("OWNDRAW_DEMO").is_ok_and(|d| d.split(',').any(|t| t.trim() == "wimg"))) {

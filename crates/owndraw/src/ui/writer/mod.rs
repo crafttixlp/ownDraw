@@ -591,6 +591,11 @@ impl Writer {
     }
 
     /// Demo/Screenshot: Bild hinter Absatz `p` einfügen.
+    /// Demo: Seitenleiste „Kommentare“ öffnen.
+    pub fn demo_comments(&mut self) {
+        self.x.panel = Some(extra::Panel::Comments);
+    }
+
     pub fn demo_image_at(&mut self, p: usize, png: &[u8]) {
         let p = p.min(self.td.paras.len() - 1);
         self.cur = Pos::new(p, self.td.paras[p].len());
@@ -1082,6 +1087,24 @@ impl Writer {
             PickPurpose::Export(_) => {
                 let pdf = self.pdf_bytes();
                 sh.platform.write_atomic(&f, &pdf).map_err(|e| e.to_string()).map(|_| "PDF gespeichert")
+            }
+            PickPurpose::TextExport(tf) => office::convert::export(&self.td, tf, self.name(), &self.doc.images.files).and_then(|b| sh.platform.write_atomic(&f, &b).map_err(|e| e.to_string())).map(|_| "Gespeichert"),
+            PickPurpose::TextInsert => {
+                let name = f.display_name();
+                let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+                match office::convert::TextFmt::from_ext(&ext) {
+                    None if ext == "docx" => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| office::docx::import(&b)).map(|(d, imgs)| {
+                        self.doc.images.files.extend(imgs);
+                        self.insert_paras(&d.paras, now);
+                        "Eingefügt"
+                    }),
+                    None => Err(format!("Unbekanntes Format „.{ext}“ (geht: odt, rtf, html, md, txt, docx)")),
+                    Some(tf) => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| office::convert::import(&b, tf)).map(|(d, imgs)| {
+                        self.doc.images.files.extend(imgs);
+                        self.insert_paras(&d.paras, now);
+                        "Eingefügt"
+                    }),
+                }
             }
             PickPurpose::SaveCopy => session::save_copy_as(&*sh.platform, &self.snapshot_doc(), &f).map(|_| "Kopie gespeichert"),
             PickPurpose::ImportImage => sh.platform.read(&f).map_err(|e| e.to_string()).and_then(|b| self.insert_image_bytes(&b, now)).map(|_| "Bild eingefügt"),

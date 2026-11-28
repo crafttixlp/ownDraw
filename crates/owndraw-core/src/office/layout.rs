@@ -674,7 +674,7 @@ fn layout_pass(doc: &TextDoc, nums: &Numbers, prev: Option<&Layout>) -> Layout {
                 }
                 if we > i && we - ws >= 5 {
                     let word: String = chars[ws..we].iter().map(|(c, _)| *c).collect();
-                    let base: f32 = adv[s..ws].iter().sum::<f32>() + if s < ws { 0.0 } else { 0.0 };
+                    let base: f32 = adv[s..ws].iter().sum::<f32>();
                     let mut best = None;
                     for hp in hyphen_points(&word) {
                         let cut = ws + hp;

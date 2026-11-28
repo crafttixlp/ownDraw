@@ -1445,7 +1445,7 @@ mod tests {
         assert!(fields.contains(&&Field::Merge("Kunde".into())) && fields.contains(&&Field::Index("Stichwort".into())));
         assert!(p.runs.iter().filter(|r| r.st.field.is_some()).all(|r| r.text.chars().all(|c| c == OBJ)));
         assert!(p.text().contains("Anfang kommentiert"));
-        assert!(p.text().ends_with('☒'), "Kontrollkästchen als Text");
+        assert!(p.text().ends_with('■'), "Kontrollkästchen als Text");
     }
 
     #[test]

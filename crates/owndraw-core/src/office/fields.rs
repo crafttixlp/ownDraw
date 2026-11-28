@@ -73,8 +73,8 @@ pub fn field_text(f: &Field, cx: &FieldCx) -> String {
         },
         Field::Cite(id) => cx.doc.ex.source(*id).map(|s| s.cite()).unwrap_or_else(|| "(Quelle fehlt)".into()),
         Field::Merge(n) => format!("«{n}»"),
-        Field::Check(b) => if *b { "☒" } else { "☐" }.into(),
-        Field::Choice(o, i) => format!("{} ▾", o.get(*i).map(String::as_str).unwrap_or("Auswahl")),
+        Field::Check(b) => if *b { "■" } else { "□" }.into(),
+        Field::Choice(o, i) => format!("{} ▼", o.get(*i).map(String::as_str).unwrap_or("Auswahl")),
         Field::Index(_) => String::new(),
         Field::Note(_) => cx.note.to_string(),
     }

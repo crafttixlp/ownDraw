@@ -467,6 +467,68 @@
           "covers": ["writer:Als PDF speichern", "writer:Als Word-Datei speichern", "writer:Word-Datei einfügen", "writer:Drucken", "writer:Kopie speichern"]
         },
         {
+          "id": "tx-tabelle",
+          "title": "Tabellen",
+          "text": "Einfügen → Tabelle: Zeilen und Spalten wählen. Zelle antippen und tippen. Mit Tab geht es zur nächsten Zelle, Umschalt+Tab zurück, Esc beendet.",
+          "how": ["Rechtsklick oder die Leiste über der Tabelle: Zeilen/Spalten einfügen oder löschen, sortieren, Kopfzeile, Streifen, Rahmen.", "Markierten Text mit Tabulatoren oder Semikolon über „Text in Tabelle umwandeln“ zur Tabelle machen.", "Die Kopfzeile wiederholt sich auf jeder neuen Seite."],
+          "covers": ["writer:Tabelle einfügen", "writer:Text in Tabelle umwandeln", "writer:Zeile oberhalb einfügen", "writer:Zeile unterhalb einfügen", "writer:Spalte links einfügen", "writer:Spalte rechts einfügen", "writer:Zeile löschen", "writer:Spalte löschen", "writer:Tabelle löschen", "writer:Kopfzeile der Tabelle", "writer:Gebänderte Zeilen", "writer:Tabellenrahmen ein/aus", "writer:Tabelle aufsteigend sortieren", "writer:Tabelle absteigend sortieren", "writer:Tabelle in Text umwandeln"]
+        },
+        {
+          "id": "tx-objekte",
+          "title": "Formen, Textfelder, Zeichnungen, Formeln, Diagramme",
+          "text": "Einfügen → Formen, Zeichnung, Formel oder Diagramm. Ein Fenster zeigt sofort die Vorschau; Farben, Text und Daten lassen sich dort ändern.",
+          "how": ["Doppelklick auf ein Objekt öffnet es wieder zum Bearbeiten.", "Die Ecke unten rechts zieht die Größe.", "Diagramm: Werte direkt in die kleine Tabelle tippen (Balken, Linie, Kreis).", "Formel: Knöpfe für Bruch, Wurzel, Summe oder LaTeX tippen (Alt+=)."],
+          "covers": ["writer:Textfeld", "writer:Form: Rechteck", "writer:Form: Abgerundetes Rechteck", "writer:Form: Ellipse", "writer:Form: Dreieck", "writer:Form: Raute", "writer:Form: Pfeil", "writer:Form: Stern", "writer:Form: Linie", "writer:Form: Sprechblase", "writer:Zeichnung", "writer:Formel", "writer:Diagramm", "writer:Objekt bearbeiten"]
+        },
+        {
+          "id": "tx-layout",
+          "title": "Textumfluss, Beschriftung, Spalten",
+          "text": "Bilder und Objekte stehen in einer eigenen Zeile oder links/rechts mit Text daneben. Beschriftungen zählen sich selbst („Abbildung 1“). Format → Spalten setzt das Dokument zwei- oder dreispaltig.",
+          "how": ["Objekt anklicken, dann in der Leiste den Umfluss wählen.", "Unter der Beschriftung links „Abbildung“ in „Tabelle“ ändern, dann zählt sie getrennt."],
+          "covers": ["writer:Umfluss: Mit Text in Zeile", "writer:Umfluss: Links, Text rechts daneben", "writer:Umfluss: Rechts, Text links daneben", "writer:Beschriftung einfügen", "writer:Spalten: eine", "writer:Spalten: zwei", "writer:Spalten: drei"]
+        },
+        {
+          "id": "tx-verweise",
+          "title": "Fußnoten, Zitate und Verzeichnisse",
+          "text": "Unter „Verweise“: Fußnoten (Strg+Alt+F) landen unten auf der Seite und nummerieren sich selbst. Zitate holen Quellen aus deiner Quellenliste, das Literaturverzeichnis entsteht per Klick.",
+          "how": ["Fußnotenzahl anklicken, um den Text zu ändern.", "Querverweise zeigen Nummer, Text oder Seite einer Überschrift oder Beschriftung und bleiben aktuell.", "Stichwörter markieren (Alt+Umschalt+X), dann Stichwortverzeichnis einfügen.", "F9 aktualisiert alle Felder und Verzeichnisse."],
+          "covers": ["writer:Fußnote einfügen", "writer:Querverweis", "writer:Zitat einfügen", "writer:Literaturverzeichnis", "writer:Stichwort markieren", "writer:Stichwortverzeichnis", "writer:Abbildungsverzeichnis", "writer:Feld: Seitenzahl", "writer:Feld: Anzahl Seiten", "writer:Felder aktualisieren"]
+        },
+        {
+          "id": "tx-ueberpruefen",
+          "title": "Kommentare und Änderungen",
+          "text": "Text markieren und „Kommentar einfügen“ (Strg+Alt+M): rechts erscheint die Notiz, auf die andere antworten können. „Änderungen nachverfolgen“ zeigt Eingefügtes unterstrichen und Gelöschtes durchgestrichen, mit Name und Farbe.",
+          "how": ["Rechtsklick auf eine Änderung: annehmen oder ablehnen.", "Der Name für Kommentare kommt aus deinem Konto oder aus Sprache und Prüfung.", "Versionsverlauf: Stände speichern, vergleichen (als Änderungen) und wiederherstellen."],
+          "covers": ["writer:Kommentar einfügen", "writer:Kommentare anzeigen", "writer:Änderungen nachverfolgen", "writer:Änderungen anzeigen", "writer:Änderung annehmen", "writer:Änderung ablehnen", "writer:Alle Änderungen annehmen", "writer:Alle Änderungen ablehnen", "writer:Versionsverlauf", "writer:Version speichern"]
+        },
+        {
+          "id": "tx-sprache",
+          "title": "Rechtschreibung, Trennung, Autokorrektur",
+          "text": "Falsche Wörter bekommen eine rote Wellenlinie, Rechtsklick zeigt Vorschläge oder nimmt das Wort ins Wörterbuch. Deutsch und Englisch sind eingebaut und gehen offline.",
+          "how": ["F7 springt zum nächsten Fehler.", "Autokorrektur macht „Anführungszeichen“, Gedankenstriche und Großschreibung am Satzanfang.", "Silbentrennung trennt lange Wörter am Zeilenende."],
+          "covers": ["writer:Rechtschreibung prüfen", "writer:Silbentrennung", "writer:Autokorrektur", "writer:Sprache und Prüfung"]
+        },
+        {
+          "id": "tx-sendungen",
+          "title": "Serienbriefe, Formulare, Umschläge",
+          "text": "Sendungen → Seriendruck: Adressen als CSV einfügen, Felder wie «Name» in den Text setzen und alle Briefe als ein PDF speichern. Kontrollkästchen und Auswahlfelder reagieren auf Antippen.",
+          "how": ["Umschlag und Etiketten erzeugen fertige Seiten aus einer Adresse."],
+          "covers": ["writer:Seriendruck: Daten", "writer:Seriendruck: Feld einfügen", "writer:Seriendruck: Alle als PDF", "writer:Kontrollkästchen", "writer:Auswahlfeld", "writer:Umschlag", "writer:Etiketten"]
+        },
+        {
+          "id": "tx-profi",
+          "title": "Vorlagen, Design, Wasserzeichen, Schutz",
+          "text": "Datei → Vorlagen: Brief, Bericht, Hausarbeit, Lebenslauf, Protokoll oder Rechnung als Start. Design ändert Farben und Schriften der Überschriften auf einen Schlag.",
+          "how": ["Wasserzeichen wie „ENTWURF“ liegt schräg auf jeder Seite.", "Dokument schützen sperrt das Bearbeiten mit Kennwort; Lesen, Kopieren und Export gehen weiter."],
+          "covers": ["writer:Vorlagen", "writer:Design", "writer:Wasserzeichen", "writer:Dokument schützen"]
+        },
+        {
+          "id": "tx-formate",
+          "title": "LibreOffice, HTML, Markdown",
+          "text": "Datei → „Speichern als ODT, RTF, HTML, Markdown“ für LibreOffice, Webseiten oder Notizen. „Datei einfügen“ holt solche Dateien und Text ins Dokument.",
+          "covers": ["writer:Speichern als ODT, RTF, HTML, Markdown", "writer:Datei einfügen (ODT, RTF, HTML, Markdown, Text)"]
+        },
+        {
           "id": "tx-befehle",
           "title": "Funktion suchen",
           "text": "Du weißt nicht, wo etwas steckt? Oben „Funktion suchen …“ antippen (Strg+Umschalt+P) und lostippen, z. B. „Seitenzahlen“ oder „doppelt“. Enter führt den Befehl aus.",

@@ -52,6 +52,7 @@ pub enum XDlg {
     Labels(String, usize, usize),
     Lang,
     Index(String),
+    Formats,
 }
 
 /// Zustand der erweiterten Funktionen.
@@ -157,6 +158,8 @@ pub const XCMDS: &[(Cmd, &str, &str, &str)] = &[
     (Cmd::Protect, "Dokument schützen", "", "schreibschutz kennwort sperren"),
     (Cmd::Envelope, "Umschlag", "", "brief adresse kuvert"),
     (Cmd::Labels, "Etiketten", "", "aufkleber adressen"),
+    (Cmd::ExportOther, "Speichern als ODT, RTF, HTML, Markdown", "", "export libreoffice opendocument website text"),
+    (Cmd::ImportOther, "Datei einfügen (ODT, RTF, HTML, Markdown, Text)", "", "import öffnen libreoffice"),
 ];
 
 /// Befehle, die nichts ändern (gehen auch bei geschütztem Dokument).
@@ -463,7 +466,25 @@ impl Writer {
 }
 
 /// Erweiterte Befehle; false = nicht zuständig.
+/// Funktion im Feature-Katalog, zu der ein neuer Befehl gehört (Admin kann sie sperren).
+pub fn feature_of(c: Cmd) -> Option<&'static str> {
+    use owndraw_core::features as f;
+    use Cmd::*;
+    Some(match c {
+        Table | TableFromText | RowAbove | RowBelow | ColLeft | ColRight | DelRow | DelCol | DelTable | TableHeader | TableStripes | TableBorder | SortAsc | SortDesc | TableToText | Shape(_) | Drawing | Formula | Chart | EditObject => f::OFFICE_OBJECTS,
+        Footnote | CrossRef | Cite | Bibliography | IndexMark | Index | Figures => f::OFFICE_REFS,
+        Comment | Comments | Track | Changes | AcceptHere | RejectHere | AcceptAll | RejectAll | Versions | SaveVersion => f::OFFICE_REVIEW,
+        MergeData | MergeField | MergeExport | CheckBox | Choice | Envelope | Labels => f::OFFICE_MAIL,
+        ExportOther | ImportOther => f::OFFICE_FORMATS,
+        _ => return None,
+    })
+}
+
 pub fn run(w: &mut Writer, c: Cmd, sh: &mut Shared, _ctx: &egui::Context) -> bool {
+    if feature_of(c).is_some_and(crate::locks::locked) {
+        sh.toast("Diese Funktion hat der Administrator ausgeschaltet");
+        return true;
+    }
     let now = sh.now;
     let cw = w.td.page.content_w() / (w.td.ex.cols.max(1) as f32);
     match c {
@@ -720,6 +741,8 @@ pub fn run(w: &mut Writer, c: Cmd, sh: &mut Shared, _ctx: &egui::Context) -> boo
         Cmd::Watermark => w.x.dlg = Some(XDlg::Watermark(if w.td.ex.watermark.is_empty() { "ENTWURF".into() } else { w.td.ex.watermark.clone() })),
         Cmd::Protect => w.x.dlg = Some(XDlg::Protect(String::new())),
         Cmd::Envelope => w.x.dlg = Some(XDlg::Envelope("Vorname Nachname\nStraße 1\n12345 Ort".into(), "Frau Beispiel\nMusterweg 2\n54321 Stadt".into())),
+        Cmd::ExportOther => w.x.dlg = Some(XDlg::Formats),
+        Cmd::ImportOther => sh.reqs.push(crate::app::Req::PickOpen { purpose: crate::app::PickPurpose::TextInsert, kinds: vec![crate::platform::FileKind::Any] }),
         Cmd::Labels => w.x.dlg = Some(XDlg::Labels("Vorname Nachname\nStraße 1\n12345 Ort".into(), 3, 8)),
         _ => return false,
     }
@@ -751,7 +774,7 @@ pub fn context_bar(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
         match para.kind {
             Kind::Table => {
                 ui.label(style::hint("Tabelle"));
-                for (cm, l, tip) in [(Cmd::RowAbove, "+ Zeile ↑", "Zeile oberhalb einfügen"), (Cmd::RowBelow, "+ Zeile ↓", "Zeile unterhalb einfügen"), (Cmd::ColLeft, "+ Spalte ←", "Spalte links einfügen"), (Cmd::ColRight, "+ Spalte →", "Spalte rechts einfügen"), (Cmd::DelRow, "− Zeile", "Zeile löschen"), (Cmd::DelCol, "− Spalte", "Spalte löschen")] {
+                for (cm, l, tip) in [(Cmd::RowAbove, "+ Zeile oben", "Zeile oberhalb einfügen"), (Cmd::RowBelow, "+ Zeile unten", "Zeile unterhalb einfügen"), (Cmd::ColLeft, "+ Spalte links", "Spalte links einfügen"), (Cmd::ColRight, "+ Spalte rechts", "Spalte rechts einfügen"), (Cmd::DelRow, "− Zeile", "Zeile löschen"), (Cmd::DelCol, "− Spalte", "Spalte löschen")] {
                     if chip(ui, l, false, tip) {
                         cmd = Some(cm);
                     }
@@ -767,10 +790,10 @@ pub fn context_bar(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                 if chip(ui, "Rahmen", t.border != 0, "Linien ein/aus") {
                     cmd = Some(Cmd::TableBorder);
                 }
-                if chip(ui, "A→Z", false, "Nach dieser Spalte aufsteigend sortieren") {
+                if chip(ui, "A–Z", false, "Nach dieser Spalte aufsteigend sortieren") {
                     cmd = Some(Cmd::SortAsc);
                 }
-                if chip(ui, "Z→A", false, "Absteigend sortieren") {
+                if chip(ui, "Z–A", false, "Absteigend sortieren") {
                     cmd = Some(Cmd::SortDesc);
                 }
                 // Zellformat
@@ -780,7 +803,7 @@ pub fn context_bar(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                     if chip(ui, "F", cell.b, "Zelle fett") {
                         w.cell_fmt(sh.now, |c| c.b = !c.b);
                     }
-                    for (a, l) in [(Align::Left, "⟸"), (Align::Center, "≡"), (Align::Right, "⟹")] {
+                    for (a, l) in [(Align::Left, "Links"), (Align::Center, "Mitte"), (Align::Right, "Rechts")] {
                         if chip(ui, l, cell.align == a, "Zelle ausrichten") {
                             w.cell_fmt(sh.now, move |c| c.align = a);
                         }
@@ -830,7 +853,7 @@ pub fn context_bar(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                 }
                 if para.wrap == Wrap::Inline {
                     ui.separator();
-                    for (a, l) in [(Align::Left, "⟸"), (Align::Center, "≡"), (Align::Right, "⟹")] {
+                    for (a, l) in [(Align::Left, "Links"), (Align::Center, "Mitte"), (Align::Right, "Rechts")] {
                         if chip(ui, l, para.align == a, "Ausrichten") {
                             cmd = Some(Cmd::Align(a));
                         }
@@ -876,7 +899,7 @@ pub fn side_panel(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("✕").on_hover_text("Schließen").clicked() {
+            if ui.button("×").on_hover_text("Schließen").clicked() {
                 w.x.panel = None;
             }
         });
@@ -921,7 +944,7 @@ pub fn side_panel(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                     ui.label(&cm.text);
                     for r in &cm.replies {
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(egui::RichText::new(format!("↳ {}:", r.author)).strong());
+                            ui.label(egui::RichText::new(format!("Antwort {}:", r.author)).strong());
                             ui.label(&r.text);
                         });
                     }
@@ -939,7 +962,7 @@ pub fn side_panel(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                             w.x.reply.remove(&cm.id);
                             w.changed(now);
                         }
-                        if ui.small_button(if cm.done { "Wieder öffnen" } else { "✓ Erledigt" }).clicked() {
+                        if ui.small_button(if cm.done { "Wieder öffnen" } else { "Erledigt" }).clicked() {
                             w.begin(Edit::Other, now);
                             if let Some(c) = w.td.ex.comments.iter_mut().find(|c| c.id == cm.id) {
                                 c.done = !c.done;
@@ -984,18 +1007,18 @@ pub fn side_panel(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) {
                     if r.response.interact(Sense::click()).clicked() {
                         w.jump(p, now);
                     }
-                    let t: String = text.replace(OBJ, "▫").chars().take(120).collect();
+                    let t: String = text.replace(OBJ, "•").chars().take(120).collect();
                     let rt = egui::RichText::new(t).color(c(owndraw_core::office::layout::rev_color(id)));
                     ui.label(if ins { rt.underline() } else { rt.strikethrough() });
                     ui.horizontal(|ui| {
-                        if ui.small_button("✓ Annehmen").clicked() {
+                        if ui.small_button("Annehmen").clicked() {
                             w.begin(Edit::Other, now);
                             tools::accept(&mut w.td, Some(id));
                             w.cur = w.td.clamp(w.cur);
                             w.anchor = w.cur;
                             w.changed(now);
                         }
-                        if ui.small_button("✕ Ablehnen").clicked() {
+                        if ui.small_button("Ablehnen").clicked() {
                             w.begin(Edit::Other, now);
                             tools::reject(&mut w.td, Some(id));
                             w.cur = w.td.clamp(w.cur);
@@ -1053,11 +1076,11 @@ pub fn context_menu(w: &mut Writer, ui: &mut egui::Ui, sh: &mut Shared) -> bool 
         return true;
     }
     if tools::rev_at(&w.td, w.cur).is_some() {
-        if ui.button("✓ Änderung annehmen").clicked() {
+        if ui.button("Änderung annehmen").clicked() {
             w.run(Cmd::AcceptHere, sh, &ctx);
             ui.close();
         }
-        if ui.button("✕ Änderung ablehnen").clicked() {
+        if ui.button("Änderung ablehnen").clicked() {
             w.run(Cmd::RejectHere, sh, &ctx);
             ui.close();
         }
@@ -1134,6 +1157,7 @@ pub fn dialogs(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
         XDlg::Labels(..) => "Etiketten",
         XDlg::Lang => "Sprache und Prüfung",
         XDlg::Index(_) => "Stichwort",
+        XDlg::Formats => "Speichern als …",
     };
     let m = egui::Modal::new(egui::Id::unique("w-xdlg")).frame(style::card().inner_margin(Margin::same(sp::XL as i8))).show(ctx, |ui| {
         ui.set_width(maxw);
@@ -1306,7 +1330,7 @@ pub fn dialogs(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
                 let (ok, ca) = ok_cancel(ui, "Einfügen");
                 if ok {
                     w.begin(Edit::Other, now);
-                    let at = if w.sel_block().is_some() { w.cur.p + 1 } else { w.cur.p + 1 };
+                    let at = w.cur.p + 1;
                     let mut cp = Para::with_text(Kind::Caption, text.trim());
                     cp.cap = label.clone();
                     cp.align = if w.sel_block().is_some() { w.td.paras[w.cur.p].align } else { Align::Left };
@@ -1566,6 +1590,19 @@ pub fn dialogs(w: &mut Writer, ctx: &egui::Context, sh: &mut Shared) {
                     w.author = author(sh);
                 }
                 if style::plain_btn(ui, "Fertig", 36.0).clicked() {
+                    close = true;
+                }
+            }
+            XDlg::Formats => {
+                use owndraw_core::office::convert::TextFmt;
+                for tf in TextFmt::ALL {
+                    if ui.add(egui::Button::new(tf.label()).min_size(Vec2::new(ui.available_width(), 36.0))).clicked() {
+                        sh.reqs.push(crate::app::Req::PickSave { purpose: crate::app::PickPurpose::TextExport(tf), name: format!("{}.{}", crate::app::safe_file_name(w.name()), tf.ext()), kind: crate::platform::FileKind::Any });
+                        close = true;
+                    }
+                }
+                ui.label(style::hint("PDF und Word findest du direkt im Menü „Datei“."));
+                if style::plain_btn(ui, "Abbrechen", 36.0).clicked() {
                     close = true;
                 }
             }

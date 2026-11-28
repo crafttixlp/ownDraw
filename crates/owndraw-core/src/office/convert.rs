@@ -2105,7 +2105,7 @@ fn md_import(s: &str) -> (TextDoc, Images) {
             bind = (stack.len() - 1).min(8) as u8;
             bkind = if ordered { Kind::Number } else { Kind::Bullet };
             let text = l.trim_start()[n..].trim();
-            let text = text.strip_prefix("[ ] ").map(|r| format!("☐ {r}")).or_else(|| text.strip_prefix("[x] ").or(text.strip_prefix("[X] ")).map(|r| format!("☒ {r}"))).unwrap_or_else(|| text.to_string());
+            let text = text.strip_prefix("[ ] ").map(|r| format!("□ {r}")).or_else(|| text.strip_prefix("[x] ").or(text.strip_prefix("[X] ")).map(|r| format!("■ {r}"))).unwrap_or_else(|| text.to_string());
             buf.push_str(&text);
             continue;
         }
